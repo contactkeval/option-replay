@@ -1,0 +1,30 @@
+{
+  "strategy": "covered_call",
+  "underlying": "AAPL",
+  "start_date": "2024-01-01",
+  "end_date": "2026-01-01",
+
+  "entry": {
+    "run_on": "monthly",             
+    "run_day": "first_trading_day",  
+    "run_time": "10:00",
+    "dte_target": 30,
+    "sell_strike_selection": "delta_0.20",
+    "type": "call"
+  },
+
+  "exit": {
+    "roll_when_dte_less_than": 5,
+    "exit_underlying_drop_pct": -12,
+    "profit_target_pct": 70
+  },
+
+  "position": {
+    "shares_per_contract": 100,
+    "max_contracts": 5
+  },
+
+  "data_provider": {
+    "provider": "polygon"
+  }
+}

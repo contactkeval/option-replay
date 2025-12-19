@@ -1,0 +1,59 @@
+package data
+
+import (
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
+)
+
+// synthDataProvider implements Data Provider generating synthetic data.
+type synthDataProvider struct {
+	secondary Provider
+}
+
+func NewSyntheticProvider() Provider { return &synthDataProvider{} }
+
+func (synthDataProv *synthDataProvider) Secondary() Provider {
+	return synthDataProv.secondary
+}
+
+func (synthDataProv *synthDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
+	cur := from
+	price := 100.0 + float64(rand.Intn(200))
+	var out []Bar
+	for !cur.After(to) {
+		if cur.Weekday() != time.Saturday && cur.Weekday() != time.Sunday {
+			delta := rand.NormFloat64() * 0.01 * price
+			open := price
+			close := price + delta
+			high := math.Max(open, close) + math.Abs(rand.NormFloat64()*0.3)
+			low := math.Min(open, close) - math.Abs(rand.NormFloat64()*0.3)
+			out = append(out, Bar{Date: cur, Open: open, High: high, Low: low, Close: close, Vol: float64(1000 + rand.Intn(5000))})
+			price = close
+		}
+		cur = cur.AddDate(0, 0, 1)
+	}
+	return out, nil
+}
+
+func (synthDataProv *synthDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
+	if synthDataProv.secondary != nil {
+		return synthDataProv.secondary.GetOptionMidPrice(underlying, strike, expiry, optType)
+	}
+	return 0, fmt.Errorf("no option market data in synthetic provider")
+}
+
+func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+	if synthDataProv.secondary != nil {
+		return synthDataProv.secondary.GetContracts(underlying, strike, start, end)
+	}
+	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
+}
+
+func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {
+	if synthDataProv.secondary != nil {
+		return synthDataProv.secondary.getIntervals(underlying)
+	}
+	return 0 // default
+}
