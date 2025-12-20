@@ -121,7 +121,7 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// get list of expiries for the underlying during backtest period
-	expiries, err := GetRelevantExpiries(cfg.Underlying, cfg.Entry.Start, cfg.Entry.End, e.prov)
+	expiries, err := e.prov.GetRelevantExpiries(cfg.Underlying, cfg.Entry.Start, cfg.Entry.End)
 	if err != nil {
 		return nil, fmt.Errorf("backtest scheduler error: get relevant expiries error, %w", err)
 	}

@@ -9,6 +9,7 @@ type Provider interface {
 	GetOptionMidPrice(symbol string, strike float64, expiry time.Time, optType string) (float64, error)
 	GetContracts(ticker string, strike float64, start, end time.Time) ([]OptionContract, error)
 	getIntervals(underlying string) float64
+	GetRelevantExpiries(underlying string, from, to time.Time) ([]time.Time, error)
 }
 
 // Bar simplified OHLC

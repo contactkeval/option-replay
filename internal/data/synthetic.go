@@ -57,3 +57,10 @@ func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 
 	}
 	return 0 // default
 }
+
+func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+	if synthDataProv.secondary != nil {
+		return synthDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+	}
+	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
+}

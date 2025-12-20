@@ -24,6 +24,13 @@ func (polygonDataProv *polygonDataProvider) Secondary() Provider {
 	return polygonDataProv.secondary
 }
 
+func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+	if polygonDataProv.secondary != nil {
+		return polygonDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+	}
+	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
+}
+
 func (polygonDataProv *polygonDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
 	base := "https://api.polygon.io"
 	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",

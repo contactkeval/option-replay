@@ -2,12 +2,14 @@ package data
 
 import (
 	"encoding/csv"
+	"fmt"
 	"log"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // localFileDataProvider implements Data Provider from local files.
@@ -23,6 +25,34 @@ func NewLocalFileDataProvider(dir string, secondary Provider) *localFileDataProv
 
 func (localFileDataProv *localFileDataProvider) Secondary() Provider {
 	return localFileDataProv.secondary
+}
+
+func (localFileDataProv *localFileDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.secondary.GetDailyBars(symbol, from, to)
+	}
+	return nil, fmt.Errorf("GetDailyBars not implemented for localFileDataProvider")
+}
+
+func (localFileDataProv *localFileDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.secondary.GetOptionMidPrice(underlying, strike, expiry, optType)
+	}
+	return 0, fmt.Errorf("GetOptionMidPrice not implemented for localFileDataProvider")
+}
+
+func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+	}
+	return nil, fmt.Errorf("GetRelevantExpiries not implemented for localFileDataProvider")
+}
+
+func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.secondary.GetContracts(underlying, strike, start, end)
+	}
+	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
 // TODO: delete this old version after verifying no usage

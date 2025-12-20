@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"sort"
@@ -217,6 +216,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 			return out, fmt.Errorf("backtest scheduler error: fetch earnings dates error, %w", err)
 		}
 
+		// use first NthList element as offset, TODO: remove hardcoding
 		offset := entry.NthList[0]
 		for _, e := range earnings {
 			candidate := e.AddDate(0, 0, offset)
@@ -236,6 +236,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// expiry_offset - e.g., NthList = [-5] means 5 days before expiry
 	// ----------------------------------------------------------------------------------------
 	case "expiry_offset":
+		// use first NthList element as offset, TODO: remove hardcoding
 		offset := entry.NthList[0]
 		for _, e := range expiries {
 			candidate := e.AddDate(0, 0, offset)
@@ -357,111 +358,6 @@ func ResolveExpiration(openDate time.Time, offset int, expiries []time.Time, dat
 	day := findBarDate(candidate, expiries, dateMatchType)
 
 	return day
-}
-
-// GetRelevantExpiries returns a sorted slice of unique option expiration dates
-// for a given ticker within the specified time range.
-//
-// The function determines relevant option strike prices by analyzing spot price data
-// and selecting three middle strike levels within the price range, then retrieves
-// all available contracts for those strikes to extract their expiration dates.
-//
-// Parameters:
-//   - ticker: The symbol identifier (e.g., "SPY")
-//   - start: The beginning of the date range for analysis
-//   - end: The end of the date range for analysis
-//   - provider: A data provider that supplies daily bars and contract information
-//
-// Returns:
-//   - A sorted slice of unique time.Time values representing option expiration dates
-//   - An error if spot data cannot be fetched, no data is available, or contract
-//     retrieval fails
-//
-// The algorithm works as follows:
-//  1. Fetches daily bar data for the ticker within the date range
-//  2. Determines the high and low prices from the bars
-//  3. Selects a rounding multiplier based on the low price
-//  4. Divides the price range into 5 equal intervals and selects the middle 3 levels
-//  5. Rounds strike prices to the nearest multiplier
-//  6. Retrieves all available contracts for the rounded strike prices
-//  7. Extracts and deduplicates expiration dates
-//  8. Returns the sorted, unique expiration dates
-func GetRelevantExpiries(ticker string, start, end time.Time, provider data.Provider) ([]time.Time, error) {
-
-	// Step 1: Load spot bars
-	bars, err := provider.GetDailyBars(ticker, start, end)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
-	}
-	if len(bars) == 0 {
-		return nil, fmt.Errorf("no spot data found")
-	}
-
-	// Step 2: Compute high & low
-	low := bars[0].Low
-	high := bars[0].High
-	for _, b := range bars {
-		if b.Low < low {
-			low = b.Low
-		}
-		if b.High > high {
-			high = b.High
-		}
-	}
-
-	// Step 3: Determine multiplier
-	multiplier := 1.0
-	switch {
-	case low >= 100 && low < 1000:
-		multiplier = 10
-	case low >= 1000 && low < 10000:
-		multiplier = 100
-	case low >= 10000:
-		multiplier = 1000
-	}
-
-	// Step 4: Divide range into 5 equal intervals
-	step := (high - low) / 5
-
-	// Step 5: Pick middle 3 levels
-	levels := []float64{
-		low + step, // level 1
-		// low + 2*step, // level 2
-		low + 3*step, // level 3
-	}
-
-	// Step 6: Round levels to nearest multiplier
-	roundedStrikes := make([]float64, len(levels))
-	for i, v := range levels {
-		roundedStrikes[i] = math.Round(v/multiplier) * multiplier
-	}
-
-	// Step 7: Fetch contracts for each strike
-	expiryMap := map[string]time.Time{}
-
-	for _, strike := range roundedStrikes {
-		contracts, err := provider.GetContracts(ticker, strike, start, end)
-		if err != nil {
-			return nil, fmt.Errorf("fetch contracts strike %.2f: %w", strike, err)
-		}
-
-		for _, c := range contracts {
-			key := c.ExpirationDate.Format("2006-01-02")
-			expiryMap[key] = c.ExpirationDate
-		}
-	}
-
-	// Step 8: Unique expiries & sorted slice
-	expiries := make([]time.Time, 0, len(expiryMap))
-	for _, dt := range expiryMap {
-		expiries = append(expiries, dt)
-	}
-
-	sort.Slice(expiries, func(i, j int) bool {
-		return expiries[i].Before(expiries[j])
-	})
-
-	return expiries, nil
 }
 
 // GetEarningsDates retrieves reported quarterly earnings dates for the given
