@@ -1,6 +1,6 @@
-# option-replay_v2
+# option-replay
 
-Modular rewrite of an options backtester.
+Modular rewrite of options strategy backtester.
 
 Run (CLI):
 
