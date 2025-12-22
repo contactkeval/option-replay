@@ -18,6 +18,13 @@ func (synthDataProv *synthDataProvider) Secondary() Provider {
 	return synthDataProv.secondary
 }
 
+func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+	if synthDataProv.secondary != nil {
+		return synthDataProv.secondary.GetContracts(underlying, strike, start, end)
+	}
+	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
+}
+
 func (synthDataProv *synthDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
 	cur := from
 	price := 100.0 + float64(rand.Intn(200))
@@ -44,11 +51,11 @@ func (synthDataProv *synthDataProvider) GetOptionMidPrice(underlying string, str
 	return 0, fmt.Errorf("no option market data in synthetic provider")
 }
 
-func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetContracts(underlying, strike, start, end)
+		return synthDataProv.secondary.GetRelevantExpiries(ticker, start, end)
 	}
-	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
+	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
 }
 
 func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {
@@ -56,11 +63,4 @@ func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 
 		return synthDataProv.secondary.getIntervals(underlying)
 	}
 	return 0 // default
-}
-
-func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
-	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetRelevantExpiries(ticker, start, end)
-	}
-	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
 }

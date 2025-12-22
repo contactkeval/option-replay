@@ -24,11 +24,10 @@ func (polygonDataProv *polygonDataProvider) Secondary() Provider {
 	return polygonDataProv.secondary
 }
 
-func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
-	if polygonDataProv.secondary != nil {
-		return polygonDataProv.secondary.GetRelevantExpiries(ticker, start, end)
-	}
-	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
+func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+	// Polygon does not provide an endpoint to list option contracts by strike.
+	// This method is not implemented.
+	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
 }
 
 func (polygonDataProv *polygonDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
@@ -98,6 +97,17 @@ func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(symbol string, str
 	return 0, fmt.Errorf("no usable option price for %s", sym)
 }
 
+func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+	if polygonDataProv.secondary != nil {
+		return polygonDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+	}
+	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
+}
+
+func (polygonDataProv *polygonDataProvider) getIntervals(underlying string) float64 {
+	return 50.0 // TODO: implement proper intervals reading
+}
+
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
 func OptionSymbolFromParts(underlying string, expiration time.Time, optType string, strike float64) string {
 	// OCC: <root><YYYYMMDD><C|P><strike*1000 padded to 8 digits>
@@ -109,14 +119,4 @@ func OptionSymbolFromParts(underlying string, expiration time.Time, optType stri
 	strikeInt := int(math.Round(strike * 1000))
 	strFmt := fmt.Sprintf("%08d", strikeInt)
 	return fmt.Sprintf("%s%s%s%s", strings.ToUpper(underlying), y, t, strFmt)
-}
-
-func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
-	// Polygon does not provide an endpoint to list option contracts by strike.
-	// This method is not implemented.
-	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
-}
-
-func (polygonDataProv *polygonDataProvider) getIntervals(underlying string) float64 {
-	return 50.0 // TODO: implement proper intervals reading
 }

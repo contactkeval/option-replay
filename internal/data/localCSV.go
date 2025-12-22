@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,13 @@ func NewLocalFileDataProvider(dir string, secondary Provider) *localFileDataProv
 
 func (localFileDataProv *localFileDataProvider) Secondary() Provider {
 	return localFileDataProv.secondary
+}
+
+func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.secondary.GetContracts(underlying, strike, start, end)
+	}
+	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
 func (localFileDataProv *localFileDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
@@ -48,24 +56,11 @@ func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker strin
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
-	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetContracts(underlying, strike, start, end)
-	}
-	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
-}
-
-// TODO: delete this old version after verifying no usage
-func (localFileDataProv *localFileDataProvider) roundToNearestStrikeOld(underlying string, v float64) float64 {
-	strikeInterval := 50.0 // Example for NIFTY, change as needed
-	return math.Round(v/strikeInterval) * strikeInterval
-}
-
 // getIntervals reads the CSV once and caches it
 func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) float64 {
 	intervals := make(map[string]float64)
 
-	f, err := os.Open(localFileDataProv.dir + "intervals.csv")
+	f, err := os.Open(filepath.Join(localFileDataProv.dir, "intervals.csv"))
 	if err != nil {
 		log.Printf("open intervals file: %v", err)
 		return 0

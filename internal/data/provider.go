@@ -5,11 +5,11 @@ import "time"
 // Provider supplies market data
 type Provider interface {
 	Secondary() Provider
+	GetContracts(ticker string, strike float64, start, end time.Time) ([]OptionContract, error)
 	GetDailyBars(symbol string, from, to time.Time) ([]Bar, error)
 	GetOptionMidPrice(symbol string, strike float64, expiry time.Time, optType string) (float64, error)
-	GetContracts(ticker string, strike float64, start, end time.Time) ([]OptionContract, error)
-	getIntervals(underlying string) float64
 	GetRelevantExpiries(underlying string, from, to time.Time) ([]time.Time, error)
+	getIntervals(underlying string) float64
 }
 
 // Bar simplified OHLC
