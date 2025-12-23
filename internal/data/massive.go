@@ -317,6 +317,11 @@ func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(symbol string, str
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
 }
 
+func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
+	intervals := massiveDataProv.getIntervals(underlying)
+	return math.Round(price/intervals) * intervals
+}
+
 func (massiveDataProv *massiveDataProvider) getIntervals(underlying string) float64 {
 	return 50.0 // TODO: implement proper intervals reading
 }

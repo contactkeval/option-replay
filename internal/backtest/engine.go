@@ -160,7 +160,7 @@ func (e *Engine) Run() (*Result, error) {
 		okLegs := true
 		for _, ls := range cfg.Strategy {
 			exp := ResolveExpiration(dt, cfg.DaysToExpiry, expiries, cfg.Entry.DateMatchType)
-			strike, err := ResolveStrike(ls.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs)
+			strike, err := ResolveStrike(ls.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs, e.prov)
 			if err != nil {
 				okLegs = false
 				break

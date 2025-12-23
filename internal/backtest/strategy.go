@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/contactkeval/option-replay/internal/data"
 )
 
 // TODO: remove this old function later once new ResolveStrike is stable
@@ -38,12 +40,13 @@ func ResolveStrikeOld(rule string, underlying float64) (float64, error) {
 // "ATM", "ATM:+10", "ATM:-10%", "DELTA:30",
 // "{LEG1.STRIKE}+{LEG1.PREMIUM}" etc.
 func ResolveStrike(
-	strikeExpr string,
+	strikeExpr string, // strike expression e.g. "ATM", "ATM:+10", "DELTA:30", "{LEG1.STRIKE}+{LEG1.PREMIUM}"
 	underlying string,
 	spotPrice float64,
 	openDate time.Time,
 	expiryDate time.Time,
 	legs []TradeLeg,
+	prov data.Provider,
 ) (float64, error) {
 
 	// Trim spaces for safety
@@ -53,7 +56,7 @@ func ResolveStrike(
 	// 1. Simple ATM case
 	// ---------------------------------------------------------
 	if strikeExpr == "ATM" {
-		return roundToNearestStrike(spotPrice), nil
+		return prov.RoundToNearestStrike(underlying, spotPrice, openDate, expiryDate), nil
 	}
 
 	// ---------------------------------------------------------

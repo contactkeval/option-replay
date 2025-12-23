@@ -58,6 +58,11 @@ func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, start
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
 }
 
+func (synthDataProv *synthDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
+	intervals := synthDataProv.getIntervals(underlying)
+	return math.Round(price/intervals) * intervals
+}
+
 func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {
 	if synthDataProv.secondary != nil {
 		return synthDataProv.secondary.getIntervals(underlying)

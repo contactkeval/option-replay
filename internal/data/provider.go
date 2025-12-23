@@ -9,6 +9,7 @@ type Provider interface {
 	GetDailyBars(symbol string, from, to time.Time) ([]Bar, error)
 	GetOptionMidPrice(symbol string, strike float64, expiry time.Time, optType string) (float64, error)
 	GetRelevantExpiries(underlying string, from, to time.Time) ([]time.Time, error)
+	RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64
 	getIntervals(underlying string) float64
 }
 

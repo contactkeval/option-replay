@@ -151,7 +151,7 @@ func TestBeforeExpirySchedule(t *testing.T) {
 	}
 
 	// get list of expiries for the underlying during backtest period
-	expiries, err := backtest.GetRelevantExpiries(entryRule.Underlying, entryRule.Start, entryRule.End, dataProv)
+	expiries, err := dataProv.GetRelevantExpiries(entryRule.Underlying, entryRule.Start, entryRule.End)
 	if err != nil {
 		t.Fatalf("backtest scheduler error: get relevant expiries error, %v", err)
 	}

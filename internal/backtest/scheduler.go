@@ -176,6 +176,13 @@ func NewEntryRule(w EntryRule) *EntryRule {
 // Returns:
 //   - []time.Time: sorted, unique list of scheduled trading dates (as time.Time).
 func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]time.Time, error) {
+	const (
+		ModeEarningsOffset = "earnings_offset"
+		ModeExpiryOffset   = "expiry_offset"
+		ModeNthMonthDay    = "nth_month_day"
+		ModeNthWeekday     = "nth_weekday"
+		ModeDailyTime      = "daily_time"
+	)
 	now := time.Now().UTC()
 
 	barDates := make([]time.Time, 0, len(barMap))
@@ -196,9 +203,14 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	out := []time.Time{}
 	mode := strings.ToLower(strings.TrimSpace(entry.Mode))
 
-	// invalid range
+	// invalid range, swap if needed
 	if entry.Start.After(entry.End) {
-		return out, fmt.Errorf("backtest scheduler error: invalid date range: start %v is after end %v", entry.Start, entry.End)
+		entry.Start, entry.End = entry.End, entry.Start
+	}
+
+	// NthList is required for several modes
+	if len(entry.NthList) == 0 {
+		return out, fmt.Errorf("nth_list is required for mode %s", entry.Mode)
 	}
 
 	switch mode {
@@ -206,7 +218,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// ----------------------------------------------------------------------------------------
 	// earnings_offset - e.g., NthList = [-5] means 5 days before earnings
 	// ----------------------------------------------------------------------------------------
-	case "earnings_offset":
+	case ModeEarningsOffset:
 		if entry.Underlying == "" {
 			return out, fmt.Errorf("backtest scheduler error: earnings_offset mode requires non-empty underlying")
 		}
@@ -235,7 +247,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// ----------------------------------------------------------------------------------------
 	// expiry_offset - e.g., NthList = [-5] means 5 days before expiry
 	// ----------------------------------------------------------------------------------------
-	case "expiry_offset":
+	case ModeExpiryOffset:
 		// use first NthList element as offset, TODO: remove hardcoding
 		offset := entry.NthList[0]
 		for _, e := range expiries {
@@ -255,11 +267,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// ----------------------------------------------------------------------------------------
 	// nth_month_day — e.g., 10th of month, or [5, 15] of every month
 	// ----------------------------------------------------------------------------------------
-	case "nth_month_day":
-		if len(entry.NthList) == 0 {
-			return out, fmt.Errorf("nth_month_day mode requires NthList")
-		}
-
+	case ModeNthMonthDay:
 		for y := entry.Start.Year(); y <= entry.End.Year(); y++ {
 			for m := time.January; m <= time.December; m++ {
 				monthStart := time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
@@ -293,11 +301,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// ----------------------------------------------------------------------------------------
 	// nth_weekday - e.g., every Tue, Thu or every Mon etc.
 	// ----------------------------------------------------------------------------------------
-	case "nth_weekday":
-		if len(entry.NthList) == 0 {
-			return out, fmt.Errorf("nth_weekday mode requires NthList")
-		}
-
+	case ModeNthWeekday:
 		// Iterate through full date range
 		cur := entry.Start
 		for !cur.After(entry.End) {

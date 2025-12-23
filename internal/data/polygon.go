@@ -17,7 +17,7 @@ type polygonDataProvider struct {
 }
 
 func NewPolygonDataProvider(apiKey string) Provider {
-	return &polygonDataProvider{apiKey: apiKey, client: &http.Client{Timeout: 20 * time.Second}}
+	return &polygonDataProvider{apiKey: apiKey, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
 func (polygonDataProv *polygonDataProvider) Secondary() Provider {
@@ -102,6 +102,11 @@ func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, s
 		return polygonDataProv.secondary.GetRelevantExpiries(ticker, start, end)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
+}
+
+func (polygonDataProv *polygonDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
+	intervals := polygonDataProv.getIntervals(underlying)
+	return math.Round(price/intervals) * intervals
 }
 
 func (polygonDataProv *polygonDataProvider) getIntervals(underlying string) float64 {

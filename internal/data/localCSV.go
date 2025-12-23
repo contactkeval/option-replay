@@ -104,8 +104,8 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 	return 0
 }
 
-// roundToNearestStrike rounds `v` using the interval for the underlying
-func (localFileDataProv *localFileDataProvider) roundToNearestStrike(underlying string, v float64) float64 {
+// RoundToNearestStrike rounds `price` using the interval for the underlying
+func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
 	intervals := 0.0
 	var loadOnce sync.Once
 	loadOnce.Do(func() {
@@ -114,8 +114,8 @@ func (localFileDataProv *localFileDataProvider) roundToNearestStrike(underlying 
 
 	if intervals == 0.0 {
 		// fail safe: no rounding
-		return v
+		return price
 	}
 
-	return math.Round(v/intervals) * intervals
+	return math.Round(price/intervals) * intervals
 }
