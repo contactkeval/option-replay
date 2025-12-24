@@ -3,21 +3,23 @@ package tests
 import (
 	"testing"
 
-	"github.com/contactkeval/option-replay/internal/backtest"
+	"github.com/contactkeval/option-replay/internal/backtest/engine"
+	sch "github.com/contactkeval/option-replay/internal/backtest/scheduler"
+	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
 )
 
 // executor tests focus on entry/exit over synthetic data
 func TestProfitTargetExit(t *testing.T) {
-	cfg := &backtest.Config{
+	cfg := &engine.Config{
 		Underlying: "SYN",
-		Entry:      backtest.EntryRule{Mode: "daily_time"},
-		Strategy:   []backtest.LegSpec{{Side: "sell", OptionType: "call", StrikeRule: "ATM", Qty: 1, Expiration: "NDAYS:30"}},
-		Exit:       backtest.ExitSpec{ProfitTargetPct: func() *float64 { v := 50.0; return &v }()},
+		Entry:      sch.EntryRule{Mode: "daily_time"},
+		Strategy:   []st.LegSpec{{Side: "sell", OptionType: "call", StrikeRule: "ATM", Qty: 1, Expiration: "NDAYS:30"}},
+		Exit:       engine.ExitSpec{ProfitTargetPct: func() *float64 { v := 50.0; return &v }()},
 	}
 
 	prov := data.NewSyntheticProvider()
-	eng := backtest.NewEngine(cfg, prov)
+	eng := engine.NewEngine(cfg, prov)
 	res, err := eng.Run()
 	if err != nil {
 		t.Fatalf("engine run failed: %v", err)

@@ -1,4 +1,4 @@
-package backtest
+package engine
 
 import (
 	"fmt"
@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	sch "github.com/contactkeval/option-replay/internal/backtest/scheduler"
+	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
 	"github.com/contactkeval/option-replay/internal/pricing"
 )
@@ -19,26 +21,16 @@ type Engine struct {
 
 // Config struct
 type Config struct {
-	Underlying   string        `json:"underlying"`                // e.g. "AAPL"
-	Entry        EntryRule     `json:"entry"`                     // entry rules
-	DaysToExpiry int           `json:"dte,omitempty"`             // default DTE if not specified in legs
-	MatchType    DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
-	Strategy     []LegSpec     `json:"strategy"`                  // option legs
-	Exit         ExitSpec      `json:"exit"`                      // exit rules
-	MaxTrades    int           `json:"max_trades,omitempty"`      // max trades to execute, 0 = unlimited
-	OutputDir    string        `json:"output_dir,omitempty"`      // output directory
-	Seed         int64         `json:"seed,omitempty"`            // random seed for stochastic elements
-	Verbosity    int           `json:"verbosity,omitempty"`       // 0=errors,1=info,2=debug
-}
-
-// Individual leg specification
-type LegSpec struct {
-	Side       string `json:"side,omitempty"`        // "buy" or "sell", defaults to "buy"
-	OptionType string `json:"option_type,omitempty"` // "call" or "put", defaults to "call"
-	StrikeRule string `json:"strike_rule"`           // "ATM", "ABS:100", "DELTA:0.3", etc.
-	Qty        int    `json:"qty,omitempty"`         // used for ratio spreads, defaults to one
-	Expiration string `json:"expiration,omitempty"`  // used for calendar spreads, defaults DTE from config
-	LegName    string `json:"leg_name,omitempty"`    // used for dependent wings
+	Underlying   string            `json:"underlying"`                // e.g. "AAPL"
+	Entry        sch.EntryRule     `json:"entry"`                     // entry rules
+	DaysToExpiry int               `json:"dte,omitempty"`             // default DTE if not specified in legs
+	MatchType    sch.DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
+	Strategy     []st.LegSpec      `json:"strategy"`                  // option legs
+	Exit         ExitSpec          `json:"exit"`                      // exit rules
+	MaxTrades    int               `json:"max_trades,omitempty"`      // max trades to execute, 0 = unlimited
+	OutputDir    string            `json:"output_dir,omitempty"`      // output directory
+	Seed         int64             `json:"seed,omitempty"`            // random seed for stochastic elements
+	Verbosity    int               `json:"verbosity,omitempty"`       // 0=errors,1=info,2=debug
 }
 
 // ExitSpec defines various exit rules for trades
@@ -50,24 +42,13 @@ type ExitSpec struct {
 	ExitByDaysToExpiry *int     `json:"exit_by_days_to_expiry,omitempty"` // e.g. 5 for exit when any leg has ≤5 days to expiry
 }
 
-// Trade/TradeLeg/Bar types reused from original but simplified for internal use
-type TradeLeg struct {
-	Spec         LegSpec
-	Strike       float64
-	OptType      string
-	Qty          int
-	Expiration   time.Time
-	OpenPremium  float64
-	ClosePremium float64
-}
-
 type Trade struct {
 	ID                int
 	OpenTime          time.Time
 	CloseTime         *time.Time
 	UnderlyingAtOpen  float64
 	UnderlyingAtClose float64
-	Legs              []TradeLeg
+	Legs              []st.TradeLeg
 	OpenPremium       float64
 	ClosePremium      float64
 	HighPremium       float64
@@ -127,7 +108,7 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// schedule
-	dates, err := ResolveScheduleDates(cfg.Entry, bars, expiries)
+	dates, err := sch.ResolveScheduleDates(cfg.Entry, bars, expiries)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve schedule dates: %w", err)
 	}
@@ -156,17 +137,17 @@ func (e *Engine) Run() (*Result, error) {
 		openPrice := bar.Close
 
 		// build legs
-		var legs []TradeLeg
+		var legs []st.TradeLeg
 		okLegs := true
 		for _, ls := range cfg.Strategy {
-			exp := ResolveExpiration(dt, cfg.DaysToExpiry, expiries, cfg.Entry.DateMatchType)
-			strike, err := ResolveStrike(ls.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs, e.prov)
+			exp := sch.ResolveExpiration(dt, cfg.DaysToExpiry, expiries, cfg.Entry.DateMatchType)
+			strike, err := st.ResolveStrike(ls.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs, e.prov)
 			if err != nil {
 				okLegs = false
 				break
 			}
 			// TODO: OpenPremium pricing later
-			legs = append(legs, TradeLeg{Spec: ls, Strike: strike, OptType: ls.OptionType, Qty: ls.Qty, Expiration: exp, OpenPremium: 0.0})
+			legs = append(legs, st.TradeLeg{Spec: ls, Strike: strike, OptType: ls.OptionType, Qty: ls.Qty, Expiration: exp, OpenPremium: 0.0})
 		}
 		if !okLegs || len(legs) == 0 {
 			continue
@@ -424,4 +405,12 @@ func checkExits(tr *Trade, currPremium float64, bar data.Bar, cfg Config) string
 	}
 
 	return ""
+}
+
+func extractCloses(bars []data.Bar) []float64 {
+	var closes []float64
+	for _, b := range bars {
+		closes = append(closes, b.Close)
+	}
+	return closes
 }

@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/contactkeval/option-replay/internal/backtest"
+	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/pricing"
 )
 
 func TestMultiLegPnLConsistency(t *testing.T) {
 	// Build a simple two-leg: long call + short call (same strike) and ensure PnL arithmetic
-	legA := backtest.TradeLeg{Strike: 100, OptType: "call", Qty: 1, Expiration: time.Now().AddDate(0, 0, 30)}
-	legB := backtest.TradeLeg{Strike: 100, OptType: "call", Qty: -1, Expiration: time.Now().AddDate(0, 0, 30)}
+	legA := st.TradeLeg{Strike: 100, OptType: "call", Qty: 1, Expiration: time.Now().AddDate(0, 0, 30)}
+	legB := st.TradeLeg{Strike: 100, OptType: "call", Qty: -1, Expiration: time.Now().AddDate(0, 0, 30)}
 
 	S := 105.0
 	r := 0.02
@@ -22,5 +22,7 @@ func TestMultiLegPnLConsistency(t *testing.T) {
 
 	// since strikes equal, prices equal; net should be near zero
 	net := pA*float64(legA.Qty) + pB*float64(legB.Qty)
-	if net > 1e-6 || net < -1e-6 { t.Fatalf("expected net ~0, got %f", net) }
+	if net > 1e-6 || net < -1e-6 {
+		t.Fatalf("expected net ~0, got %f", net)
+	}
 }

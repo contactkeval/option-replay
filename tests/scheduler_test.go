@@ -3,12 +3,12 @@ package tests
 import (
 	"testing"
 
-	"github.com/contactkeval/option-replay/internal/backtest"
+	sch "github.com/contactkeval/option-replay/internal/backtest/scheduler"
 )
 
 func TestBeforeEarningsSchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "earnings_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "earnings_offset",
 		Underlying: "AAPL",
 		NthList:    []int{-5},
 		TimeOfDay:  "10:00",
@@ -19,7 +19,7 @@ func TestBeforeEarningsSchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -29,11 +29,11 @@ func TestBeforeEarningsSchedule(t *testing.T) {
 
 func TestBeforeEarningsHigherSchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "earnings_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "earnings_offset",
 		Underlying:    "GOOG",
 		NthList:       []int{-5},
 		TimeOfDay:     "10:00",
-		DateMatchType: backtest.MatchHigher,
+		DateMatchType: sch.MatchHigher,
 		Start:         start,
 		End:           end})
 	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.Start, entryRule.End)
@@ -41,7 +41,7 @@ func TestBeforeEarningsHigherSchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -51,11 +51,11 @@ func TestBeforeEarningsHigherSchedule(t *testing.T) {
 
 func TestBeforeEarningsLowerSchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "earnings_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "earnings_offset",
 		Underlying:    "META",
 		NthList:       []int{-5},
 		TimeOfDay:     "10:00",
-		DateMatchType: backtest.MatchLower,
+		DateMatchType: sch.MatchLower,
 		Start:         start,
 		End:           end})
 	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.Start, entryRule.End)
@@ -63,7 +63,7 @@ func TestBeforeEarningsLowerSchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -74,11 +74,11 @@ func TestBeforeEarningsLowerSchedule(t *testing.T) {
 func TestBeforeEarningsExactSchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
 	// TODO: test with MSFT which has earnings on non-trading days, change it to different stock if that changes
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "earnings_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "earnings_offset",
 		Underlying:    "MSFT",
 		NthList:       []int{-5},
 		TimeOfDay:     "10:00",
-		DateMatchType: backtest.MatchExact,
+		DateMatchType: sch.MatchExact,
 		Start:         start,
 		End:           end})
 	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.Start, entryRule.End)
@@ -86,7 +86,7 @@ func TestBeforeEarningsExactSchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -96,11 +96,11 @@ func TestBeforeEarningsExactSchedule(t *testing.T) {
 
 func TestBeforeEarningsNearestSchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "earnings_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "earnings_offset",
 		Underlying:    "NVDA",
 		NthList:       []int{-5},
 		TimeOfDay:     "10:00",
-		DateMatchType: backtest.MatchNearest,
+		DateMatchType: sch.MatchNearest,
 		Start:         start,
 		End:           end})
 	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.Start, entryRule.End)
@@ -108,7 +108,7 @@ func TestBeforeEarningsNearestSchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestBeforeEarningsNearestSchedule(t *testing.T) {
 
 func TestAfterEarningsSchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "earnings_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "earnings_offset",
 		Underlying: "TSLA",
 		NthList:    []int{5},
 		TimeOfDay:  "10:00",
@@ -129,7 +129,7 @@ func TestAfterEarningsSchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestAfterEarningsSchedule(t *testing.T) {
 
 func TestBeforeExpirySchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "expiry_offset",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "expiry_offset",
 		Underlying: "AAPL",
 		NthList:    []int{-5},
 		TimeOfDay:  "10:00",
@@ -156,7 +156,7 @@ func TestBeforeExpirySchedule(t *testing.T) {
 		t.Fatalf("backtest scheduler error: get relevant expiries error, %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, expiries) // TODO: pass expiries instead of nil
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, expiries) // TODO: pass expiries instead of nil
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestBeforeExpirySchedule(t *testing.T) {
 
 func TestOnceMonthlySchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "nth_month_day",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "nth_month_day",
 		Underlying: "AAPL",
 		NthList:    []int{1},
 		TimeOfDay:  "10:00",
@@ -177,7 +177,7 @@ func TestOnceMonthlySchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestOnceMonthlySchedule(t *testing.T) {
 
 func TestThriceMonthlySchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "nth_month_day",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "nth_month_day",
 		Underlying: "AAPL",
 		NthList:    []int{10, 20, 30},
 		TimeOfDay:  "10:00",
@@ -198,7 +198,7 @@ func TestThriceMonthlySchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestThriceMonthlySchedule(t *testing.T) {
 
 func TestOnceWeeklySchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "nth_weekday",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "nth_weekday",
 		Underlying: "AAPL",
 		NthList:    []int{1},
 		TimeOfDay:  "10:00",
@@ -219,7 +219,7 @@ func TestOnceWeeklySchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestOnceWeeklySchedule(t *testing.T) {
 
 func TestThriceWeeklySchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "nth_weekday",
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "nth_weekday",
 		Underlying: "AAPL",
 		NthList:    []int{1, 3, 5},
 		TimeOfDay:  "10:00",
@@ -240,7 +240,7 @@ func TestThriceWeeklySchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestThriceWeeklySchedule(t *testing.T) {
 
 func TestDailySchedule(t *testing.T) {
 	dataProv = getMassiveDataProvider()
-	entryRule := backtest.NewEntryRule(backtest.EntryRule{Mode: "", // daily_time is default
+	entryRule := sch.NewEntryRule(sch.EntryRule{Mode: "", // daily_time is default
 		Underlying: "AAPL",
 		TimeOfDay:  "10:00",
 		Start:      start,
@@ -260,7 +260,7 @@ func TestDailySchedule(t *testing.T) {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := backtest.ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := sch.ResolveScheduleDates(*entryRule, bars, nil)
 	if err != nil {
 		t.Fatalf("failed to resolve schedule dates: %v", err)
 	}

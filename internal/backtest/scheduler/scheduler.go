@@ -1,4 +1,4 @@
-package backtest
+package scheduler
 
 import (
 	"encoding/json"
@@ -11,15 +11,6 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/data"
-)
-
-type DateMatchType string
-
-const (
-	MatchExact   DateMatchType = "exact"   // must match exactly
-	MatchHigher  DateMatchType = "higher"  // next available date after target
-	MatchLower   DateMatchType = "lower"   // last available date before target
-	MatchNearest DateMatchType = "nearest" // closest available date (default)
 )
 
 type EarningsResponse struct {

@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/contactkeval/option-replay/internal/backtest"
+	"github.com/contactkeval/option-replay/internal/backtest/engine"
 )
 
-func WriteJSON(res *backtest.Result, outdir string) error {
+func WriteJSON(res *engine.Result, outdir string) error {
 	b, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {
 		return err
@@ -18,7 +18,7 @@ func WriteJSON(res *backtest.Result, outdir string) error {
 	return os.WriteFile(filepath.Join(outdir, "trades.json"), b, 0644)
 }
 
-func WriteCSV(trades []backtest.Trade, outdir string) error {
+func WriteCSV(trades []engine.Trade, outdir string) error {
 	f, err := os.Create(filepath.Join(outdir, "trades.csv"))
 	if err != nil {
 		return err

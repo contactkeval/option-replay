@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/contactkeval/option-replay/internal/backtest"
+	"github.com/contactkeval/option-replay/internal/backtest/engine"
 	"github.com/contactkeval/option-replay/internal/data"
 	"github.com/contactkeval/option-replay/internal/report"
 )
@@ -25,7 +25,7 @@ func main() {
 		log.Fatalf("reading config: %v", err)
 	}
 
-	var cfg backtest.Config
+	var cfg engine.Config
 	if err := json.Unmarshal(cfgData, &cfg); err != nil {
 		log.Fatalf("invalid config: %v", err)
 	}
@@ -41,7 +41,7 @@ func main() {
 		log.Printf("[info] synthetic provider enabled")
 	}
 
-	engine := backtest.NewEngine(&cfg, prov)
+	engine := engine.NewEngine(&cfg, prov)
 
 	if *rest {
 		mux := http.NewServeMux()

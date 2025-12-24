@@ -1,11 +1,17 @@
-package backtest
+package scheduler
 
 import (
-	"math"
 	"sort"
 	"time"
+)
 
-	"github.com/contactkeval/option-replay/internal/data"
+type DateMatchType string
+
+const (
+	MatchExact   DateMatchType = "exact"   // must match exactly
+	MatchHigher  DateMatchType = "higher"  // next available date after target
+	MatchLower   DateMatchType = "lower"   // last available date before target
+	MatchNearest DateMatchType = "nearest" // closest available date (default)
 )
 
 // --------------------------------------------------------------------------------------------
@@ -75,14 +81,6 @@ func findBarDate(d time.Time, dates []time.Time, mode DateMatchType) time.Time {
 	return time.Time{} // nothing found
 }
 
-func extractCloses(bars []data.Bar) []float64 {
-	out := make([]float64, 0, len(bars))
-	for _, b := range bars {
-		out = append(out, b.Close)
-	}
-	return out
-}
-
 func intSliceContains(list []int, v int) bool {
 	for _, x := range list {
 		if x == v {
@@ -90,24 +88,4 @@ func intSliceContains(list []int, v int) bool {
 		}
 	}
 	return false
-}
-
-func fetchATMOptionPrices(spot float64, underlying string, expiry time.Time) (call float64, put float64, err error) {
-	// TODO: call your option chain API
-	return 5.20, 4.85, nil
-}
-
-func estimateIVFromATM(call, put, spot float64) float64 {
-	// TODO: real IV estimator
-	return 0.20
-}
-
-func computeStrikeFromDelta(delta, spot, iv float64, expiry time.Time) float64 {
-	// TODO: real delta → strike model
-	return spot * (1 - (delta/100.0)*0.5)
-}
-
-func roundToNearestStrike(v float64) float64 {
-	strikeInterval := 50.0 // Example for NIFTY, change as needed
-	return math.Round(v/strikeInterval) * strikeInterval
 }

@@ -1,4 +1,4 @@
-package backtest
+package strategy
 
 import (
 	"errors"
@@ -11,6 +11,27 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/data"
 )
+
+// Trade/TradeLeg/Bar types reused from original but simplified for internal use
+type TradeLeg struct {
+	Spec         LegSpec
+	Strike       float64
+	OptType      string
+	Qty          int
+	Expiration   time.Time
+	OpenPremium  float64
+	ClosePremium float64
+}
+
+// Individual leg specification
+type LegSpec struct {
+	Side       string `json:"side,omitempty"`        // "buy" or "sell", defaults to "buy"
+	OptionType string `json:"option_type,omitempty"` // "call" or "put", defaults to "call"
+	StrikeRule string `json:"strike_rule"`           // "ATM", "ABS:100", "DELTA:0.3", etc.
+	Qty        int    `json:"qty,omitempty"`         // used for ratio spreads, defaults to one
+	Expiration string `json:"expiration,omitempty"`  // used for calendar spreads, defaults DTE from config
+	LegName    string `json:"leg_name,omitempty"`    // used for dependent wings
+}
 
 // TODO: remove this old function later once new ResolveStrike is stable
 func ResolveStrikeOld(rule string, underlying float64) (float64, error) {
