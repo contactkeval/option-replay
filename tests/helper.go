@@ -74,7 +74,7 @@ func loadGolden(t *testing.T, name string) []byte {
 	return b
 }
 
-func compareWithGolden(t *testing.T, name string, v any) {
+func CompareWithGolden(t *testing.T, name string, v any) {
 	t.Helper()
 
 	actual, err := json.MarshalIndent(v, "", "  ")
