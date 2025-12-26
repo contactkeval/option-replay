@@ -5,15 +5,6 @@ import (
 	"time"
 )
 
-type DateMatchType string
-
-const (
-	MatchExact   DateMatchType = "exact"   // must match exactly
-	MatchHigher  DateMatchType = "higher"  // next available date after target
-	MatchLower   DateMatchType = "lower"   // last available date before target
-	MatchNearest DateMatchType = "nearest" // closest available date (default)
-)
-
 // --------------------------------------------------------------------------------------------
 // Helper functions
 // --------------------------------------------------------------------------------------------

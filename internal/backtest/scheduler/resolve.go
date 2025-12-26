@@ -13,6 +13,8 @@ import (
 	"github.com/contactkeval/option-replay/internal/data"
 )
 
+type DateMatchType string
+
 type EarningsResponse struct {
 	// TODO : remove commented code if not needed
 	// AnnualEarnings []struct {
@@ -36,6 +38,13 @@ type EntryRule struct {
 	Timezone          string        `json:"timezone,omitempty"`        // "EST", "PST", etc.
 	MonthlyExpiryOnly bool          `json:"monthly_only,omitempty"`    // for expiry_offset mode, default: false
 }
+
+const (
+	MatchExact   DateMatchType = "exact"   // must match exactly
+	MatchHigher  DateMatchType = "higher"  // next available date after target
+	MatchLower   DateMatchType = "lower"   // last available date before target
+	MatchNearest DateMatchType = "nearest" // closest available date (default)
+)
 
 // NewEntryRule constructs and returns a *EntryRule populated with sensible defaults
 // and normalized date ordering.

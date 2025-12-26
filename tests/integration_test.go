@@ -5,12 +5,33 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/contactkeval/option-replay/internal/backtest/engine"
 	sch "github.com/contactkeval/option-replay/internal/backtest/scheduler"
 	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
 )
+
+var (
+	locNY  *time.Location
+	start  time.Time
+	end    time.Time
+	update *bool
+
+	dataProv data.Provider
+)
+
+func init() {
+	var err error
+	locNY, err = time.LoadLocation("America/New_York")
+	if err != nil {
+		panic(err)
+	}
+
+	start = time.Date(2025, 1, 1, 0, 0, 0, 0, locNY)
+	end = time.Date(2026, 1, 1, 0, 0, 0, 0, locNY)
+}
 
 // Full integration: run engine with synthetic provider and ensure outputs written
 func TestIntegrationFullRun(t *testing.T) {
