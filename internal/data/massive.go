@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+// TODO: use official Massive SDK (massive-com/client-go) instead of raw HTTP calls.
+
 // massiveDataProvider implements Data Provider using Massive's contracts API.
 type massiveDataProvider struct {
 	APIKey    string
