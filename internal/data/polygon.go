@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -30,10 +29,10 @@ func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, stri
 	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
+func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
 	base := "https://api.polygon.io"
 	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
-		base, symbol, from.Format("2006-01-02"), to.Format("2006-01-02"), polygonDataProv.apiKey)
+		base, underlying, from.Format("2006-01-02"), to.Format("2006-01-02"), polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
 	if err != nil {
@@ -63,10 +62,10 @@ func (polygonDataProv *polygonDataProvider) GetDailyBars(symbol string, from, to
 	return out, nil
 }
 
-func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(symbol string, strike float64, expiry time.Time, optType string) (float64, error) {
+func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
-	sym := OptionSymbolFromParts(symbol, expiry, optType, strike)
-	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", sym, polygonDataProv.apiKey)
+	symbol := OptionSymbolFromParts(underlying, expiry, optType, strike)
+	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", symbol, polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
 	if err != nil {
@@ -94,7 +93,7 @@ func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(symbol string, str
 	if res.Last.Price > 0 {
 		return res.Last.Price, nil
 	}
-	return 0, fmt.Errorf("no usable option price for %s", sym)
+	return 0, fmt.Errorf("no usable option price for %s", symbol)
 }
 
 func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
@@ -111,17 +110,4 @@ func (polygonDataProv *polygonDataProvider) RoundToNearestStrike(underlying stri
 
 func (polygonDataProv *polygonDataProvider) getIntervals(underlying string) float64 {
 	return 50.0 // TODO: implement proper intervals reading
-}
-
-// OptionSymbolFromParts: improved OCC-like formatter (best-effort)
-func OptionSymbolFromParts(underlying string, expiration time.Time, optType string, strike float64) string {
-	// OCC: <root><YYYYMMDD><C|P><strike*1000 padded to 8 digits>
-	y := expiration.UTC().Format("20060102")
-	t := "C"
-	if strings.ToLower(optType) == "put" {
-		t = "P"
-	}
-	strikeInt := int(math.Round(strike * 1000))
-	strFmt := fmt.Sprintf("%08d", strikeInt)
-	return fmt.Sprintf("%s%s%s%s", strings.ToUpper(underlying), y, t, strFmt)
 }

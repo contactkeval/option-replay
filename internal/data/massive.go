@@ -145,11 +145,11 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 	return out, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
+func (massiveDataProv *massiveDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
 	url := fmt.Sprintf(
 		"%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
 		massiveDataProv.BaseURL,
-		symbol,
+		underlying,
 		from.Format("2006-01-02"),
 		to.Format("2006-01-02"),
 		massiveDataProv.APIKey,
@@ -217,7 +217,7 @@ func (massiveDataProv *massiveDataProvider) GetDailyBars(symbol string, from, to
 // all available contracts for those strikes to extract their expiration dates.
 //
 // Parameters:
-//   - ticker: The symbol identifier (e.g., "SPY")
+//   - ticker: The underlying symbol identifier (e.g., "SPY")
 //   - start: The beginning of the date range for analysis
 //   - end: The end of the date range for analysis
 //   - provider: A data provider that supplies daily bars and contract information
@@ -314,7 +314,7 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, s
 	return expiries, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(symbol string, strike float64, expiry time.Time, optType string) (float64, error) {
+func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
 	//TODO: implement option mid price fetching from Massive API
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
 }

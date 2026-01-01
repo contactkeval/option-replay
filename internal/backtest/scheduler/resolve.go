@@ -365,7 +365,7 @@ func ResolveExpiration(openDate time.Time, offset int, expiries []time.Time, dat
 }
 
 // GetEarningsDates retrieves reported quarterly earnings dates for the given
-// symbol from the Alpha Vantage "EARNINGS" API.
+// underlying symbol from the Alpha Vantage "EARNINGS" API.
 //
 // The function expects the ALPHAVANTAGE_API_KEY environment variable to be set;
 // it will return an error if the key is missing. It issues an HTTP GET to the
@@ -379,7 +379,7 @@ func ResolveExpiration(openDate time.Time, offset int, expiries []time.Time, dat
 //
 // Possible errors include missing API key, network/HTTP errors, and JSON
 // unmarshal errors from the API response.
-func GetEarningsDates(symbol string) ([]time.Time, error) {
+func GetEarningsDates(underlying string) ([]time.Time, error) {
 	apiKey := os.Getenv("ALPHAVANTAGE_API_KEY")
 	if apiKey == "" {
 		return nil, fmt.Errorf("missing ALPHAVANTAGE_API_KEY")
@@ -387,7 +387,7 @@ func GetEarningsDates(symbol string) ([]time.Time, error) {
 
 	url := fmt.Sprintf(
 		"https://www.alphavantage.co/query?function=EARNINGS&symbol=%s&apikey=%s",
-		symbol, apiKey)
+		underlying, apiKey)
 
 	resp, err := http.Get(url)
 	if err != nil {

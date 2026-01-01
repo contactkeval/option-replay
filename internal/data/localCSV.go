@@ -35,9 +35,9 @@ func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, 
 	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
+func (localFileDataProv *localFileDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetDailyBars(symbol, from, to)
+		return localFileDataProv.secondary.GetDailyBars(underlying, from, to)
 	}
 	return nil, fmt.Errorf("GetDailyBars not implemented for localFileDataProvider")
 }
@@ -74,11 +74,7 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 		return 0
 	}
 
-	// Skip header
-	for i, row := range records {
-		if i == 0 {
-			continue
-		}
+	for _, row := range records {
 		if len(row) < 2 {
 			continue
 		}
@@ -107,6 +103,7 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 // RoundToNearestStrike rounds `price` using the interval for the underlying
 func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
 	intervals := 0.0
+	strike := 0.0
 	var loadOnce sync.Once
 	loadOnce.Do(func() {
 		intervals = localFileDataProv.getIntervals(underlying)
@@ -117,5 +114,21 @@ func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying 
 		return price
 	}
 
-	return math.Round(price/intervals) * intervals
+	for {
+		strike = math.Round(price/intervals) * intervals
+
+		bars, err := localFileDataProv.GetDailyBars(underlying, openDate, openDate)
+		if err != nil {
+			return price
+		}
+
+		if len(bars) == 0 {
+			intervals += intervals // double interval and retry
+			continue
+		} else {
+			// success case
+			break
+		}
+	}
+	return strike
 }

@@ -25,7 +25,7 @@ func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike f
 	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
 }
 
-func (synthDataProv *synthDataProvider) GetDailyBars(symbol string, from, to time.Time) ([]Bar, error) {
+func (synthDataProv *synthDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
 	cur := from
 	price := 100.0 + float64(rand.Intn(200))
 	var out []Bar
