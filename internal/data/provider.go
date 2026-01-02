@@ -54,25 +54,25 @@ func OptionSymbolFromParts(underlying string, expiration time.Time, optType stri
 }
 
 // Closest finds the closest float64 in a sorted slice to the target value using binary search (sort.Search).
-func Closest(nums []float64, target float64) float64 {
-	n := len(nums)
+func Closest(numList []float64, target float64) float64 {
+	n := len(numList)
 	if n == 0 {
 		panic("empty list")
 	}
 
 	i := sort.Search(n, func(i int) bool {
-		return nums[i] >= target
+		return numList[i] >= target
 	})
 
 	if i == 0 {
-		return nums[0]
+		return numList[0]
 	}
 	if i == n {
-		return nums[n-1]
+		return numList[n-1]
 	}
 
-	before := nums[i-1]
-	after := nums[i]
+	before := numList[i-1]
+	after := numList[i]
 
 	if math.Abs(before-target) < math.Abs(after-target) {
 		return before

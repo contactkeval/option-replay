@@ -325,21 +325,25 @@ func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string,
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
 }
 
-func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64 {
+func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDt, expDt time.Time) float64 {
 	var strikeList []float64
 	// Fetch all contracts for the underlying, expiry date as of open date as trading date and collect strikes
-	OptionContracts, err := massiveDataProv.GetContracts(underlying, 0.0, openDate, openDate, expiryDate)
+	OptionContracts, err := massiveDataProv.GetContracts(underlying, 0.0, openDt, openDt, expDt)
 	if err != nil {
 		return asOfPrice
 	}
 
 	for OptionContract := range OptionContracts {
-		if OptionContracts[OptionContract].ExpirationDate.Equal(expiryDate) {
+		if OptionContracts[OptionContract].ExpirationDate.Equal(expDt) {
 			strikeList = append(strikeList, OptionContracts[OptionContract].Strike)
 		}
 	}
 
-	return Closest(strikeList, asOfPrice)
+	if len(strikeList) != 0 {
+		sort.Float64s(strikeList)
+		return Closest(strikeList, asOfPrice)
+	}
+	return massiveDataProv.RoundToNearestStrike(underlying, asOfPrice, openDt, expDt)
 }
 
 func (massiveDataProv *massiveDataProvider) getIntervals(underlying string) float64 {
