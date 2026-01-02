@@ -33,30 +33,6 @@ type LegSpec struct {
 	LegName    string `json:"leg_name,omitempty"`    // used for dependent wings
 }
 
-// TODO: remove this old function later once new ResolveStrike is stable
-func ResolveStrikeOld(rule string, underlying float64) (float64, error) {
-	r := strings.TrimSpace(strings.ToUpper(rule))
-	if r == "ATM" {
-		if underlying >= 200 {
-			return math.Round(underlying), nil
-		}
-		return math.Round(underlying*2.0) / 2.0, nil
-	}
-	if strings.HasPrefix(r, "ABS:") {
-		v := strings.TrimPrefix(r, "ABS:")
-		f, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return 0, err
-		}
-		return f, nil
-	}
-	if strings.HasPrefix(r, "DELTA:") {
-		// placeholder: return ATM
-		return 0, nil
-	}
-	return 0, fmt.Errorf("unsupported strike_rule: %s", rule)
-}
-
 // ResolveStrike resolves a strike expression like:
 // "ATM", "ATM:+10", "ATM:-10%", "DELTA:30",
 // "{LEG1.STRIKE}+{LEG1.PREMIUM}" etc.

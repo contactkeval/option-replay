@@ -64,7 +64,7 @@ func (massiveDataProv *massiveDataProvider) Secondary() Provider {
 	return massiveDataProv.secondary
 }
 
-func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, strike float64, start, end, expiryDt time.Time) ([]OptionContract, error) {
 	out := []OptionContract{}
 
 	// Build initial URL with required filters.
@@ -74,11 +74,17 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 	}
 	q := u.Query()
 	q.Set("underlying_ticker", underlying)
-	q.Set("strike_price", fmt.Sprintf("%.8g", strike))
+	if strike > 0.0 {
+		q.Set("strike_price", fmt.Sprintf("%.8g", strike))
+	}
+	if expiryDt.IsZero() {
+		// expiration date greater than or equal to start, less than or equal to end
+		q.Set("expiration_date.lte", end.Format("2006-01-02"))
+		q.Set("expiration_date.gte", start.Format("2006-01-02"))
+	} else {
+		q.Set("expiration_date", expiryDt.Format("2006-01-02"))
+	}
 	q.Set("expired", "true")
-	// expiration date greater than or equal to start, less than or equal to end
-	q.Set("expiration_date.lte", end.Format("2006-01-02"))
-	q.Set("expiration_date.gte", start.Format("2006-01-02"))
 	q.Set("limit", "1000")
 	q.Set("apiKey", massiveDataProv.APIKey)
 
@@ -120,26 +126,26 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 			return nil, fmt.Errorf("massive returned status %d: %s", resp.StatusCode, dbg.Message)
 		}
 
-		var mr massiveContractsResp
-		if err := json.Unmarshal(body, &mr); err != nil {
+		var massiveResp massiveContractsResp
+		if err := json.Unmarshal(body, &massiveResp); err != nil {
 			return nil, fmt.Errorf("decode: %w", err)
 		}
 
-		for _, c := range mr.Results {
+		for _, result := range massiveResp.Results {
 			// parse expiration
-			t, err := time.Parse("2006-01-02", c.ExpirationDate)
+			t, err := time.Parse("2006-01-02", result.ExpirationDate)
 			if err != nil {
 				// skip malformed
 				continue
 			}
 			out = append(out, OptionContract{
 				ExpirationDate: t,
-				Strike:         c.StrikePrice,
-				Type:           c.ContractType,
+				Strike:         result.StrikePrice,
+				Type:           result.ContractType,
 			})
 		}
 
-		reqURL = mr.NextURL
+		reqURL = massiveResp.NextURL
 	}
 
 	return out, nil
@@ -290,7 +296,7 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, s
 	expiryMap := map[string]time.Time{}
 
 	for _, strike := range roundedStrikes {
-		contracts, err := massiveDataProv.GetContracts(ticker, strike, start, end)
+		contracts, err := massiveDataProv.GetContracts(ticker, strike, start, time.Time{}, end)
 		if err != nil {
 			return nil, fmt.Errorf("fetch contracts strike %.2f: %w", strike, err)
 		}
@@ -319,11 +325,23 @@ func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string,
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
 }
 
-func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
-	intervals := massiveDataProv.getIntervals(underlying)
-	return math.Round(price/intervals) * intervals
+func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64 {
+	var strikeList []float64
+	// Fetch all contracts for the underlying, expiry date as of open date as trading date and collect strikes
+	OptionContracts, err := massiveDataProv.GetContracts(underlying, 0.0, openDate, openDate, expiryDate)
+	if err != nil {
+		return asOfPrice
+	}
+
+	for OptionContract := range OptionContracts {
+		if OptionContracts[OptionContract].ExpirationDate.Equal(expiryDate) {
+			strikeList = append(strikeList, OptionContracts[OptionContract].Strike)
+		}
+	}
+
+	return Closest(strikeList, asOfPrice)
 }
 
 func (massiveDataProv *massiveDataProvider) getIntervals(underlying string) float64 {
-	return 50.0 // TODO: implement proper intervals reading
+	return 0.0 // TODO: implement proper intervals reading
 }

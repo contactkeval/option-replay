@@ -46,3 +46,105 @@ func TestDataProviderContract_GetDailyBars(t *testing.T) {
 		})
 	}
 }
+
+// --------------------------------------------------------------------------------------------
+// Helper function tests
+// --------------------------------------------------------------------------------------------
+
+func TestOptionSymbolFromParts(t *testing.T) {
+	expDt := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
+	symbol := OptionSymbolFromParts("SPY", expDt, "put", 500.0)
+	expected := "SPY250113P00500000"
+	if symbol != expected {
+		t.Fatalf("expected %s, got %s", expected, symbol)
+	}
+
+	symbol = OptionSymbolFromParts("SPXW", expDt, "c", 5000.0)
+	expected = "SPXW250113C05000000"
+	if symbol != expected {
+		t.Fatalf("expected %s, got %s", expected, symbol)
+	}
+}
+
+func TestClosest(t *testing.T) {
+	numList := []float64{100, 110, 120, 130, 140}
+
+	// test below the lowest
+	target := 75.0
+	closest := Closest(numList, target)
+	expected := 100.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test just below lowest
+	target = 99.0
+	closest = Closest(numList, target)
+	expected = 100.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test lowest
+	target = 100.0
+	closest = Closest(numList, target)
+	expected = 100.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test just above lowest
+	target = 101.0
+	closest = Closest(numList, target)
+	expected = 100.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test middle value
+	target = 115.0
+	closest = Closest(numList, target)
+	expected = 120.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test middle value
+	target = 123.0
+	closest = Closest(numList, target)
+	expected = 120.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test just below highest value
+	target = 139.0
+	closest = Closest(numList, target)
+	expected = 140.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test at highest value
+	target = 140.0
+	closest = Closest(numList, target)
+	expected = 140.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	// test above highest value
+	target = 141.0
+	closest = Closest(numList, target)
+	expected = 140.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+
+	target = 155.0 // test above highest
+	closest = Closest(numList, target)
+	expected = 140.0
+	if closest != expected {
+		t.Fatalf("expected %f, got %f", expected, closest)
+	}
+}

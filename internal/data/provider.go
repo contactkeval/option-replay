@@ -11,11 +11,11 @@ import (
 // Provider supplies market data
 type Provider interface {
 	Secondary() Provider
-	GetContracts(ticker string, strike float64, start, end time.Time) ([]OptionContract, error)
+	GetContracts(ticker string, strike float64, start, end, expiryDt time.Time) ([]OptionContract, error)
 	GetDailyBars(underlying string, from, to time.Time) ([]Bar, error)
 	GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error)
 	GetRelevantExpiries(underlying string, from, to time.Time) ([]time.Time, error)
-	RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64
+	RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64
 	getIntervals(underlying string) float64
 }
 
@@ -42,8 +42,8 @@ type OptionContract struct {
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
 func OptionSymbolFromParts(underlying string, expiration time.Time, optType string, strike float64) string {
-	// OCC: <root><YYYYMMDD><C|P><strike*1000 padded to 8 digits>
-	expDt := expiration.UTC().Format("20060102")
+	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
+	expDt := expiration.UTC().Format("060102")
 	t := "C"
 	if strings.ToLower(optType) == "put" || strings.ToLower(optType) == "p" {
 		t = "P"
@@ -74,7 +74,7 @@ func Closest(nums []float64, target float64) float64 {
 	before := nums[i-1]
 	after := nums[i]
 
-	if math.Abs(before-target) <= math.Abs(after-target) {
+	if math.Abs(before-target) < math.Abs(after-target) {
 		return before
 	}
 	return after

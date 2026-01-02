@@ -3,6 +3,7 @@ package data
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -71,5 +72,14 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 
 	if len(bars) != 2 {
 		t.Fatalf("expected 2 bars, got %d", len(bars))
+	}
+}
+
+func TestMassiveRoundToNearestStrike(t *testing.T) {
+	prov := NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
+	actual := prov.RoundToNearestStrike("SPY", 581.39, time.Date(2025, 1, 14, 0, 0, 0, 0, time.UTC), time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC))
+	expected := 581.0
+	if actual != expected {
+		t.Fatalf("expected %f, got %f", expected, actual)
 	}
 }
