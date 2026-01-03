@@ -25,7 +25,7 @@ type massiveContract struct {
 	CFI               string  `json:"cfi"`
 	ContractType      string  `json:"contract_type"`
 	ExerciseStyle     string  `json:"exercise_style"`
-	ExpirationDate    string  `json:"expiration_date"`
+	ExpiryDate        string  `json:"expiry_date"`
 	PrimaryExchange   string  `json:"primary_exchange"`
 	SharesPerContract int     `json:"shares_per_contract"`
 	StrikePrice       float64 `json:"strike_price"`
@@ -64,32 +64,32 @@ func (massiveDataProv *massiveDataProvider) Secondary() Provider {
 	return massiveDataProv.secondary
 }
 
-func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, strike float64, start, end, expiryDt time.Time) ([]OptionContract, error) {
+func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error) {
 	out := []OptionContract{}
 
 	// Build initial URL with required filters.
-	u, err := url.Parse(massiveDataProv.BaseURL + "/v3/reference/options/contracts")
+	url, err := url.Parse(massiveDataProv.BaseURL + "/v3/reference/options/contracts")
 	if err != nil {
 		return nil, err
 	}
-	q := u.Query()
-	q.Set("underlying_ticker", underlying)
+	query := url.Query()
+	query.Set("underlying_ticker", underlying)
 	if strike > 0.0 {
-		q.Set("strike_price", fmt.Sprintf("%.8g", strike))
+		query.Set("strike_price", fmt.Sprintf("%.8g", strike))
 	}
-	if expiryDt.IsZero() {
+	if expiryDate.IsZero() {
 		// expiration date greater than or equal to start, less than or equal to end
-		q.Set("expiration_date.lte", end.Format("2006-01-02"))
-		q.Set("expiration_date.gte", start.Format("2006-01-02"))
+		query.Set("expiration_date.lte", toDate.Format("2006-01-02"))
+		query.Set("expiration_date.gte", fromDate.Format("2006-01-02"))
 	} else {
-		q.Set("expiration_date", expiryDt.Format("2006-01-02"))
+		query.Set("expiration_date", expiryDate.Format("2006-01-02"))
 	}
-	q.Set("expired", "true")
-	q.Set("limit", "1000")
-	q.Set("apiKey", massiveDataProv.APIKey)
+	query.Set("expired", "true")
+	query.Set("limit", "1000")
+	query.Set("apiKey", massiveDataProv.APIKey)
 
-	u.RawQuery = q.Encode()
-	reqURL := u.String()
+	url.RawQuery = query.Encode()
+	reqURL := url.String()
 
 	// Paginate through results
 	for reqURL != "" {
@@ -133,15 +133,15 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 
 		for _, result := range massiveResp.Results {
 			// parse expiration
-			t, err := time.Parse("2006-01-02", result.ExpirationDate)
+			t, err := time.Parse("2006-01-02", result.ExpiryDate)
 			if err != nil {
 				// skip malformed
 				continue
 			}
 			out = append(out, OptionContract{
-				ExpirationDate: t,
-				Strike:         result.StrikePrice,
-				Type:           result.ContractType,
+				ExpiryDate: t,
+				Strike:     result.StrikePrice,
+				Type:       result.ContractType,
 			})
 		}
 
@@ -151,13 +151,13 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 	return out, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
+func (massiveDataProv *massiveDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
 	url := fmt.Sprintf(
 		"%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
 		massiveDataProv.BaseURL,
 		underlying,
-		from.Format("2006-01-02"),
-		to.Format("2006-01-02"),
+		fromDate.Format("2006-01-02"),
+		toDate.Format("2006-01-02"),
 		massiveDataProv.APIKey,
 	)
 
@@ -242,10 +242,10 @@ func (massiveDataProv *massiveDataProvider) GetDailyBars(underlying string, from
 //  6. Retrieves all available contracts for the rounded strike prices
 //  7. Extracts and deduplicates expiration dates
 //  8. Returns the sorted, unique expiration dates
-func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
 
 	// Step 1: Load spot bars
-	bars, err := massiveDataProv.GetDailyBars(ticker, start, end)
+	bars, err := massiveDataProv.GetDailyBars(ticker, fromDate, toDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
 	}
@@ -296,14 +296,14 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, s
 	expiryMap := map[string]time.Time{}
 
 	for _, strike := range roundedStrikes {
-		contracts, err := massiveDataProv.GetContracts(ticker, strike, start, time.Time{}, end)
+		contracts, err := massiveDataProv.GetContracts(ticker, strike, fromDate, time.Time{}, toDate)
 		if err != nil {
 			return nil, fmt.Errorf("fetch contracts strike %.2f: %w", strike, err)
 		}
 
 		for _, c := range contracts {
-			key := c.ExpirationDate.Format("2006-01-02")
-			expiryMap[key] = c.ExpirationDate
+			key := c.ExpiryDate.Format("2006-01-02")
+			expiryMap[key] = c.ExpiryDate
 		}
 	}
 
@@ -320,21 +320,21 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, s
 	return expiries, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
+func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error) {
 	//TODO: implement option mid price fetching from Massive API
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
 }
 
-func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDt, expDt time.Time) float64 {
+func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64 {
 	var strikeList []float64
 	// Fetch all contracts for the underlying, expiry date as of open date as trading date and collect strikes
-	OptionContracts, err := massiveDataProv.GetContracts(underlying, 0.0, openDt, openDt, expDt)
+	OptionContracts, err := massiveDataProv.GetContracts(underlying, 0.0, openDate, openDate, expiryDate)
 	if err != nil {
 		return asOfPrice
 	}
 
 	for OptionContract := range OptionContracts {
-		if OptionContracts[OptionContract].ExpirationDate.Equal(expDt) {
+		if OptionContracts[OptionContract].ExpiryDate.Equal(expiryDate) {
 			strikeList = append(strikeList, OptionContracts[OptionContract].Strike)
 		}
 	}
@@ -343,7 +343,7 @@ func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying stri
 		sort.Float64s(strikeList)
 		return Closest(strikeList, asOfPrice)
 	}
-	return massiveDataProv.RoundToNearestStrike(underlying, asOfPrice, openDt, expDt)
+	return massiveDataProv.RoundToNearestStrike(underlying, asOfPrice, openDate, expiryDate)
 }
 
 func (massiveDataProv *massiveDataProvider) getIntervals(underlying string) float64 {

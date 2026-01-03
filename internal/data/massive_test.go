@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+var (
+	underlying = "SPY"
+	asOfPrice  = 581.39
+	openDate   = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	expiryDate = time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC)
+	prov       = NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
+)
+
 func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 	// fake server returning 500
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -22,10 +30,11 @@ func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 		BaseURL: srv.URL, // IMPORTANT
 	}
 
-	start := time.Now().AddDate(0, 0, -5)
-	end := time.Now()
+	underlying := "AAPL"
+	fromDate := time.Now().AddDate(0, 0, -5)
+	toDate := time.Now()
 
-	_, err := p.GetDailyBars("AAPL", start, end)
+	_, err := p.GetDailyBars(underlying, fromDate, toDate)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -56,16 +65,17 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &massiveDataProvider{
+	prov := &massiveDataProvider{
 		APIKey:  "test",
 		Client:  srv.Client(),
 		BaseURL: srv.URL,
 	}
 
-	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
+	underlying := "AAPL"
+	fromDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	toDate := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
 
-	bars, err := p.GetDailyBars("AAPL", start, end)
+	bars, err := prov.GetDailyBars(underlying, fromDate, toDate)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,8 +86,7 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 }
 
 func TestMassiveRoundToNearestStrike(t *testing.T) {
-	prov := NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
-	actual := prov.RoundToNearestStrike("SPY", 581.39, time.Date(2025, 1, 14, 0, 0, 0, 0, time.UTC), time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC))
+	actual := prov.RoundToNearestStrike(underlying, asOfPrice, openDate, expiryDate)
 	expected := 581.0
 	if actual != expected {
 		t.Fatalf("expected %f, got %f", expected, actual)

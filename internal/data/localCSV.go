@@ -28,30 +28,30 @@ func (localFileDataProv *localFileDataProvider) Secondary() Provider {
 	return localFileDataProv.secondary
 }
 
-func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, start, end time.Time) ([]OptionContract, error) {
+func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetContracts(underlying, strike, start, time.Time{}, end)
+		return localFileDataProv.secondary.GetContracts(underlying, strike, fromDate, time.Time{}, toDate)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
+func (localFileDataProv *localFileDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetDailyBars(underlying, from, to)
+		return localFileDataProv.secondary.GetDailyBars(underlying, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetDailyBars not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
+func (localFileDataProv *localFileDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetOptionMidPrice(underlying, strike, expiry, optType)
+		return localFileDataProv.secondary.GetOptionMidPrice(underlying, strike, expiryDate, optType)
 	}
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+		return localFileDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for localFileDataProvider")
 }

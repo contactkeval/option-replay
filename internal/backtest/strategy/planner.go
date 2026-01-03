@@ -3,7 +3,6 @@ package strategy
 import (
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -92,7 +91,7 @@ func ResolveStrike(
 }
 
 // offset = "+10", "-20", "+10%", "-5%" etc.
-func resolveATMOffset(offset string, spot float64) (float64, error) {
+func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
 
 	// Percentage offset?
 	if strings.HasSuffix(offset, "%") {
@@ -101,7 +100,7 @@ func resolveATMOffset(offset string, spot float64) (float64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("invalid percent offset: %w", err)
 		}
-		target := spot + (spot * pct / 100.0)
+		target := asOfPrice + (asOfPrice * pct / 100.0)
 		return roundToNearestStrike(target), nil
 	}
 
@@ -110,7 +109,7 @@ func resolveATMOffset(offset string, spot float64) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid absolute offset: %w", err)
 	}
-	return roundToNearestStrike(spot + absVal), nil
+	return roundToNearestStrike(asOfPrice + absVal), nil
 }
 
 func resolveDeltaStrike(

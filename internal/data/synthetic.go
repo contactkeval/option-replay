@@ -18,18 +18,18 @@ func (synthDataProv *synthDataProvider) Secondary() Provider {
 	return synthDataProv.secondary
 }
 
-func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, start, end, expiryDt time.Time) ([]OptionContract, error) {
+func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetContracts(underlying, strike, start, expiryDt, end)
+		return synthDataProv.secondary.GetContracts(underlying, strike, fromDate, expiryDate, toDate)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
 }
 
-func (synthDataProv *synthDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
-	cur := from
+func (synthDataProv *synthDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+	cur := fromDate
 	price := 100.0 + float64(rand.Intn(200))
 	var out []Bar
-	for !cur.After(to) {
+	for !cur.After(toDate) {
 		if cur.Weekday() != time.Saturday && cur.Weekday() != time.Sunday {
 			delta := rand.NormFloat64() * 0.01 * price
 			open := price
@@ -44,16 +44,16 @@ func (synthDataProv *synthDataProvider) GetDailyBars(underlying string, from, to
 	return out, nil
 }
 
-func (synthDataProv *synthDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
+func (synthDataProv *synthDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optionType string) (float64, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetOptionMidPrice(underlying, strike, expiry, optType)
+		return synthDataProv.secondary.GetOptionMidPrice(underlying, strike, expiryDate, optionType)
 	}
 	return 0, fmt.Errorf("no option market data in synthetic provider")
 }
 
-func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+		return synthDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
 }

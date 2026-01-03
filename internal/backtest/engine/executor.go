@@ -80,7 +80,7 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// fetch bars
-	bars, err := e.prov.GetDailyBars(cfg.Underlying, cfg.Entry.Start, cfg.Entry.End)
+	bars, err := e.prov.GetDailyBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
 	if err != nil || len(bars) == 0 {
 		// fallback synthetic
 		log.Printf("[warn] provider bars error or empty: %v - generating synthetic", err)
@@ -102,7 +102,7 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// get list of expiries for the underlying during backtest period
-	expiries, err := e.prov.GetRelevantExpiries(cfg.Underlying, cfg.Entry.Start, cfg.Entry.End)
+	expiries, err := e.prov.GetRelevantExpiries(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("backtest scheduler error: get relevant expiries error, %w", err)
 	}

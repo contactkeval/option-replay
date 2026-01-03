@@ -28,8 +28,8 @@ type EarningsResponse struct {
 }
 
 type EntryRule struct {
-	Start             time.Time     `json:"start,omitempty"`           // inclusive, default: one year before now
-	End               time.Time     `json:"end,omitempty"`             // inclusive, default: now
+	StartDate         time.Time     `json:"start,omitempty"`           // inclusive, default: one year before now
+	EndDate           time.Time     `json:"end,omitempty"`             // inclusive, default: now
 	Underlying        string        `json:"underlying,omitempty"`      // e.g., "AAPL", "SPY", etc.
 	Mode              string        `json:"mode"`                      // "earnings_offset", "expiry_offset", "nth_weekday", "nth_month_day", "daily_time"
 	NthList           []int         `json:"nth_list,omitempty"`        // e.g., [-5] or [5] for 5 days prior or after respectively (for earnings_offset, expiry_offset), [1,3], etc. for nth_weekday or nth_month_day
@@ -67,16 +67,16 @@ func NewEntryRule(w EntryRule) *EntryRule {
 	now := time.Now().UTC()
 
 	// Apply defaults if zero dates provided
-	if w.Start.IsZero() {
-		w.Start = now.AddDate(-1, 0, 0)
+	if w.StartDate.IsZero() {
+		w.StartDate = now.AddDate(-1, 0, 0)
 	}
-	if w.End.IsZero() {
-		w.End = now
+	if w.EndDate.IsZero() {
+		w.EndDate = now
 	}
 
 	// If start > end, swap
-	if w.Start.After(w.End) {
-		w.Start, w.End = w.End, w.Start
+	if w.StartDate.After(w.EndDate) {
+		w.StartDate, w.EndDate = w.EndDate, w.StartDate
 	}
 
 	// Set default timezone if missing
@@ -191,21 +191,21 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	}
 
 	// Default start = today - 1 year
-	if entry.Start.IsZero() {
-		entry.Start = now.AddDate(-1, 0, 0)
+	if entry.StartDate.IsZero() {
+		entry.StartDate = now.AddDate(-1, 0, 0)
 	}
 
 	// Default end = today
-	if entry.End.IsZero() {
-		entry.End = now
+	if entry.EndDate.IsZero() {
+		entry.EndDate = now
 	}
 
 	out := []time.Time{}
 	mode := strings.ToLower(strings.TrimSpace(entry.Mode))
 
 	// invalid range, swap if needed
-	if entry.Start.After(entry.End) {
-		entry.Start, entry.End = entry.End, entry.Start
+	if entry.StartDate.After(entry.EndDate) {
+		entry.StartDate, entry.EndDate = entry.EndDate, entry.StartDate
 	}
 
 	// NthList is required for several modes
@@ -234,7 +234,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 			candidate := e.AddDate(0, 0, offset)
 
 			// candidate must be within range
-			if candidate.Before(entry.Start) || candidate.After(entry.End) {
+			if candidate.Before(entry.StartDate) || candidate.After(entry.EndDate) {
 				continue
 			}
 
@@ -250,11 +250,11 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	case ModeExpiryOffset:
 		// use first NthList element as offset, TODO: remove hardcoding
 		offset := entry.NthList[0]
-		for _, e := range expiries {
-			candidate := e.AddDate(0, 0, offset)
+		for _, expiry := range expiries {
+			candidate := expiry.AddDate(0, 0, offset)
 
 			// candidate must be within range
-			if candidate.Before(entry.Start) || candidate.After(entry.End) {
+			if candidate.Before(entry.StartDate) || candidate.After(entry.EndDate) {
 				continue
 			}
 
@@ -268,12 +268,12 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// nth_month_day — e.g., 10th of month, or [5, 15] of every month
 	// ----------------------------------------------------------------------------------------
 	case ModeNthMonthDay:
-		for y := entry.Start.Year(); y <= entry.End.Year(); y++ {
-			for m := time.January; m <= time.December; m++ {
-				monthStart := time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+		for year := entry.StartDate.Year(); year <= entry.EndDate.Year(); year++ {
+			for month := time.January; month <= time.December; month++ {
+				monthStart := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
 				monthEnd := monthStart.AddDate(0, 1, -1)
 
-				if monthEnd.Before(entry.Start) || monthStart.After(entry.End) {
+				if monthEnd.Before(entry.StartDate) || monthStart.After(entry.EndDate) {
 					continue
 				}
 
@@ -282,11 +282,11 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 						continue
 					}
 
-					d := time.Date(y, m, dayNum, 0, 0, 0, 0, time.UTC)
-					if d.Month() != m {
+					d := time.Date(year, month, dayNum, 0, 0, 0, 0, time.UTC)
+					if d.Month() != month {
 						continue // invalid day (e.g., Feb 30)
 					}
-					if d.Before(entry.Start) || d.After(entry.End) {
+					if d.Before(entry.StartDate) || d.After(entry.EndDate) {
 						continue
 					}
 
@@ -303,8 +303,8 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// ----------------------------------------------------------------------------------------
 	case ModeNthWeekday:
 		// Iterate through full date range
-		cur := entry.Start
-		for !cur.After(entry.End) {
+		cur := entry.StartDate
+		for !cur.After(entry.EndDate) {
 
 			// Accept if day-of-week position matches NthList
 			if intSliceContains(entry.NthList, int(cur.Weekday())) {
@@ -322,7 +322,7 @@ func ResolveScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Ti
 	// default → daily schedule
 	// ----------------------------------------------------------------------------------------
 	default:
-		for d := entry.Start; !d.After(entry.End); d = d.AddDate(0, 0, 1) {
+		for d := entry.StartDate; !d.After(entry.EndDate); d = d.AddDate(0, 0, 1) {
 			day := findBarDate(d, barDates, entry.DateMatchType)
 			if !day.IsZero() {
 				out = append(out, day)

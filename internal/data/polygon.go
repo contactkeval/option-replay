@@ -23,16 +23,16 @@ func (polygonDataProv *polygonDataProvider) Secondary() Provider {
 	return polygonDataProv.secondary
 }
 
-func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, start, end, expiryDt time.Time) ([]OptionContract, error) {
+func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDt time.Time) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
 	// This method is not implemented.
 	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, from, to time.Time) ([]Bar, error) {
+func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
 	base := "https://api.polygon.io"
 	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
-		base, underlying, from.Format("2006-01-02"), to.Format("2006-01-02"), polygonDataProv.apiKey)
+		base, underlying, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
 	if err != nil {
@@ -44,12 +44,12 @@ func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, from
 	}
 	var body struct {
 		Results []struct {
-			T int64   `json:"t"`
-			O float64 `json:"o"`
-			H float64 `json:"h"`
-			L float64 `json:"l"`
-			C float64 `json:"c"`
-			V float64 `json:"v"`
+			Time  int64   `json:"t"`
+			Open  float64 `json:"o"`
+			High  float64 `json:"h"`
+			Low   float64 `json:"l"`
+			Close float64 `json:"c"`
+			Vol   float64 `json:"v"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -57,14 +57,14 @@ func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, from
 	}
 	out := make([]Bar, 0, len(body.Results))
 	for _, r := range body.Results {
-		out = append(out, Bar{Date: time.UnixMilli(r.T).UTC(), Open: r.O, High: r.H, Low: r.L, Close: r.C, Vol: r.V})
+		out = append(out, Bar{Date: time.UnixMilli(r.Time).UTC(), Open: r.Open, High: r.High, Low: r.Low, Close: r.Close, Vol: r.Vol})
 	}
 	return out, nil
 }
 
-func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(underlying string, strike float64, expiry time.Time, optType string) (float64, error) {
+func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
-	symbol := OptionSymbolFromParts(underlying, expiry, optType, strike)
+	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", symbol, polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
@@ -96,9 +96,9 @@ func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(underlying string,
 	return 0, fmt.Errorf("no usable option price for %s", symbol)
 }
 
-func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, start, end time.Time) ([]time.Time, error) {
+func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
 	if polygonDataProv.secondary != nil {
-		return polygonDataProv.secondary.GetRelevantExpiries(ticker, start, end)
+		return polygonDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
 }

@@ -9,20 +9,20 @@ import (
 )
 
 func TestResolveScheduleDates_PublicAPI(t *testing.T) {
-	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
+	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
 
 	// minimal bar map like a real caller would provide
 	bars := []data.Bar{
-		{Date: start},
-		{Date: start.AddDate(0, 0, 1)},
-		{Date: start.AddDate(0, 0, 2)},
+		{Date: startDate},
+		{Date: startDate.AddDate(0, 0, 1)},
+		{Date: startDate.AddDate(0, 0, 2)},
 	}
 
 	entry := scheduler.EntryRule{
-		Mode:  "daily_time",
-		Start: start,
-		End:   end,
+		Mode:      "daily_time",
+		StartDate: startDate,
+		EndDate:   endDate,
 	}
 
 	dates, err := scheduler.ResolveScheduleDates(entry, bars, nil)
@@ -35,7 +35,7 @@ func TestResolveScheduleDates_PublicAPI(t *testing.T) {
 	}
 
 	for _, d := range dates {
-		if d.Before(start) || d.After(end) {
+		if d.Before(startDate) || d.After(endDate) {
 			t.Fatalf("date out of range: %v", d)
 		}
 	}
