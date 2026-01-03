@@ -25,7 +25,7 @@ type massiveContract struct {
 	CFI               string  `json:"cfi"`
 	ContractType      string  `json:"contract_type"`
 	ExerciseStyle     string  `json:"exercise_style"`
-	ExpiryDate        string  `json:"expiry_date"`
+	ExpiryDate        string  `json:"expiration_date"`
 	PrimaryExchange   string  `json:"primary_exchange"`
 	SharesPerContract int     `json:"shares_per_contract"`
 	StrikePrice       float64 `json:"strike_price"`
