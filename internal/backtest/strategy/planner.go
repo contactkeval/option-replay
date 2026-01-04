@@ -3,6 +3,7 @@ package strategy
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -38,7 +39,7 @@ type LegSpec struct {
 func ResolveStrike(
 	strikeExpr string, // strike expression e.g. "ATM", "ATM:+10", "DELTA:30", "{LEG1.STRIKE}+{LEG1.PREMIUM}"
 	underlying string,
-	spotPrice float64,
+	asOfPrice float64,
 	openDate time.Time,
 	expiryDate time.Time,
 	legs []TradeLeg,
@@ -52,7 +53,7 @@ func ResolveStrike(
 	// 1. Simple ATM case
 	// ---------------------------------------------------------
 	if strikeExpr == "ATM" {
-		return prov.RoundToNearestStrike(underlying, spotPrice, openDate, expiryDate), nil
+		return prov.RoundToNearestStrike(underlying, asOfPrice, openDate, expiryDate), nil
 	}
 
 	// ---------------------------------------------------------
@@ -60,7 +61,11 @@ func ResolveStrike(
 	// ---------------------------------------------------------
 	if strings.HasPrefix(strikeExpr, "ATM:") {
 		offset := strikeExpr[len("ATM:"):] // "+10", "-10%", etc.
-		return resolveATMOffset(offset, spotPrice)
+		target, err := resolveATMOffset(offset, asOfPrice)
+		if err != nil {
+			return 0, err
+		}
+		return prov.RoundToNearestStrike(underlying, target, openDate, expiryDate), nil
 	}
 
 	// ---------------------------------------------------------
@@ -72,7 +77,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, fmt.Errorf("invalid DELTA value: %w", err)
 		}
-		return resolveDeltaStrike(targetDelta, spotPrice, underlying, expiryDate)
+		return resolveDeltaStrike(targetDelta, asOfPrice, underlying, expiryDate)
 	}
 
 	// ---------------------------------------------------------
@@ -101,7 +106,8 @@ func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
 			return 0, fmt.Errorf("invalid percent offset: %w", err)
 		}
 		target := asOfPrice + (asOfPrice * pct / 100.0)
-		return roundToNearestStrike(target), nil
+		target = math.Round(target*100) / 100 // round to 2 decimals
+		return target, nil
 	}
 
 	// Absolute offset
@@ -109,7 +115,7 @@ func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid absolute offset: %w", err)
 	}
-	return roundToNearestStrike(asOfPrice + absVal), nil
+	return math.Round((asOfPrice+absVal)*100) / 100, nil
 }
 
 func resolveDeltaStrike(
