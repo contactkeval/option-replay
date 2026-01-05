@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knetic/govaluate"
+
 	"github.com/contactkeval/option-replay/internal/data"
 )
 
@@ -85,11 +87,11 @@ func ResolveStrike(
 	//    "{LEG1.STRIKE}+{LEG1.PREMIUM}"
 	// ---------------------------------------------------------
 	if strings.Contains(strikeExpr, "{LEG") {
-		val, err := evaluateLegExpression(strikeExpr, legs)
+		target, err := evaluateLegExpression(strikeExpr, legs)
 		if err != nil {
 			return 0, err
 		}
-		return roundToNearestStrike(val), nil
+		return prov.RoundToNearestStrike(underlying, target, openDate, expiryDate), nil
 	}
 
 	return 0, fmt.Errorf("unrecognized strike expression: %s", strikeExpr)
@@ -143,7 +145,7 @@ func resolveDeltaStrike(
 func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 
 	// Regex to find patterns like {LEG1.STRIKE}
-	re := regexp.MustCompile(`\{LEG(\d+)\.(STRIKE|PREMIUM)\}`)
+	re := regexp.MustCompile(`\{LEG(\d)\.(STRIKE|PREMIUM)\}`)
 
 	m := re.FindAllStringSubmatch(expr, -1)
 	if m == nil {
@@ -175,44 +177,19 @@ func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 		evalStr = strings.Replace(evalStr, match[0], fmt.Sprintf("%f", value), 1)
 	}
 
-	// Evaluate the final numeric expression
-	return evalSimpleMath(evalStr)
-}
-
-func evalSimpleMath(s string) (float64, error) {
-	// VERY simple expression evaluator — replace with govaluate if you want power
-	s = strings.ReplaceAll(s, " ", "")
-
-	// For now just handle + and -
-	tokens := regexp.MustCompile(`([+\-])`).Split(s, -1)
-	// ops := regexp.MustCompile(`[0-9.]+`).FindAllString(s, -1)
-
-	if len(tokens) == 1 {
-		return strconv.ParseFloat(tokens[0], 64)
+	evalExpr, err := govaluate.NewEvaluableExpression(evalStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse leg expression: %w", err)
 	}
 
-	// Full evaluator recommended for future, but this works for simple cases
-	result, _ := strconv.ParseFloat(tokens[0], 64)
-	pos := len(tokens[0])
-
-	for pos < len(s) {
-		op := string(s[pos])
-		pos++
-
-		// next number
-		nextNumStr := ""
-		for pos < len(s) && (s[pos] == '.' || (s[pos] >= '0' && s[pos] <= '9')) {
-			nextNumStr += string(s[pos])
-			pos++
-		}
-		nextNum, _ := strconv.ParseFloat(nextNumStr, 64)
-
-		if op == "+" {
-			result += nextNum
-		} else {
-			result -= nextNum
-		}
+	calcVal, err := evalExpr.Evaluate(nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to evaluate leg expression: %w", err)
 	}
 
-	return result, nil
+	if calcValResult, ok := calcVal.(float64); ok {
+		return calcValResult, nil
+	} else {
+		return 0, fmt.Errorf("leg expression {%s} could not be evaluated to a number: %v", expr, calcValResult)
+	}
 }

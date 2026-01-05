@@ -7,6 +7,7 @@ toolchain go1.24.5
 require github.com/massive-com/client-go/v2 v2.0.0
 
 require (
+	github.com/Knetic/govaluate v3.0.0+incompatible // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-playground/form/v4 v4.2.1 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
