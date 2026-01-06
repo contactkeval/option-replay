@@ -28,9 +28,9 @@ func (localFileDataProv *localFileDataProvider) Secondary() Provider {
 	return localFileDataProv.secondary
 }
 
-func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error) {
+func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetContracts(underlying, strike, fromDate, time.Time{}, toDate)
+		return localFileDataProv.secondary.GetContracts(underlying, strike, expiryDate, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
@@ -101,7 +101,7 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 }
 
 // RoundToNearestStrike rounds `price` using the interval for the underlying
-func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64 {
+func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
 	intervals := 0.0
 	strike := 0.0
 	var loadOnce sync.Once

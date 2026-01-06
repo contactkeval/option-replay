@@ -11,11 +11,11 @@ import (
 // Provider supplies market data
 type Provider interface {
 	Secondary() Provider
-	GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error)
+	GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error)
 	GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error)
 	GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error)
 	GetRelevantExpiries(underlying string, fromDate, toDate time.Time) ([]time.Time, error)
-	RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64
+	RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64
 	getIntervals(underlying string) float64
 }
 

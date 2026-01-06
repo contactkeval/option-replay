@@ -86,7 +86,7 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 }
 
 func TestMassiveRoundToNearestStrike(t *testing.T) {
-	actual := prov.RoundToNearestStrike(underlying, asOfPrice, openDate, expiryDate)
+	actual := prov.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice)
 	expected := 581.0
 	if actual != expected {
 		t.Fatalf("expected %f, got %f", expected, actual)

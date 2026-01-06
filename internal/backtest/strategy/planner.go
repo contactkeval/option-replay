@@ -55,7 +55,7 @@ func ResolveStrike(
 	// 1. Simple ATM case
 	// ---------------------------------------------------------
 	if strikeExpr == "ATM" {
-		return prov.RoundToNearestStrike(underlying, asOfPrice, openDate, expiryDate), nil
+		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice), nil
 	}
 
 	// ---------------------------------------------------------
@@ -67,7 +67,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, err
 		}
-		return prov.RoundToNearestStrike(underlying, target, openDate, expiryDate), nil
+		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
 	// ---------------------------------------------------------
@@ -79,7 +79,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, fmt.Errorf("invalid DELTA value: %w", err)
 		}
-		return resolveDeltaStrike(targetDelta, asOfPrice, underlying, expiryDate)
+		return resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, prov)
 	}
 
 	// ---------------------------------------------------------
@@ -91,7 +91,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, err
 		}
-		return prov.RoundToNearestStrike(underlying, target, openDate, expiryDate), nil
+		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
 	return 0, fmt.Errorf("unrecognized strike expression: %s", strikeExpr)
@@ -121,25 +121,27 @@ func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
 }
 
 func resolveDeltaStrike(
-	targetDelta float64,
-	spot float64,
 	underlying string,
-	expiry time.Time,
+	expiryDate time.Time,
+	openDate time.Time,
+	asOfPrice float64,
+	targetDelta float64,
+	prov data.Provider,
 ) (float64, error) {
 
 	// 1. Fetch ATM option chain
-	callPrice, putPrice, err := fetchATMOptionPrices(spot, underlying, expiry)
+	callPrice, putPrice, err := fetchATMOptionPrices(underlying, expiryDate, asOfPrice)
 	if err != nil {
 		return 0, err
 	}
 
 	// 2. Estimate implied volatility (stub)
-	iv := estimateIVFromATM(callPrice, putPrice, spot)
+	iv := estimateIVFromATM(callPrice, putPrice, asOfPrice)
 
 	// 3. Compute strike for desired delta (Black–Scholes stub)
-	strike := computeStrikeFromDelta(targetDelta, spot, iv, expiry)
+	strike := computeStrikeFromDelta(targetDelta, asOfPrice, iv, expiryDate)
 
-	return roundToNearestStrike(strike), nil
+	return prov.RoundToNearestStrike(underlying, expiryDate, openDate, strike), nil
 }
 
 func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {

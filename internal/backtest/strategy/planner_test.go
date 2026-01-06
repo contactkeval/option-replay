@@ -38,42 +38,6 @@ func TestResolveATMOffset(t *testing.T) {
 	}
 }
 
-func TestResolveStrike(t *testing.T) {
-	// Sample legs with necessary data for testing
-	legs := []TradeLeg{
-		{Strike: 580.0, OpenPremium: 2.5},
-		{Strike: 590.0, OpenPremium: 3.0},
-	}
-	tests := []struct {
-		expr     string
-		expected float64
-	}{
-		{"ATM", 581.0},
-		{"ATM:+10", 591.0},
-		{"ATM:-20", 561.0},
-		{"ATM:+10%", 640.0},
-		{"ATM:-20%", 465.0},
-		// {"ABS:600", 600.0},
-		// {"DELTA:30", 610.0},
-		// {"DELTA:50", 580.0},
-		{"{LEG1.STRIKE}+{LEG1.PREMIUM}", 583},
-		{"{LEG2.STRIKE}-{LEG2.PREMIUM}", 587.0},
-		{"{LEG1.PREMIUM}+{LEG2.PREMIUM}", 180},
-		{"({LEG1.PREMIUM}+{LEG2.PREMIUM})/2.0", 180},
-		{"{LEG1.STRIKE}+({LEG1.PREMIUM}+{LEG2.PREMIUM})/2", 583},
-	}
-
-	for _, test := range tests {
-		actual, err := ResolveStrike(test.expr, underlying, asOfPrice, openDate, expiryDate, legs, provMassive)
-		if err != nil {
-			t.Fatalf("Failed to resolve strike: %v", err)
-		}
-		if actual != test.expected {
-			t.Fatalf("For strike expression {%s}, expected %f, got %f", test.expr, test.expected, actual)
-		}
-	}
-}
-
 func TestEvalLegExp(t *testing.T) {
 	// Sample legs with necessary data for testing
 	legs := []TradeLeg{
@@ -98,6 +62,41 @@ func TestEvalLegExp(t *testing.T) {
 		}
 		if actual != test.expected {
 			t.Fatalf("For expression \"%s\", expected %f, got %f", test.expr, test.expected, actual)
+		}
+	}
+}
+
+func TestResolveStrike(t *testing.T) {
+	// Sample legs with necessary data for testing
+	legs := []TradeLeg{
+		{Strike: 580.0, OpenPremium: 2.5},
+		{Strike: 590.0, OpenPremium: 3.0},
+	}
+	tests := []struct {
+		expr     string
+		expected float64
+	}{
+		{"ATM", 581.0},
+		{"ATM:+10", 591.0},
+		{"ATM:-20", 561.0},
+		{"ATM:+10%", 640.0},
+		{"ATM:-20%", 465.0},
+		// {"ABS:600", 600.0},
+		// {"DELTA:30", 610.0},
+		// {"DELTA:50", 580.0},
+		{"{LEG1.STRIKE}+{LEG1.PREMIUM}", 583},
+		{"{LEG2.STRIKE}-{LEG2.PREMIUM}", 587.0},
+		{"{LEG1.STRIKE}+{LEG1.PREMIUM}+{LEG2.PREMIUM}", 586},
+		{"{LEG1.STRIKE}+({LEG1.PREMIUM}+{LEG2.PREMIUM})/2", 583},
+	}
+
+	for _, test := range tests {
+		actual, err := ResolveStrike(test.expr, underlying, asOfPrice, openDate, expiryDate, legs, provMassive)
+		if err != nil {
+			t.Fatalf("Failed to resolve strike for expression {%s}: %v", test.expr, err)
+		}
+		if actual != test.expected {
+			t.Fatalf("For strike expression {%s}, expected %f, got %f", test.expr, test.expected, actual)
 		}
 	}
 }

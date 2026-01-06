@@ -23,7 +23,7 @@ func (polygonDataProv *polygonDataProvider) Secondary() Provider {
 	return polygonDataProv.secondary
 }
 
-func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDt time.Time) ([]OptionContract, error) {
+func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
 	// This method is not implemented.
 	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
@@ -103,7 +103,7 @@ func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, f
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64 {
+func (polygonDataProv *polygonDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
 	intervals := polygonDataProv.getIntervals(underlying)
 	return math.Round(asOfPrice/intervals) * intervals
 }

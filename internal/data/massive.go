@@ -64,7 +64,7 @@ func (massiveDataProv *massiveDataProvider) Secondary() Provider {
 	return massiveDataProv.secondary
 }
 
-func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error) {
+func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
 	out := []OptionContract{}
 
 	// Build initial URL with required filters.
@@ -325,10 +325,11 @@ func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string,
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
 }
 
-func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, asOfPrice float64, openDate, expiryDate time.Time) float64 {
+func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
 	var strikeList []float64
 	// Fetch all contracts for the underlying, expiry date as of open date as trading date and collect strikes
-	OptionContracts, err := massiveDataProv.GetContracts(underlying, 0.0, openDate, openDate, expiryDate)
+	strike := 0.0 // zero means to fetch all strikes
+	OptionContracts, err := massiveDataProv.GetContracts(underlying, strike, expiryDate, openDate, openDate)
 	if err != nil {
 		return asOfPrice
 	}
@@ -343,7 +344,7 @@ func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying stri
 		sort.Float64s(strikeList)
 		return Closest(strikeList, asOfPrice)
 	}
-	return massiveDataProv.RoundToNearestStrike(underlying, asOfPrice, openDate, expiryDate)
+	return massiveDataProv.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice)
 }
 
 func (massiveDataProv *massiveDataProvider) getIntervals(underlying string) float64 {

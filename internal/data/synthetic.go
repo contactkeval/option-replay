@@ -18,9 +18,9 @@ func (synthDataProv *synthDataProvider) Secondary() Provider {
 	return synthDataProv.secondary
 }
 
-func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, fromDate, toDate, expiryDate time.Time) ([]OptionContract, error) {
+func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetContracts(underlying, strike, fromDate, expiryDate, toDate)
+		return synthDataProv.secondary.GetContracts(underlying, strike, expiryDate, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
 }
@@ -58,9 +58,9 @@ func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, fromD
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
 }
 
-func (synthDataProv *synthDataProvider) RoundToNearestStrike(underlying string, price float64, openDate, expiryDate time.Time) float64 {
+func (synthDataProv *synthDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
 	intervals := synthDataProv.getIntervals(underlying)
-	return math.Round(price/intervals) * intervals
+	return math.Round(asOfPrice/intervals) * intervals
 }
 
 func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {
