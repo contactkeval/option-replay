@@ -159,7 +159,7 @@ func (e *Engine) Run() (*Result, error) {
 			p, err := e.prov.GetOptionMidPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType)
 			if err != nil {
 				// fallback to BS
-				p = pricing.BlackScholesPrice(openPrice, leg.Strike, 0.02, hv, leg.Expiration.Sub(dt), strings.ToLower(leg.OptType))
+				p = pricing.BlackScholesPrice(strings.ToLower(leg.OptType) == "call", openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv)
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0
@@ -219,7 +219,8 @@ func PriceOption(prov data.Provider, underlying string, S, K float64, at time.Ti
 	if overrideIV != nil {
 		iv = *overrideIV
 	}
-	return pricing.BlackScholesPrice(S, K, 0.02, iv, expiry.Sub(at), strings.ToLower(optType)), nil
+
+	return pricing.BlackScholesPrice(strings.ToLower(optType) == "call", S, K, (expiry.Sub(at).Hours() / (24 * 365)), 0.02, iv), nil
 }
 
 // simCloseTrade: corrected expiration handling (per-leg) and exits
@@ -265,7 +266,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 			// active leg -> price via provider else BS
 			p, err := prov.GetOptionMidPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType)
 			if err != nil || p <= 0 {
-				p = pricing.BlackScholesPrice(b.Close, leg.Strike, 0.02, hv, leg.Expiration.Sub(b.Date), strings.ToLower(leg.OptType))
+				p = pricing.BlackScholesPrice(strings.ToLower(leg.OptType) == "call", b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv)
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0

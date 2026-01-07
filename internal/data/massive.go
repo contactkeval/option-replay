@@ -40,7 +40,10 @@ type massiveContractsResp struct {
 	NextURL   string            `json:"next_url"`
 }
 
-// NewMassiveDataProvider convenience constructor.
+// NewMassiveDataProvider creates and returns a new massiveDataProvider instance.
+// It initializes an HTTP client with optimized timeout and transport settings,
+// including TLS configuration, connection pooling, and gzip decompression support.
+// The provided apiKey is used for authentication with the Massive API.
 func NewMassiveDataProvider(apiKey string) *massiveDataProvider {
 	return &massiveDataProvider{
 		APIKey: apiKey,
@@ -60,6 +63,7 @@ func NewMassiveDataProvider(apiKey string) *massiveDataProvider {
 	}
 }
 
+// Secondary returns the secondary Provider associated with this massive data provider.
 func (massiveDataProv *massiveDataProvider) Secondary() Provider {
 	return massiveDataProv.secondary
 }

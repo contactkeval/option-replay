@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/contactkeval/option-replay/internal/pricing"
 )
 
 // --------------------------------------------------------------------------------------------
@@ -33,8 +35,8 @@ func ImpliedVolatility(
 	tol := 1e-6
 
 	for i := 0; i < 100; i++ {
-		price := BlackScholesPrice(isCall, S, K, T, r, sigma)
-		vega := BlackScholesVega(S, K, T, r, sigma)
+		price := pricing.BlackScholesPrice(isCall, S, K, T, r, sigma)
+		vega := pricing.BlackScholesVega(S, K, T, r, sigma)
 
 		diff := price - marketPrice
 		if math.Abs(diff) < tol {
@@ -66,9 +68,9 @@ func StrikeFromDelta(
 
 	var d1 float64
 	if isCall {
-		d1 = NormInv(delta)
+		d1 = pricing.NormInv(delta)
 	} else {
-		d1 = NormInv(delta + 1)
+		d1 = pricing.NormInv(delta + 1)
 	}
 
 	exponent := d1*sigma*math.Sqrt(T) - (r+0.5*sigma*sigma)*T

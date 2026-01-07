@@ -12,6 +12,7 @@ import (
 	"github.com/Knetic/govaluate"
 
 	"github.com/contactkeval/option-replay/internal/data"
+	"github.com/contactkeval/option-replay/internal/pricing"
 )
 
 // Trade/TradeLeg/Bar types reused from original but simplified for internal use
@@ -79,7 +80,11 @@ func ResolveStrike(
 		if err != nil {
 			return 0, fmt.Errorf("invalid DELTA value: %w", err)
 		}
-		return resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, prov)
+		target, err := resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, prov)
+		if err != nil {
+			return 0, err
+		}
+		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
 	// ---------------------------------------------------------
@@ -130,18 +135,21 @@ func resolveDeltaStrike(
 ) (float64, error) {
 
 	// 1. Fetch ATM option chain
-	callPrice, putPrice, err := fetchATMOptionPrices(underlying, expiryDate, asOfPrice)
+	strike, callPrice, putPrice, err := prov.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
 	if err != nil {
 		return 0, err
 	}
 
 	// 2. Estimate implied volatility (stub)
-	iv := estimateIVFromATM(callPrice, putPrice, asOfPrice)
+	iv, err := pricing.ImpliedVolATM(asOfPrice, strike, expiryDate.Sub(openDate).Hours()/24/365.25, 0.02, callPrice, putPrice)
+	if err != nil {
+		return 0, err
+	}
 
 	// 3. Compute strike for desired delta (Black–Scholes stub)
-	strike := computeStrikeFromDelta(targetDelta, asOfPrice, iv, expiryDate)
+	return computeStrikeFromDelta(targetDelta, asOfPrice, iv, expiryDate), nil
 
-	return prov.RoundToNearestStrike(underlying, expiryDate, openDate, strike), nil
+	//4. TODO: refine with real market data (after estimating strike, find closest strike from option chain by calculating deltas using market prices)
 }
 
 func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
