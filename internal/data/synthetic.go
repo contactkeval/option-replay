@@ -18,6 +18,16 @@ func (synthDataProv *synthDataProvider) Secondary() Provider {
 	return synthDataProv.secondary
 }
 
+func (synthDataProv *synthDataProvider) GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+	if synthDataProv.secondary != nil {
+		return synthDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
+	}
+	strike = math.Round(asOfPrice*100) / 100
+	callPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
+	putPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
+	return strike, callPrice, putPrice, nil
+}
+
 func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
 	if synthDataProv.secondary != nil {
 		return synthDataProv.secondary.GetContracts(underlying, strike, expiryDate, fromDate, toDate)

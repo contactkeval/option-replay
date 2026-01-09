@@ -11,6 +11,7 @@ import (
 // Provider supplies market data
 type Provider interface {
 	Secondary() Provider
+	GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)
 	GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error)
 	GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error)
 	GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error)

@@ -28,6 +28,13 @@ func (localFileDataProv *localFileDataProvider) Secondary() Provider {
 	return localFileDataProv.secondary
 }
 
+func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
+	}
+	return 0, 0, 0, fmt.Errorf("GetATMOptionPrices not implemented for localFileDataProvider")
+}
+
 func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
 	if localFileDataProv.secondary != nil {
 		return localFileDataProv.secondary.GetContracts(underlying, strike, expiryDate, fromDate, toDate)
