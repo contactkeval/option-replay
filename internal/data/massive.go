@@ -69,13 +69,13 @@ func (massiveDataProv *massiveDataProvider) Secondary() Provider {
 	return massiveDataProv.secondary
 }
 
-func (massiveDataProv *massiveDataProvider) GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+func (massiveDataProv *massiveDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
 	strike = math.Round(asOfPrice*100) / 100
 	callPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
 	putPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
-	
+
 	if massiveDataProv.secondary != nil {
-		return massiveDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
+		return massiveDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	}
 	return strike, callPrice, putPrice, nil
 }
@@ -167,9 +167,10 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 	return out, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+func (massiveDataProv *massiveDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+	// TODO: change hardcoded timespan and its multiplier (1 minute)
 	url := fmt.Sprintf(
-		"%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
+		"%s/v2/aggs/ticker/%s/range/1/minute/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
 		massiveDataProv.BaseURL,
 		underlying,
 		fromDate.Format("2006-01-02"),
@@ -261,7 +262,7 @@ func (massiveDataProv *massiveDataProvider) GetDailyBars(underlying string, from
 func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
 
 	// Step 1: Load spot bars
-	bars, err := massiveDataProv.GetDailyBars(ticker, fromDate, toDate)
+	bars, err := massiveDataProv.GetBars(ticker, fromDate, toDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
 	}
@@ -336,9 +337,15 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, f
 	return expiries, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error) {
+func (massiveDataProv *massiveDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
+	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+	bars, err := massiveDataProv.GetBars(symbol, openDate, openDate)
+	if err != nil {
+		return 0, fmt.Errorf("fetch option bars: %w", err)
+	}
+
 	//TODO: implement option mid price fetching from Massive API
-	return 0, fmt.Errorf("GetOptionMidPrice not implemented for MassiveDataProvider")
+	return bars[0].Close, nil
 }
 
 func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {

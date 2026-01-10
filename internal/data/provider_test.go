@@ -28,7 +28,7 @@ func TestDataProviderContract_GetDailyBars(t *testing.T) {
 
 	for _, prov := range providers {
 		t.Run(prov.name, func(t *testing.T) {
-			bars, err := prov.provider.GetDailyBars("AAPL", start, end)
+			bars, err := prov.provider.GetBars("AAPL", start, end)
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -54,13 +54,13 @@ func TestDataProviderContract_GetDailyBars(t *testing.T) {
 func TestOptionSymbolFromParts(t *testing.T) {
 	expDt := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
 	symbol := OptionSymbolFromParts("SPY", expDt, "put", 500.0)
-	expected := "SPY250113P00500000"
+	expected := "O:SPY250113P00500000"
 	if symbol != expected {
 		t.Fatalf("expected %s, got %s", expected, symbol)
 	}
 
 	symbol = OptionSymbolFromParts("SPXW", expDt, "c", 5000.0)
-	expected = "SPXW250113C05000000"
+	expected = "O:SPXW250113C05000000"
 	if symbol != expected {
 		t.Fatalf("expected %s, got %s", expected, symbol)
 	}

@@ -11,10 +11,10 @@ import (
 // Provider supplies market data
 type Provider interface {
 	Secondary() Provider
-	GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)
+	GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)
 	GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error)
-	GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error)
-	GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error)
+	GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error)
+	GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error)
 	GetRelevantExpiries(underlying string, fromDate, toDate time.Time) ([]time.Time, error)
 	RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64
 	getIntervals(underlying string) float64
@@ -51,7 +51,7 @@ func OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType s
 	}
 	strikeInt := int(math.Round(strike * 1000))
 	strFmt := fmt.Sprintf("%08d", strikeInt)
-	return fmt.Sprintf("%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strFmt)
+	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strFmt)
 }
 
 // Closest finds the closest float64 in a sorted slice to the target value using binary search (sort.Search).

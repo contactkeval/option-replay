@@ -135,7 +135,7 @@ func resolveDeltaStrike(
 ) (float64, error) {
 
 	// 1. Fetch ATM option chain
-	strike, callPrice, putPrice, err := prov.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
+	strike, callPrice, putPrice, err := prov.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	if err != nil {
 		return 0, err
 	}

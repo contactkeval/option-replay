@@ -80,7 +80,7 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// fetch bars
-	bars, err := e.prov.GetDailyBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
+	bars, err := e.prov.GetBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
 	if err != nil || len(bars) == 0 {
 		// fallback synthetic
 		log.Printf("[warn] provider bars error or empty: %v - generating synthetic", err)
@@ -108,12 +108,12 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// schedule
-	dates, err := sch.ResolveScheduleDates(cfg.Entry, bars, expiries)
+	dates, err := sch.ScheduleDates(cfg.Entry, bars, expiries)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve schedule dates: %w", err)
+		return nil, fmt.Errorf("failed to schedule dates: %w", err)
 	}
 	if len(dates) == 0 {
-		return nil, fmt.Errorf("no schedule dates resolved")
+		return nil, fmt.Errorf("no dates scheduled")
 	}
 	if cfg.Verbosity == 1 {
 		log.Printf("[info] %d schedule dates", len(dates))
@@ -156,7 +156,7 @@ func (e *Engine) Run() (*Result, error) {
 		// price legs
 		openPremium := 0.0
 		for _, leg := range legs {
-			p, err := e.prov.GetOptionMidPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType)
+			p, err := e.prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType, dt)
 			if err != nil {
 				// fallback to BS
 				p = pricing.BlackScholesPrice(strings.ToLower(leg.OptType) == "call", openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv)
@@ -210,7 +210,7 @@ func AnnualizedVolatility(closes []float64) float64 {
 // PriceOption uses provider price else BS
 func PriceOption(prov data.Provider, underlying string, S, K float64, at time.Time, expiry time.Time, optType string, hv float64, overrideIV *float64) (float64, error) {
 	if prov != nil {
-		p, err := prov.GetOptionMidPrice(underlying, K, expiry, optType)
+		p, err := prov.GetOptionPrice(underlying, K, expiry, optType, at)
 		if err == nil && p > 0 {
 			return p, nil
 		}
@@ -264,7 +264,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 				continue
 			}
 			// active leg -> price via provider else BS
-			p, err := prov.GetOptionMidPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType)
+			p, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType, b.Date)
 			if err != nil || p <= 0 {
 				p = pricing.BlackScholesPrice(strings.ToLower(leg.OptType) == "call", b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv)
 			}

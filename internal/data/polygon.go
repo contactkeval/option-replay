@@ -23,7 +23,7 @@ func (polygonDataProv *polygonDataProvider) Secondary() Provider {
 	return polygonDataProv.secondary
 }
 
-func (polygonDataProv *polygonDataProvider) GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+func (polygonDataProv *polygonDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/underlying/%s?apiKey=%s", underlying, polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
@@ -99,7 +99,7 @@ func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, stri
 	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
 	base := "https://api.polygon.io"
 	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
 		base, underlying, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey)
@@ -132,7 +132,7 @@ func (polygonDataProv *polygonDataProvider) GetDailyBars(underlying string, from
 	return out, nil
 }
 
-func (polygonDataProv *polygonDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error) {
+func (polygonDataProv *polygonDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
 	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", symbol, polygonDataProv.apiKey)

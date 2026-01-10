@@ -18,9 +18,9 @@ func (synthDataProv *synthDataProvider) Secondary() Provider {
 	return synthDataProv.secondary
 }
 
-func (synthDataProv *synthDataProvider) GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+func (synthDataProv *synthDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
+		return synthDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	}
 	strike = math.Round(asOfPrice*100) / 100
 	callPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
@@ -35,7 +35,7 @@ func (synthDataProv *synthDataProvider) GetContracts(underlying string, strike f
 	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
 }
 
-func (synthDataProv *synthDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+func (synthDataProv *synthDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
 	cur := fromDate
 	price := 100.0 + float64(rand.Intn(200))
 	var out []Bar
@@ -54,9 +54,9 @@ func (synthDataProv *synthDataProvider) GetDailyBars(underlying string, fromDate
 	return out, nil
 }
 
-func (synthDataProv *synthDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optionType string) (float64, error) {
+func (synthDataProv *synthDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optionType string, openDate time.Time) (float64, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetOptionMidPrice(underlying, strike, expiryDate, optionType)
+		return synthDataProv.secondary.GetOptionPrice(underlying, strike, expiryDate, optionType, openDate)
 	}
 	return 0, fmt.Errorf("no option market data in synthetic provider")
 }

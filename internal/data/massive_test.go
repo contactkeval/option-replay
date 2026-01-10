@@ -34,7 +34,7 @@ func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 	fromDate := time.Now().AddDate(0, 0, -5)
 	toDate := time.Now()
 
-	_, err := p.GetDailyBars(underlying, fromDate, toDate)
+	_, err := p.GetBars(underlying, fromDate, toDate)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -75,7 +75,7 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 	fromDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	toDate := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
 
-	bars, err := prov.GetDailyBars(underlying, fromDate, toDate)
+	bars, err := prov.GetBars(underlying, fromDate, toDate)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

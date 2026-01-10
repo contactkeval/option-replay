@@ -36,14 +36,14 @@ func TestBeforeEarningsSchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "before_earnings_schedule", dates)
@@ -57,14 +57,14 @@ func TestBeforeEarningsHigherSchedule(t *testing.T) {
 		DateMatchType: MatchHigher,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "before_earnings_higher_schedule", dates)
@@ -78,14 +78,14 @@ func TestBeforeEarningsLowerSchedule(t *testing.T) {
 		DateMatchType: MatchLower,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "before_earnings_lower_schedule", dates)
@@ -99,14 +99,14 @@ func TestBeforeEarningsExactSchedule(t *testing.T) {
 		DateMatchType: MatchExact,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "before_earnings_exact_schedule", dates)
@@ -120,14 +120,14 @@ func TestBeforeEarningsNearestSchedule(t *testing.T) {
 		DateMatchType: MatchNearest,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "before_earnings_nearest_schedule", dates)
@@ -140,14 +140,14 @@ func TestAfterEarningsSchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "after_earnings_schedule", dates)
@@ -160,7 +160,7 @@ func TestBeforeExpirySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -171,9 +171,9 @@ func TestBeforeExpirySchedule(t *testing.T) {
 		t.Fatalf("back test scheduler error: get relevant expiries error, %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, expiries)
+	dates, err := ScheduleDates(*entryRule, bars, expiries)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "before_expiry_schedule", dates)
@@ -186,14 +186,14 @@ func TestOnceMonthlySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "once_monthly_schedule", dates)
@@ -206,14 +206,14 @@ func TestThriceMonthlySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "thrice_monthly_schedule", dates)
@@ -226,14 +226,14 @@ func TestOnceWeeklySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "once_weekly_schedule", dates)
@@ -246,14 +246,14 @@ func TestThriceWeeklySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    startDate.AddDate(0, 3, -1)})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "thrice_weekly_schedule", dates)
@@ -265,14 +265,14 @@ func TestDailySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    startDate.AddDate(0, 1, -1)})
-	bars, err := dataProv.GetDailyBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
 
-	dates, err := ResolveScheduleDates(*entryRule, bars, nil)
+	dates, err := ScheduleDates(*entryRule, bars, nil)
 	if err != nil {
-		t.Fatalf("failed to resolve schedule dates: %v", err)
+		t.Fatalf("failed to schedule dates: %v", err)
 	}
 
 	tests.CompareWithGolden(t, "daily_schedule", dates)

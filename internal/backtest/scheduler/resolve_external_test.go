@@ -8,7 +8,7 @@ import (
 	"github.com/contactkeval/option-replay/internal/data"
 )
 
-func TestResolveScheduleDates_PublicAPI(t *testing.T) {
+func TestScheduleDates_PublicAPI(t *testing.T) {
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
 
@@ -25,7 +25,7 @@ func TestResolveScheduleDates_PublicAPI(t *testing.T) {
 		EndDate:   endDate,
 	}
 
-	dates, err := scheduler.ResolveScheduleDates(entry, bars, nil)
+	dates, err := scheduler.ScheduleDates(entry, bars, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

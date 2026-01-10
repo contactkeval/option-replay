@@ -28,9 +28,9 @@ func (localFileDataProv *localFileDataProvider) Secondary() Provider {
 	return localFileDataProv.secondary
 }
 
-func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying string, expiryDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, asOfPrice)
+		return localFileDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	}
 	return 0, 0, 0, fmt.Errorf("GetATMOptionPrices not implemented for localFileDataProvider")
 }
@@ -42,16 +42,16 @@ func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, 
 	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetDailyBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+func (localFileDataProv *localFileDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetDailyBars(underlying, fromDate, toDate)
+		return localFileDataProv.secondary.GetBars(underlying, fromDate, toDate)
 	}
-	return nil, fmt.Errorf("GetDailyBars not implemented for localFileDataProvider")
+	return nil, fmt.Errorf("GetBars not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetOptionMidPrice(underlying string, strike float64, expiryDate time.Time, optType string) (float64, error) {
+func (localFileDataProv *localFileDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetOptionMidPrice(underlying, strike, expiryDate, optType)
+		return localFileDataProv.secondary.GetOptionPrice(underlying, strike, expiryDate, optType, openDate)
 	}
 	return 0, fmt.Errorf("GetOptionMidPrice not implemented for localFileDataProvider")
 }
@@ -124,7 +124,7 @@ func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying 
 	for {
 		strike = math.Round(asOfPrice/intervals) * intervals
 
-		bars, err := localFileDataProv.GetDailyBars(underlying, openDate, openDate)
+		bars, err := localFileDataProv.GetBars(underlying, openDate, openDate)
 		if err != nil {
 			return asOfPrice
 		}
