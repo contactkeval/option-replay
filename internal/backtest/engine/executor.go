@@ -43,17 +43,17 @@ type ExitSpec struct {
 }
 
 type Trade struct {
-	ID                int
-	OpenTime          time.Time
-	CloseTime         *time.Time
-	UnderlyingAtOpen  float64
-	UnderlyingAtClose float64
-	Legs              []st.TradeLeg
-	OpenPremium       float64
-	ClosePremium      float64
-	HighPremium       float64
-	LowPremium        float64
-	ClosedBy          string
+	ID                int           // unique trade ID
+	OpenTime          time.Time     // trade open time
+	CloseTime         *time.Time    // trade close time
+	UnderlyingAtOpen  float64       // underlying price at open
+	UnderlyingAtClose float64       // underlying price at close
+	Legs              []st.TradeLeg // trade legs (strategy)
+	OpenPremium       float64       // total premium at open for entire strategy
+	ClosePremium      float64       // total premium at close for entire strategy
+	HighPremium       float64       // highest premium during trade
+	LowPremium        float64       // lowest premium during trade
+	ClosedBy          string        // reason for closing the trade
 }
 
 // Result mirrors original
@@ -159,7 +159,7 @@ func (e *Engine) Run() (*Result, error) {
 			p, err := e.prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType, dt)
 			if err != nil {
 				// fallback to BS
-				p = pricing.BlackScholesPrice(strings.ToLower(leg.OptType) == "call", openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv)
+				p = pricing.BlackScholesPrice(openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.OptType) == "call")
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0
@@ -208,19 +208,20 @@ func AnnualizedVolatility(closes []float64) float64 {
 }
 
 // PriceOption uses provider price else BS
-func PriceOption(prov data.Provider, underlying string, S, K float64, at time.Time, expiry time.Time, optType string, hv float64, overrideIV *float64) (float64, error) {
+func PriceOption(prov data.Provider, underlying string, S, K float64, asOfDate time.Time, expiryDate time.Time, optType string, hv float64, overrideIV *float64) (float64, error) {
 	if prov != nil {
-		p, err := prov.GetOptionPrice(underlying, K, expiry, optType, at)
+		p, err := prov.GetOptionPrice(underlying, K, expiryDate, optType, asOfDate)
 		if err == nil && p > 0 {
 			return p, nil
 		}
 	}
-	iv := hv
+	iv := hv // use historical vol
 	if overrideIV != nil {
-		iv = *overrideIV
+		iv = *overrideIV // override if provided
 	}
 
-	return pricing.BlackScholesPrice(strings.ToLower(optType) == "call", S, K, (expiry.Sub(at).Hours() / (24 * 365)), 0.02, iv), nil
+	// TODO: risk-free rate from provider or config - using 2% fixed here
+	return pricing.BlackScholesPrice(S, K, (expiryDate.Sub(asOfDate).Hours() / (24 * 365)), 0.02, iv, strings.ToLower(optType) == "call"), nil
 }
 
 // simCloseTrade: corrected expiration handling (per-leg) and exits
@@ -266,7 +267,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 			// active leg -> price via provider else BS
 			p, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType, b.Date)
 			if err != nil || p <= 0 {
-				p = pricing.BlackScholesPrice(strings.ToLower(leg.OptType) == "call", b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv)
+				p = pricing.BlackScholesPrice(b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.OptType) == "call")
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0

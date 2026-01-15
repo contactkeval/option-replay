@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	underlying = "SPY"
-	asOfPrice  = 581.39
-	openDate   = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	expiryDate = time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC)
-	prov       = NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
+	underlying    = "SPY"
+	asOfPrice     = 581.39
+	tradeDateTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	expiryDate    = time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC)
+	prov          = NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
 )
 
 func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
@@ -86,9 +86,20 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 }
 
 func TestMassiveRoundToNearestStrike(t *testing.T) {
-	actual := prov.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice)
+	actual := prov.RoundToNearestStrike(underlying, expiryDate, tradeDateTime, asOfPrice)
 	expected := 581.0
 	if actual != expected {
 		t.Fatalf("expected %f, got %f", expected, actual)
+	}
+}
+
+func TestGetOptionPrice(t *testing.T) {
+	price, err := prov.GetOptionPrice(underlying, 580.0, expiryDate, "call", tradeDateTime)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := 12.14
+	if price != expected {
+		t.Fatalf("expected price %f, got %f", expected, price)
 	}
 }

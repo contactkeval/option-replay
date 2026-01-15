@@ -10,12 +10,12 @@ const sqrt2Pi = 2.5066282746310002
 // BlackScholesPrice calculates the price of a European option using the Black-Scholes model.
 //
 // Parameters:
-//   - isCall: true for call option, false for put option
 //   - S: spot price of the underlying asset
 //   - K: strike price of the option
 //   - T: time to expiry in years
 //   - r: risk-free interest rate (annual)
 //   - sigma: volatility of the underlying asset (annual, as a decimal)
+//   - isCall: true for call option, false for put option
 //
 // Returns:
 //
@@ -25,12 +25,12 @@ const sqrt2Pi = 2.5066282746310002
 // Note: This implementation uses the standard Black-Scholes formula for European options
 // and relies on normCDF for the cumulative standard normal distribution function.
 func BlackScholesPrice(
-	isCall bool,
 	S float64, // spot
 	K float64, // strike
 	T float64, // time to expiry in years
 	r float64, // risk-free rate
 	sigma float64, // volatility
+	isCall bool, // is call option
 ) float64 {
 
 	if T <= 0 || sigma <= 0 {
@@ -57,14 +57,15 @@ func BlackScholesPrice(
 //   - sigma: Volatility (standard deviation) of the underlying asset's returns
 //
 // Returns:
-//   The vega value, representing the change in option price per 1% change in volatility.
-//   Returns 0 if T or sigma is non-positive.
+//
+//	The vega value, representing the change in option price per 1% change in volatility.
+//	Returns 0 if T or sigma is non-positive.
 func BlackScholesVega(
-	S float64,
-	K float64,
-	T float64,
-	r float64,
-	sigma float64,
+	S float64, // spot price
+	K float64, // strike price
+	T float64, // time to expiry in years
+	r float64, // risk-free rate
+	sigma float64, // volatility
 ) float64 {
 
 	if T <= 0 || sigma <= 0 {
@@ -101,7 +102,7 @@ func ImpliedVolATM(
 	)
 
 	for i := 0; i < maxIter; i++ {
-		price := BlackScholesPrice(true, S, K, T, r, sigma)
+		price := BlackScholesPrice(S, K, T, r, sigma, true)
 		diff := price - marketPrice
 
 		if math.Abs(diff) < tol {
@@ -126,6 +127,35 @@ func ImpliedVolATM(
 
 	return 0, fmt.Errorf("implied vol did not converge")
 }
+
+func StrikeFromDelta(
+	spot float64, // Spot price (S)
+	delta float64, // Target delta
+	r float64, // Risk-free interest rate
+	q float64, // Dividend yield
+	sigma float64, // Volatility
+	T float64, // Time to expiration in years
+	isCall bool, // Is the option a call?
+) float64 {
+
+	var d1 float64
+
+	if isCall {
+		// delta = exp(-qT) * N(d1)
+		d1 = NormInv(delta * math.Exp(q*T))
+	} else {
+		// delta = -exp(-qT) * N(-d1)
+		d1 = -NormInv(-delta * math.Exp(q*T))
+	}
+
+	return spot * math.Exp(
+		-(r-q+0.5*sigma*sigma)*T+sigma*math.Sqrt(T)*d1,
+	)
+}
+
+// --------------------------------------------------------------------------------------------
+// Helper functions
+// --------------------------------------------------------------------------------------------
 
 // normPDF calculates the probability density function (PDF) of the standard normal distribution.
 // It takes a float64 value x and returns the probability density at that point.
@@ -152,14 +182,17 @@ func normCDF(x float64) float64 {
 //   - p: A probability value in the range (0, 1) (exclusive). Values outside this range will cause a panic.
 //
 // Returns:
-//   The quantile value corresponding to the input probability p.
+//
+//	The quantile value corresponding to the input probability p.
 //
 // Panics:
-//   If p is not strictly between 0 and 1.
+//
+//	If p is not strictly between 0 and 1.
 //
 // Example:
-//   NormInv(0.975) // Returns approximately 1.96 (95% confidence level)
-//   NormInv(0.025) // Returns approximately -1.96
+//
+//	NormInv(0.975) // Returns approximately 1.96 (95% confidence level)
+//	NormInv(0.025) // Returns approximately -1.96
 func NormInv(p float64) float64 {
 	if p <= 0 || p >= 1 {
 		panic("NormInv: p must be in (0,1)")
@@ -221,5 +254,3 @@ func NormInv(p float64) float64 {
 	return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r + a[5]) * q /
 		(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r + 1)
 }
-
-

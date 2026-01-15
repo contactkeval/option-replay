@@ -337,15 +337,44 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, f
 	return expiries, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
+// GetOptionPrice retrieves the price of an option at a specific trade date and time.
+// It attempts to find the option price by first looking for bars from 5 minutes before
+// the trade time and using the closing price if available. If no bars are found in that
+// window, it looks for bars starting from the trade time and uses the opening price.
+// Returns an error if no option bars are found in either time window.
+//
+// Parameters:
+//   - underlying: the underlying asset symbol
+//   - strike: the strike price of the option
+//   - expiryDate: the expiration date of the option
+//   - optType: the option type (e.g., "call" or "put")
+//   - tradeDateTime: the date and time at which to retrieve the option price
+//
+// Returns:
+//   - float64: the option price
+//   - error: an error if the price cannot be determined
+func (massiveDataProv *massiveDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, tradeDateTime time.Time) (float64, error) {
 	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
-	bars, err := massiveDataProv.GetBars(symbol, openDate, openDate)
+	price := 0.0
+
+	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime)
 	if err != nil {
 		return 0, fmt.Errorf("fetch option bars: %w", err)
 	}
+	if len(bars) != 0 {
+		price = bars[len(bars)-1].Close
+	} else {
+		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute))
+		if err != nil {
+			return 0, fmt.Errorf("fetch option bars: %w", err)
+		}
+		if len(bars) == 0 {
+			return 0, fmt.Errorf("no option bars found for %s on %s", symbol, tradeDateTime.Format("2006-01-02 15:04"))
+		}
+		price = bars[0].Open
+	}
 
-	//TODO: implement option mid price fetching from Massive API
-	return bars[0].Close, nil
+	return price, nil
 }
 
 func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {

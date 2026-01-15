@@ -131,23 +131,24 @@ func resolveDeltaStrike(
 	openDate time.Time,
 	asOfPrice float64,
 	targetDelta float64,
-	prov data.Provider,
+	dataProv data.Provider,
 ) (float64, error) {
 
 	// 1. Fetch ATM option chain
-	strike, callPrice, putPrice, err := prov.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
+	strike, callPrice, putPrice, err := dataProv.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	if err != nil {
 		return 0, err
 	}
 
 	// 2. Estimate implied volatility (stub)
-	iv, err := pricing.ImpliedVolATM(asOfPrice, strike, expiryDate.Sub(openDate).Hours()/24/365.25, 0.02, callPrice, putPrice)
+	daysToExpiry := expiryDate.Sub(openDate).Hours() / 24 / 365.25
+	iv, err := pricing.ImpliedVolATM(asOfPrice, strike, daysToExpiry, 0.02, callPrice, putPrice)
 	if err != nil {
 		return 0, err
 	}
 
 	// 3. Compute strike for desired delta (Black–Scholes stub)
-	return computeStrikeFromDelta(targetDelta, asOfPrice, iv, expiryDate), nil
+	return pricing.StrikeFromDelta(asOfPrice, targetDelta, 0.02, 0.0, iv, daysToExpiry, true), nil
 
 	//4. TODO: refine with real market data (after estimating strike, find closest strike from option chain by calculating deltas using market prices)
 }
