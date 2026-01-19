@@ -167,12 +167,13 @@ func (massiveDataProv *massiveDataProvider) GetContracts(underlying string, stri
 	return out, nil
 }
 
-func (massiveDataProv *massiveDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
-	// TODO: change hardcoded timespan and its multiplier (1 minute)
+func (massiveDataProv *massiveDataProvider) GetBars(underlying string, fromDate, toDate time.Time, timespan int, multiplier string) ([]Bar, error) {
 	url := fmt.Sprintf(
-		"%s/v2/aggs/ticker/%s/range/1/minute/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
+		"%s/v2/aggs/ticker/%s/range/%d/%s/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
 		massiveDataProv.BaseURL,
 		underlying,
+		timespan,
+		multiplier,
 		fromDate.Format("2006-01-02"),
 		toDate.Format("2006-01-02"),
 		massiveDataProv.APIKey,
@@ -262,7 +263,7 @@ func (massiveDataProv *massiveDataProvider) GetBars(underlying string, fromDate,
 func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
 
 	// Step 1: Load spot bars
-	bars, err := massiveDataProv.GetBars(ticker, fromDate, toDate)
+	bars, err := massiveDataProv.GetBars(ticker, fromDate, toDate, 1, "day")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
 	}
@@ -357,14 +358,14 @@ func (massiveDataProv *massiveDataProvider) GetOptionPrice(underlying string, st
 	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	price := 0.0
 
-	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime)
+	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime, 1, "minute")
 	if err != nil {
 		return 0, fmt.Errorf("fetch option bars: %w", err)
 	}
 	if len(bars) != 0 {
 		price = bars[len(bars)-1].Close
 	} else {
-		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute))
+		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute), 1, "minute")
 		if err != nil {
 			return 0, fmt.Errorf("fetch option bars: %w", err)
 		}

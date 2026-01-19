@@ -99,10 +99,10 @@ func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, stri
 	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate, toDate time.Time, timespan int, multiplier string) ([]Bar, error) {
 	base := "https://api.polygon.io"
-	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
-		base, underlying, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey)
+	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/%d/%s/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
+		base, underlying, timespan, multiplier, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
 	if err != nil {

@@ -13,8 +13,6 @@ import (
 	"github.com/contactkeval/option-replay/internal/data"
 )
 
-type DateMatchType string
-
 type EarningsResponse struct {
 	// TODO : remove commented code if not needed
 	// AnnualEarnings []struct {
@@ -28,23 +26,16 @@ type EarningsResponse struct {
 }
 
 type EntryRule struct {
-	StartDate         time.Time     `json:"start,omitempty"`           // inclusive, default: one year before now
-	EndDate           time.Time     `json:"end,omitempty"`             // inclusive, default: now
-	Underlying        string        `json:"underlying,omitempty"`      // e.g., "AAPL", "SPY", etc.
-	Mode              string        `json:"mode"`                      // "earnings_offset", "expiry_offset", "nth_weekday", "nth_month_day", "daily_time"
-	NthList           []int         `json:"nth_list,omitempty"`        // e.g., [-5] or [5] for 5 days prior or after respectively (for earnings_offset, expiry_offset), [1,3], etc. for nth_weekday or nth_month_day
-	DateMatchType     DateMatchType `json:"date_match_type,omitempty"` // "exact", "higher", "lower", "nearest"
-	TimeOfDay         string        `json:"time_of_day,omitempty"`     // "09:30", "10:00", etc.
-	Timezone          string        `json:"timezone,omitempty"`        // "EST", "PST", etc.
-	MonthlyExpiryOnly bool          `json:"monthly_only,omitempty"`    // for expiry_offset mode, default: false
+	StartDate         time.Time          `json:"start,omitempty"`           // inclusive, default: one year before now
+	EndDate           time.Time          `json:"end,omitempty"`             // inclusive, default: now
+	Underlying        string             `json:"underlying,omitempty"`      // e.g., "AAPL", "SPY", etc.
+	Mode              string             `json:"mode"`                      // "earnings_offset", "expiry_offset", "nth_weekday", "nth_month_day", "daily_time"
+	NthList           []int              `json:"nth_list,omitempty"`        // e.g., [-5] or [5] for 5 days prior or after respectively (for earnings_offset, expiry_offset), [1,3], etc. for nth_weekday or nth_month_day
+	DateMatchType     data.DateMatchType `json:"date_match_type,omitempty"` // "exact", "higher", "lower", "nearest", default: "nearest"
+	TimeOfDay         string             `json:"time_of_day,omitempty"`     // "09:30", "10:00", etc., default: "09:30"
+	Timezone          string             `json:"timezone,omitempty"`        // full IANA names (https://datetime.app/iana-timezones e.g. Asia/Kolkata), default: "America/New_York"
+	MonthlyExpiryOnly bool               `json:"monthly_only,omitempty"`    // for expiry_offset mode, default: false
 }
-
-const (
-	MatchExact   DateMatchType = "exact"   // must match exactly
-	MatchHigher  DateMatchType = "higher"  // next available date after target
-	MatchLower   DateMatchType = "lower"   // last available date before target
-	MatchNearest DateMatchType = "nearest" // closest available date (default)
-)
 
 // NewEntryRule constructs and returns a *EntryRule populated with sensible defaults
 // and normalized date ordering.
@@ -79,9 +70,14 @@ func NewEntryRule(w EntryRule) *EntryRule {
 		w.StartDate, w.EndDate = w.EndDate, w.StartDate
 	}
 
+	// Set default time zone if missing
+	if w.TimeOfDay == "" {
+		w.TimeOfDay = "09:30"
+	}
+
 	// Set default timezone if missing
 	if w.Timezone == "" {
-		w.Timezone = "EST"
+		w.Timezone = "America/New_York"
 	}
 
 	// Set default underlying if missing
@@ -91,7 +87,7 @@ func NewEntryRule(w EntryRule) *EntryRule {
 
 	// Set default date match type
 	if w.DateMatchType == "" {
-		w.DateMatchType = MatchNearest
+		w.DateMatchType = data.MatchNearest
 	}
 
 	// Set default monthly expiry only to false
@@ -100,7 +96,7 @@ func NewEntryRule(w EntryRule) *EntryRule {
 	return &w
 }
 
-// ResolveScheduleDates computes a list of trading dates for a backtest entry rule
+// ScheduleDates computes a list of trading dates for a backtest entry rule
 // using the provided market bars (barMap). The function interprets the EntryRule
 // to produce candidate dates between entry.Start and entry.End (inclusive),
 // matches those candidates to available bars with findBarDate using
@@ -208,8 +204,8 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 		entry.StartDate, entry.EndDate = entry.EndDate, entry.StartDate
 	}
 
-	// NthList is required for several modes
-	if len(entry.NthList) == 0 {
+	// NthList is required for modes except (default) daily_time
+	if len(entry.NthList) == 0 && !(entry.Mode == "" || entry.Mode == ModeDailyTime || entry.Mode == "default") {
 		return out, fmt.Errorf("nth_list is required for mode %s", entry.Mode)
 	}
 
@@ -238,7 +234,7 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 				continue
 			}
 
-			day := findBarDate(candidate, barDates, entry.DateMatchType)
+			day := data.MatchBarDate(candidate, barDates, entry.DateMatchType)
 			if !day.IsZero() {
 				out = append(out, day)
 			}
@@ -258,7 +254,7 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 				continue
 			}
 
-			day := findBarDate(candidate, barDates, entry.DateMatchType)
+			day := data.MatchBarDate(candidate, barDates, entry.DateMatchType)
 			if !day.IsZero() {
 				out = append(out, day)
 			}
@@ -290,7 +286,7 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 						continue
 					}
 
-					bar := findBarDate(d, barDates, entry.DateMatchType)
+					bar := data.MatchBarDate(d, barDates, entry.DateMatchType)
 					if !bar.IsZero() {
 						out = append(out, bar)
 					}
@@ -308,7 +304,7 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 
 			// Accept if day-of-week position matches NthList
 			if intSliceContains(entry.NthList, int(cur.Weekday())) {
-				day := findBarDate(cur, barDates, entry.DateMatchType)
+				day := data.MatchBarDate(cur, barDates, entry.DateMatchType)
 				if !day.IsZero() {
 					out = append(out, day)
 				}
@@ -319,12 +315,16 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 		}
 
 	// ----------------------------------------------------------------------------------------
-	// default → daily schedule
+	// default → daily schedule (ModeDailyTime)
 	// ----------------------------------------------------------------------------------------
 	default:
 		for d := entry.StartDate; !d.After(entry.EndDate); d = d.AddDate(0, 0, 1) {
-			day := findBarDate(d, barDates, entry.DateMatchType)
+			day := data.MatchBarDate(d, barDates, entry.DateMatchType)
 			if !day.IsZero() {
+				day, err := CombineDateTime(day, entry.TimeOfDay, entry.Timezone)
+				if err != nil {
+					return nil, err
+				}
 				out = append(out, day)
 			}
 		}
@@ -343,25 +343,6 @@ func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]
 		}
 	}
 	return final, nil
-}
-
-// ResolveExpiration computes and returns the expiration date for an option given an open date,
-// a day offset and a list of candidate expiries.
-//
-// It first constructs a candidate date by adding the given offset (in calendar days) to openDate.
-// It then selects and returns a matching date from the expiries slice according to dateMatchType.
-// The offset may be positive, zero, or negative. The expiries slice should contain the available
-// expiration dates (typically sorted); the exact selection behavior (e.g. exact match, nearest prior,
-// nearest next) is governed by the provided DateMatchType and implemented by the underlying matching
-// routine.
-//
-// Note: if no expiry satisfies the matching rules, the result depends on the matching implementation
-// (it may return the zero time).
-func ResolveExpiration(openDate time.Time, offset int, expiries []time.Time, dateMatchType DateMatchType) time.Time {
-	candidate := openDate.AddDate(0, 0, offset)
-	day := findBarDate(candidate, expiries, dateMatchType)
-
-	return day
 }
 
 // GetEarningsDates retrieves reported quarterly earnings dates for the given

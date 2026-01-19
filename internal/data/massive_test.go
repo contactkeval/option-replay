@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	tests "github.com/contactkeval/option-replay/internal/testutil"
 )
 
 var (
@@ -34,7 +36,7 @@ func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 	fromDate := time.Now().AddDate(0, 0, -5)
 	toDate := time.Now()
 
-	_, err := p.GetBars(underlying, fromDate, toDate)
+	_, err := p.GetBars(underlying, fromDate, toDate, 1, "day")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -75,7 +77,7 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 	fromDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	toDate := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
 
-	bars, err := prov.GetBars(underlying, fromDate, toDate)
+	bars, err := prov.GetBars(underlying, fromDate, toDate, 1, "day")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,4 +104,16 @@ func TestGetOptionPrice(t *testing.T) {
 	if price != expected {
 		t.Fatalf("expected price %f, got %f", expected, price)
 	}
+}
+
+func TestGetBars(t *testing.T) {
+	bars, err := prov.GetBars(underlying, tradeDateTime, tradeDateTime.AddDate(0, 0, 5), 1, "day")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(bars) == 0 {
+		t.Fatal("expected non-empty bars")
+	}
+
+	tests.CompareWithGolden(t, "get_bars", bars)
 }

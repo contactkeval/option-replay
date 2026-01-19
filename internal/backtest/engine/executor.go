@@ -21,16 +21,16 @@ type Engine struct {
 
 // Config struct
 type Config struct {
-	Underlying   string            `json:"underlying"`                // e.g. "AAPL"
-	Entry        sch.EntryRule     `json:"entry"`                     // entry rules
-	DaysToExpiry int               `json:"dte,omitempty"`             // default DTE if not specified in legs
-	MatchType    sch.DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
-	Strategy     []st.LegSpec      `json:"strategy"`                  // option legs
-	Exit         ExitSpec          `json:"exit"`                      // exit rules
-	MaxTrades    int               `json:"max_trades,omitempty"`      // max trades to execute, 0 = unlimited
-	OutputDir    string            `json:"output_dir,omitempty"`      // output directory
-	Seed         int64             `json:"seed,omitempty"`            // random seed for stochastic elements
-	Verbosity    int               `json:"verbosity,omitempty"`       // 0=errors,1=info,2=debug
+	Underlying   string             `json:"underlying"`                // e.g. "AAPL"
+	Entry        sch.EntryRule      `json:"entry"`                     // entry rules
+	DaysToExpiry int                `json:"dte,omitempty"`             // default DTE if not specified in legs
+	MatchType    data.DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
+	Strategy     []st.LegSpec       `json:"strategy"`                  // option legs
+	Exit         ExitSpec           `json:"exit"`                      // exit rules
+	MaxTrades    int                `json:"max_trades,omitempty"`      // max trades to execute, 0 = unlimited
+	OutputDir    string             `json:"output_dir,omitempty"`      // output directory
+	Seed         int64              `json:"seed,omitempty"`            // random seed for stochastic elements
+	Verbosity    int                `json:"verbosity,omitempty"`       // 0=errors,1=info,2=debug
 }
 
 // ExitSpec defines various exit rules for trades
@@ -80,7 +80,7 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// fetch bars
-	bars, err := e.prov.GetBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
+	bars, err := e.prov.GetBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate, 1, "day")
 	if err != nil || len(bars) == 0 {
 		// fallback synthetic
 		log.Printf("[warn] provider bars error or empty: %v - generating synthetic", err)
@@ -101,14 +101,14 @@ func (e *Engine) Run() (*Result, error) {
 		log.Printf("[info] hist vol = %.2f%%", hv*100)
 	}
 
-	// get list of expiries for the underlying during backtest period
-	expiries, err := e.prov.GetRelevantExpiries(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
+	// get list of expiryList for the underlying during backtest period
+	expiryList, err := e.prov.GetRelevantExpiries(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("backtest scheduler error: get relevant expiries error, %w", err)
 	}
 
 	// schedule
-	dates, err := sch.ScheduleDates(cfg.Entry, bars, expiries)
+	dates, err := sch.ScheduleDates(cfg.Entry, bars, expiryList)
 	if err != nil {
 		return nil, fmt.Errorf("failed to schedule dates: %w", err)
 	}
@@ -134,22 +134,16 @@ func (e *Engine) Run() (*Result, error) {
 			}
 			continue
 		}
+		// intentionally using close price of bars as open (picking bar at open time)
 		openPrice := bar.Close
 
 		// build legs
 		var legs []st.TradeLeg
-		okLegs := true
-		for _, ls := range cfg.Strategy {
-			exp := sch.ResolveExpiration(dt, cfg.DaysToExpiry, expiries, cfg.Entry.DateMatchType)
-			strike, err := st.ResolveStrike(ls.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs, e.prov)
-			if err != nil {
-				okLegs = false
-				break
+		legs, err = BuildLegs(cfg, dt, openPrice, expiryList, e.prov)
+		if err != nil {
+			if cfg.Verbosity >= 1 {
+				log.Printf("[info] skipping trade on %s: build legs error: %v", dt.Format("2006-01-02"), err)
 			}
-			// TODO: OpenPremium pricing later
-			legs = append(legs, st.TradeLeg{Spec: ls, Strike: strike, OptType: ls.OptionType, Qty: ls.Qty, Expiration: exp, OpenPremium: 0.0})
-		}
-		if !okLegs || len(legs) == 0 {
 			continue
 		}
 
@@ -321,6 +315,26 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 	t := last.Date
 	tr.CloseTime = &t
 	tr.ClosedBy = "data_end"
+}
+
+func BuildLegs(cfg *Config, dt time.Time, openPrice float64, expiryList []time.Time, prov data.Provider) ([]st.TradeLeg, error) {
+	legs := []st.TradeLeg{}
+	okLegs := true
+	for _, legSpec := range cfg.Strategy {
+		exp := st.ResolveExpiration(dt, cfg.DaysToExpiry, expiryList, cfg.Entry.DateMatchType)
+		strike, err := st.ResolveStrike(legSpec.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs, prov)
+		if err != nil {
+			okLegs = false
+			break
+		}
+
+		// TODO: OpenPremium pricing later
+		legs = append(legs, st.TradeLeg{Spec: legSpec, Strike: strike, OptType: legSpec.OptionType, Qty: legSpec.Qty, Expiration: exp, OpenPremium: 0.0})
+	}
+	if !okLegs || len(legs) == 0 {
+		return nil, fmt.Errorf("failed to build legs")
+	}
+	return legs, nil
 }
 
 // checkExits evaluates whether a trade should be exited based on configured exit rules.

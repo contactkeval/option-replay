@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/contactkeval/option-replay/internal/data"
 )
 
 var Update = flag.Bool(
@@ -16,17 +14,6 @@ var Update = flag.Bool(
 	false,
 	"update golden files",
 )
-
-func GetLocalFileDataProvider() data.Provider {
-	var dataProv data.Provider
-	dataProv = data.NewMassiveDataProvider(os.Getenv("POLYGON_API_KEY"))
-	dataProv = data.NewLocalFileDataProvider("dir", dataProv) // Massive data provider as secondary
-	return dataProv
-}
-
-func GetMassiveDataProvider() data.Provider {
-	return data.NewMassiveDataProvider(os.Getenv("POLYGON_API_KEY"))
-}
 
 //
 // --- Golden file helpers ---

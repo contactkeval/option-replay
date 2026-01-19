@@ -36,6 +36,25 @@ type LegSpec struct {
 	LegName    string `json:"leg_name,omitempty"`    // used for dependent wings
 }
 
+// ResolveExpiration computes and returns the expiration date for an option given an open date,
+// a day offset and a list of candidate expiries.
+//
+// It first constructs a candidate date by adding the given offset (in calendar days) to openDate.
+// It then selects and returns a matching date from the expiries slice according to dateMatchType.
+// The offset may be positive, zero, or negative. The expiries slice should contain the available
+// expiration dates (typically sorted); the exact selection behavior (e.g. exact match, nearest prior,
+// nearest next) is governed by the provided DateMatchType and implemented by the underlying matching
+// routine.
+//
+// Note: if no expiry satisfies the matching rules, the result depends on the matching implementation
+// (it may return the zero time).
+func ResolveExpiration(openDate time.Time, offset int, expiries []time.Time, dateMatchType data.DateMatchType) time.Time {
+	candidate := openDate.AddDate(0, 0, offset)
+	day := data.MatchBarDate(candidate, expiries, dateMatchType)
+
+	return day
+}
+
 // ResolveStrike resolves a strike expression like:
 // "ATM", "ATM:+10", "ATM:-10%", "DELTA:30",
 // "{LEG1.STRIKE}+{LEG1.PREMIUM}" etc.
@@ -155,7 +174,7 @@ func resolveDeltaStrike(
 
 func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 
-	// Regex to find patterns like {LEG1.STRIKE}
+	// Regex to find patterns like {LEG1.STRIKE} or {LEG1.PREMIUM}
 	re := regexp.MustCompile(`\{LEG(\d)\.(STRIKE|PREMIUM)\}`)
 
 	m := re.FindAllStringSubmatch(expr, -1)
@@ -204,3 +223,4 @@ func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 		return 0, fmt.Errorf("leg expression {%s} could not be evaluated to a number: %v", expr, calcValResult)
 	}
 }
+

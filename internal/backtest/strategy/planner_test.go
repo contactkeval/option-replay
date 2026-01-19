@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tests "github.com/contactkeval/option-replay/internal/testutil"
+	"github.com/contactkeval/option-replay/internal/data"
 )
 
 var (
@@ -12,8 +12,8 @@ var (
 	asOfPrice   = 581.39
 	openDate    = time.Date(2025, time.January, 14, 0, 0, 0, 0, time.UTC)
 	expiryDate  = time.Date(2025, time.January, 17, 0, 0, 0, 0, time.UTC)
-	provFile    = tests.GetLocalFileDataProvider()
-	provMassive = tests.GetMassiveDataProvider()
+	provFile    = data.GetLocalFileDataProvider()
+	provMassive = data.GetMassiveDataProvider()
 )
 
 func TestResolveATMOffset(t *testing.T) {

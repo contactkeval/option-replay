@@ -42,9 +42,9 @@ func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, 
 	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetBars(underlying string, fromDate, toDate time.Time) ([]Bar, error) {
+func (localFileDataProv *localFileDataProvider) GetBars(underlying string, fromDate, toDate time.Time, timespan int, multiplier string) ([]Bar, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetBars(underlying, fromDate, toDate)
+		return localFileDataProv.secondary.GetBars(underlying, fromDate, toDate, timespan, multiplier)
 	}
 	return nil, fmt.Errorf("GetBars not implemented for localFileDataProvider")
 }
@@ -124,7 +124,7 @@ func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying 
 	for {
 		strike = math.Round(asOfPrice/intervals) * intervals
 
-		bars, err := localFileDataProv.GetBars(underlying, openDate, openDate)
+		bars, err := localFileDataProv.GetBars(underlying, openDate, openDate, 1, "day")
 		if err != nil {
 			return asOfPrice
 		}

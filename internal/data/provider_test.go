@@ -28,7 +28,7 @@ func TestDataProviderContract_GetDailyBars(t *testing.T) {
 
 	for _, prov := range providers {
 		t.Run(prov.name, func(t *testing.T) {
-			bars, err := prov.provider.GetBars("AAPL", start, end)
+			bars, err := prov.provider.GetBars("AAPL", start, end, 1, "day")
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
