@@ -21,16 +21,14 @@ type Engine struct {
 
 // Config struct
 type Config struct {
-	Underlying   string             `json:"underlying"`                // e.g. "AAPL"
-	Entry        sch.EntryRule      `json:"entry"`                     // entry rules
-	DaysToExpiry int                `json:"dte,omitempty"`             // default DTE if not specified in legs
-	MatchType    data.DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
-	Strategy     []st.LegSpec       `json:"strategy"`                  // option legs
-	Exit         ExitSpec           `json:"exit"`                      // exit rules
-	MaxTrades    int                `json:"max_trades,omitempty"`      // max trades to execute, 0 = unlimited
-	OutputDir    string             `json:"output_dir,omitempty"`      // output directory
-	Seed         int64              `json:"seed,omitempty"`            // random seed for stochastic elements
-	Verbosity    int                `json:"verbosity,omitempty"`       // 0=errors,1=info,2=debug
+	Underlying string          `json:"underlying"`           // e.g. "AAPL"
+	Entry      sch.EntryRule   `json:"entry"`                // entry rules
+	Strategy   st.StrategySpec `json:"strategy"`             // option legs
+	Exit       ExitSpec        `json:"exit"`                 // exit rules
+	MaxTrades  int             `json:"max_trades,omitempty"` // max trades to execute, 0 = unlimited
+	ReportDir  string          `json:"report_dir,omitempty"` // report directory
+	Seed       int64           `json:"seed,omitempty"`       // random seed for stochastic elements
+	Verbosity  int             `json:"verbosity,omitempty"`  // 0=errors,1=info,2=debug
 }
 
 // ExitSpec defines various exit rules for trades
@@ -44,8 +42,8 @@ type ExitSpec struct {
 
 type Trade struct {
 	ID                int           // unique trade ID
-	OpenTime          time.Time     // trade open time
-	CloseTime         *time.Time    // trade close time
+	OpenDateTime      time.Time     // trade open date time
+	CloseDateTime     *time.Time    // trade close date time
 	UnderlyingAtOpen  float64       // underlying price at open
 	UnderlyingAtClose float64       // underlying price at close
 	Legs              []st.TradeLeg // trade legs (strategy)
@@ -69,8 +67,8 @@ func NewEngine(cfg *Config, prov data.Provider) *Engine {
 func (e *Engine) Run() (*Result, error) {
 	cfg := e.cfg
 	// fill defaults
-	if cfg.OutputDir == "" {
-		cfg.OutputDir = "./out"
+	if cfg.ReportDir == "" {
+		cfg.ReportDir = "./out"
 	}
 	if cfg.Seed == 0 {
 		cfg.Seed = time.Now().UnixNano()
@@ -139,7 +137,7 @@ func (e *Engine) Run() (*Result, error) {
 
 		// build legs
 		var legs []st.TradeLeg
-		legs, err = BuildLegs(cfg, dt, openPrice, expiryList, e.prov)
+		legs, err = st.PlanStrategy(cfg.Strategy, dt, cfg.Underlying, openPrice, expiryList, e.prov)
 		if err != nil {
 			if cfg.Verbosity >= 1 {
 				log.Printf("[info] skipping trade on %s: build legs error: %v", dt.Format("2006-01-02"), err)
@@ -150,26 +148,26 @@ func (e *Engine) Run() (*Result, error) {
 		// price legs
 		openPremium := 0.0
 		for _, leg := range legs {
-			p, err := e.prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType, dt)
+			p, err := e.prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, dt)
 			if err != nil {
 				// fallback to BS
-				p = pricing.BlackScholesPrice(openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.OptType) == "call")
+				p = pricing.BlackScholesPrice(openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.Spec.OptionType) == "call")
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0
 			if side == "sell" {
 				sign = -1.0
 			}
-			openPremium += sign * p * float64(leg.Qty) * 100.0
+			openPremium += sign * p * float64(leg.Spec.Qty) * 100.0
 		}
 
-		tr := Trade{ID: id, OpenTime: dt, UnderlyingAtOpen: openPrice, Legs: legs, OpenPremium: openPremium, HighPremium: openPremium, LowPremium: openPremium}
+		tr := Trade{ID: id, OpenDateTime: dt, UnderlyingAtOpen: openPrice, Legs: legs, OpenPremium: openPremium, HighPremium: openPremium, LowPremium: openPremium}
 		id++
 		// simulate
 		simCloseTrade(&tr, bars, barMap, *cfg, e.prov, hv)
 		trades = append(trades, tr)
 		if cfg.Verbosity >= 1 {
-			log.Printf("[info] trade %d opened %s closed_by=%s pnl=%.2f", tr.ID, tr.OpenTime.Format("2006-01-02"), tr.ClosedBy, tr.ClosePremium-tr.OpenPremium)
+			log.Printf("[info] trade %d opened %s closed_by=%s pnl=%.2f", tr.ID, tr.OpenDateTime.Format("2006-01-02"), tr.ClosedBy, tr.ClosePremium-tr.OpenPremium)
 		}
 	}
 
@@ -220,7 +218,7 @@ func PriceOption(prov data.Provider, underlying string, S, K float64, asOfDate t
 
 // simCloseTrade: corrected expiration handling (per-leg) and exits
 func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg Config, prov data.Provider, hv float64) {
-	openKey := tr.OpenTime.Format("2006-01-02")
+	openKey := tr.OpenDateTime.Format("2006-01-02")
 	idx := -1
 	for i, b := range bars {
 		if b.Date.Format("2006-01-02") == openKey {
@@ -230,7 +228,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 	}
 	if idx == -1 {
 		now := time.Now().UTC()
-		tr.CloseTime = &now
+		tr.CloseDateTime = &now
 		tr.ClosePremium = tr.OpenPremium
 		tr.ClosedBy = "no_data"
 		return
@@ -245,7 +243,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 			if !b.Date.Before(leg.Expiration) {
 				// at or after expiration -> intrinsic
 				intr := 0.0
-				if strings.ToLower(leg.OptType) == "call" {
+				if strings.ToLower(leg.Spec.OptionType) == "call" {
 					intr = math.Max(0.0, b.Close-leg.Strike)
 				} else {
 					intr = math.Max(0.0, leg.Strike-b.Close)
@@ -255,20 +253,20 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 				if side == "sell" {
 					sign = -1.0
 				}
-				total += sign * intr * float64(leg.Qty) * 100.0
+				total += sign * intr * float64(leg.Spec.Qty) * 100.0
 				continue
 			}
 			// active leg -> price via provider else BS
-			p, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.OptType, b.Date)
+			p, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, b.Date)
 			if err != nil || p <= 0 {
-				p = pricing.BlackScholesPrice(b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.OptType) == "call")
+				p = pricing.BlackScholesPrice(b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.Spec.OptionType) == "call")
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0
 			if side == "sell" {
 				sign = -1.0
 			}
-			total += sign * p * float64(leg.Qty) * 100.0
+			total += sign * p * float64(leg.Spec.Qty) * 100.0
 		}
 
 		if total > tr.HighPremium {
@@ -284,7 +282,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 			tr.ClosePremium = total
 			tr.UnderlyingAtClose = b.Close
 			t := b.Date
-			tr.CloseTime = &t
+			tr.CloseDateTime = &t
 			tr.ClosedBy = reason
 			return
 		}
@@ -302,7 +300,7 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 			tr.ClosePremium = total
 			tr.UnderlyingAtClose = b.Close
 			t := b.Date
-			tr.CloseTime = &t
+			tr.CloseDateTime = &t
 			tr.ClosedBy = "expired"
 			return
 		}
@@ -313,28 +311,8 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 	tr.ClosePremium = tr.HighPremium
 	tr.UnderlyingAtClose = last.Close
 	t := last.Date
-	tr.CloseTime = &t
+	tr.CloseDateTime = &t
 	tr.ClosedBy = "data_end"
-}
-
-func BuildLegs(cfg *Config, dt time.Time, openPrice float64, expiryList []time.Time, prov data.Provider) ([]st.TradeLeg, error) {
-	legs := []st.TradeLeg{}
-	okLegs := true
-	for _, legSpec := range cfg.Strategy {
-		exp := st.ResolveExpiration(dt, cfg.DaysToExpiry, expiryList, cfg.Entry.DateMatchType)
-		strike, err := st.ResolveStrike(legSpec.StrikeRule, cfg.Underlying, openPrice, dt, exp, legs, prov)
-		if err != nil {
-			okLegs = false
-			break
-		}
-
-		// TODO: OpenPremium pricing later
-		legs = append(legs, st.TradeLeg{Spec: legSpec, Strike: strike, OptType: legSpec.OptionType, Qty: legSpec.Qty, Expiration: exp, OpenPremium: 0.0})
-	}
-	if !okLegs || len(legs) == 0 {
-		return nil, fmt.Errorf("failed to build legs")
-	}
-	return legs, nil
 }
 
 // checkExits evaluates whether a trade should be exited based on configured exit rules.
@@ -401,7 +379,7 @@ func checkExits(tr *Trade, currPremium float64, bar data.Bar, cfg Config) string
 	}
 
 	if cfg.Exit.MaxDaysInTrade != nil {
-		days := int(bar.Date.Sub(tr.OpenTime).Hours() / 24.0)
+		days := int(bar.Date.Sub(tr.OpenDateTime).Hours() / 24.0)
 		if days >= *cfg.Exit.MaxDaysInTrade {
 			return fmt.Sprintf("max_days_%d", *cfg.Exit.MaxDaysInTrade)
 		}

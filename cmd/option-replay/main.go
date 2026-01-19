@@ -68,10 +68,10 @@ func main() {
 		log.Fatalf("backtest failed: %v", err)
 	}
 	// write outputs to cfg.OutputDir
-	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
-		log.Printf("[warn] could not create output dir %s: %v", cfg.OutputDir, err)
+	if err := os.MkdirAll(cfg.ReportDir, 0755); err != nil {
+		log.Printf("[warn] could not create output dir %s: %v", cfg.ReportDir, err)
 	}
-	_ = report.WriteJSON(res, cfg.OutputDir)
-	_ = report.WriteCSV(res.Trades, cfg.OutputDir)
-	log.Printf("[done] finished in %v, wrote %d trades to %s", time.Since(start), len(res.Trades), cfg.OutputDir)
+	_ = report.WriteJSON(res, cfg.ReportDir)
+	_ = report.WriteCSV(res.Trades, cfg.ReportDir)
+	log.Printf("[done] finished in %v, wrote %d trades to %s", time.Since(start), len(res.Trades), cfg.ReportDir)
 }

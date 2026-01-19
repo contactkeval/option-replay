@@ -1,0 +1,54 @@
+[
+  {
+    "Spec": {
+      "side": "sell",
+      "option_type": "call",
+      "strike_rule": "ATM",
+      "qty": 1,
+      "expiration": 2
+    },
+    "Strike": 581,
+    "Expiration": "2025-01-17T00:00:00Z",
+    "OpenPremium": 0,
+    "ClosePremium": 0
+  },
+  {
+    "Spec": {
+      "side": "sell",
+      "option_type": "put",
+      "strike_rule": "ATM",
+      "qty": 1,
+      "expiration": 2
+    },
+    "Strike": 581.39,
+    "Expiration": "2025-01-17T00:00:00Z",
+    "OpenPremium": 0,
+    "ClosePremium": 0
+  },
+  {
+    "Spec": {
+      "side": "buy",
+      "option_type": "call",
+      "strike_rule": "ATM",
+      "qty": 1,
+      "expiration": 9
+    },
+    "Strike": 581.39,
+    "Expiration": "2025-01-24T00:00:00Z",
+    "OpenPremium": 0,
+    "ClosePremium": 0
+  },
+  {
+    "Spec": {
+      "side": "buy",
+      "option_type": "put",
+      "strike_rule": "ATM",
+      "qty": 1,
+      "expiration": 9
+    },
+    "Strike": 581.39,
+    "Expiration": "2025-01-24T00:00:00Z",
+    "OpenPremium": 0,
+    "ClosePremium": 0
+  }
+]

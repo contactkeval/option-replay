@@ -1,0 +1,26 @@
+[
+  {
+    "Spec": {
+      "side": "sell",
+      "option_type": "call",
+      "strike_rule": "ATM:+10",
+      "qty": 1
+    },
+    "Strike": 591,
+    "Expiration": "2025-01-17T00:00:00Z",
+    "OpenPremium": 0,
+    "ClosePremium": 0
+  },
+  {
+    "Spec": {
+      "side": "sell",
+      "option_type": "put",
+      "strike_rule": "ATM:-10",
+      "qty": 1
+    },
+    "Strike": 571,
+    "Expiration": "2025-01-17T00:00:00Z",
+    "OpenPremium": 0,
+    "ClosePremium": 0
+  }
+]

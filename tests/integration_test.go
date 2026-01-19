@@ -38,8 +38,8 @@ func TestIntegrationFullRun(t *testing.T) {
 	cfg := &engine.Config{
 		Underlying: "SYN",
 		Entry:      sch.EntryRule{Mode: "daily_time"},
-		Strategy:   []st.LegSpec{{Side: "buy", OptionType: "put", StrikeRule: "ATM", Qty: 1, Expiration: "NDAYS:20"}},
-		OutputDir:  "./test_out",
+		Strategy:   st.StrategySpec{Legs: []st.LegSpec{{Side: "buy", OptionType: "put", StrikeRule: "ATM", Qty: 1, Expiration: 20}}, DateMatchType: "Nearest"},
+		ReportDir:  "./test_out",
 	}
 	prov := data.NewSyntheticProvider()
 	eng := engine.NewEngine(cfg, prov)
@@ -52,7 +52,7 @@ func TestIntegrationFullRun(t *testing.T) {
 		t.Fatalf("expected trades")
 	}
 	// write outputs
-	nos := cfg.OutputDir
+	nos := cfg.ReportDir
 	os.MkdirAll(nos, 0755)
 	b, _ := json.MarshalIndent(res, "", "  ")
 	ioutil.WriteFile(nos+"/trades.json", b, 0644)

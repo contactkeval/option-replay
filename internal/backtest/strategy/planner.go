@@ -19,8 +19,6 @@ import (
 type TradeLeg struct {
 	Spec         LegSpec
 	Strike       float64
-	OptType      string
-	Qty          int
 	Expiration   time.Time
 	OpenPremium  float64
 	ClosePremium float64
@@ -32,8 +30,38 @@ type LegSpec struct {
 	OptionType string `json:"option_type,omitempty"` // "call" or "put", defaults to "call"
 	StrikeRule string `json:"strike_rule"`           // "ATM", "ABS:100", "DELTA:0.3", etc.
 	Qty        int    `json:"qty,omitempty"`         // used for ratio spreads, defaults to one
-	Expiration string `json:"expiration,omitempty"`  // used for calendar spreads, defaults DTE from config
-	LegName    string `json:"leg_name,omitempty"`    // used for dependent wings
+	Expiration int    `json:"expiration,omitempty"`  // used for calendar spreads, defaults DTE from config
+}
+
+type StrategySpec struct {
+	DaysToExpiry  int                `json:"dte,omitempty"`             // default DTE if not overridden in legs
+	DateMatchType data.DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
+	Legs          []LegSpec          `json:"strategy"`
+}
+
+func PlanStrategy(strategy StrategySpec, dt time.Time, underlying string, openPrice float64, expiryList []time.Time, prov data.Provider) ([]TradeLeg, error) {
+	legs := []TradeLeg{}
+	okLegs := true
+	for _, legSpec := range strategy.Legs {
+		offset := strategy.DaysToExpiry
+		// Override if leg-specific expiration is set
+		if legSpec.Expiration != 0 {
+			offset = legSpec.Expiration
+		}
+		exp := ResolveExpiration(dt, offset, expiryList, strategy.DateMatchType)
+		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, dt, exp, legs, prov)
+		if err != nil {
+			okLegs = false
+			break
+		}
+
+		// TODO: OpenPremium pricing later
+		legs = append(legs, TradeLeg{Spec: legSpec, Strike: strike, Expiration: exp, OpenPremium: 0.0})
+	}
+	if !okLegs || len(legs) == 0 {
+		return nil, fmt.Errorf("failed to build legs")
+	}
+	return legs, nil
 }
 
 // ResolveExpiration computes and returns the expiration date for an option given an open date,
@@ -223,4 +251,3 @@ func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 		return 0, fmt.Errorf("leg expression {%s} could not be evaluated to a number: %v", expr, calcValResult)
 	}
 }
-

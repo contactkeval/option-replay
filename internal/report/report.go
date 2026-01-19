@@ -32,12 +32,12 @@ func WriteCSV(trades []engine.Trade, outdir string) error {
 	}
 	for _, t := range trades {
 		closeTime := ""
-		if t.CloseTime != nil {
-			closeTime = t.CloseTime.Format("2006-01-02")
+		if t.CloseDateTime != nil {
+			closeTime = t.CloseDateTime.Format("2006-01-02")
 		}
 		pnl := t.ClosePremium - t.OpenPremium
 		legsJson, _ := json.Marshal(t.Legs)
-		row := []string{fmt.Sprintf("%d", t.ID), t.OpenTime.Format("2006-01-02"), fmt.Sprintf("%.2f", t.UnderlyingAtOpen), fmt.Sprintf("%.2f", t.OpenPremium), closeTime, fmt.Sprintf("%.2f", t.UnderlyingAtClose), fmt.Sprintf("%.2f", t.ClosePremium), fmt.Sprintf("%.2f", pnl), fmt.Sprintf("%.2f", t.HighPremium), fmt.Sprintf("%.2f", t.LowPremium), t.ClosedBy, string(legsJson)}
+		row := []string{fmt.Sprintf("%d", t.ID), t.OpenDateTime.Format("2006-01-02"), fmt.Sprintf("%.2f", t.UnderlyingAtOpen), fmt.Sprintf("%.2f", t.OpenPremium), closeTime, fmt.Sprintf("%.2f", t.UnderlyingAtClose), fmt.Sprintf("%.2f", t.ClosePremium), fmt.Sprintf("%.2f", pnl), fmt.Sprintf("%.2f", t.HighPremium), fmt.Sprintf("%.2f", t.LowPremium), t.ClosedBy, string(legsJson)}
 		_ = w.Write(row)
 	}
 	return nil

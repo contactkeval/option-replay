@@ -14,8 +14,11 @@ func TestProfitTargetExit(t *testing.T) {
 	cfg := &engine.Config{
 		Underlying: "SYN",
 		Entry:      sch.EntryRule{Mode: "daily_time"},
-		Strategy:   []st.LegSpec{{Side: "sell", OptionType: "call", StrikeRule: "ATM", Qty: 1, Expiration: "NDAYS:30"}},
-		Exit:       engine.ExitSpec{ProfitTargetPct: func() *float64 { v := 50.0; return &v }()},
+		Strategy: st.StrategySpec{Legs: []st.LegSpec{
+			{Side: "sell", OptionType: "call", StrikeRule: "ATM", Qty: 1, Expiration: 30},
+			{Side: "sell", OptionType: "put", StrikeRule: "ATM", Qty: 1, Expiration: 30},
+		}, DateMatchType: "Nearest"},
+		Exit: engine.ExitSpec{ProfitTargetPct: func() *float64 { v := 50.0; return &v }()},
 	}
 
 	prov := data.NewSyntheticProvider()
