@@ -39,7 +39,14 @@ type StrategySpec struct {
 	Legs          []LegSpec          `json:"strategy"`
 }
 
-func PlanStrategy(strategy StrategySpec, dt time.Time, underlying string, openPrice float64, expiryList []time.Time, prov data.Provider) ([]TradeLeg, error) {
+func PlanStrategy(
+	strategy StrategySpec,
+	openDateTime time.Time,
+	underlying string,
+	openPrice float64,
+	expiryList []time.Time,
+	prov data.Provider,
+) ([]TradeLeg, error) {
 	legs := []TradeLeg{}
 	okLegs := true
 	for _, legSpec := range strategy.Legs {
@@ -48,15 +55,20 @@ func PlanStrategy(strategy StrategySpec, dt time.Time, underlying string, openPr
 		if legSpec.Expiration != 0 {
 			offset = legSpec.Expiration
 		}
-		exp := ResolveExpiration(dt, offset, expiryList, strategy.DateMatchType)
-		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, dt, exp, legs, prov)
+		expiryDate := ResolveExpiration(openDateTime, offset, expiryList, strategy.DateMatchType)
+		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, prov)
 		if err != nil {
 			okLegs = false
 			break
 		}
 
-		// TODO: OpenPremium pricing later
-		legs = append(legs, TradeLeg{Spec: legSpec, Strike: strike, Expiration: exp, OpenPremium: 0.0})
+		openPremium, err := prov.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
+		if err != nil {
+			okLegs = false
+			break
+		}
+
+		legs = append(legs, TradeLeg{Spec: legSpec, Strike: strike, Expiration: expiryDate, OpenPremium: openPremium})
 	}
 	if !okLegs || len(legs) == 0 {
 		return nil, fmt.Errorf("failed to build legs")
@@ -76,7 +88,12 @@ func PlanStrategy(strategy StrategySpec, dt time.Time, underlying string, openPr
 //
 // Note: if no expiry satisfies the matching rules, the result depends on the matching implementation
 // (it may return the zero time).
-func ResolveExpiration(openDate time.Time, offset int, expiries []time.Time, dateMatchType data.DateMatchType) time.Time {
+func ResolveExpiration(
+	openDate time.Time,
+	offset int,
+	expiries []time.Time,
+	dateMatchType data.DateMatchType,
+) time.Time {
 	candidate := openDate.AddDate(0, 0, offset)
 	day := data.MatchBarDate(candidate, expiries, dateMatchType)
 
@@ -149,29 +166,6 @@ func ResolveStrike(
 	return 0, fmt.Errorf("unrecognized strike expression: %s", strikeExpr)
 }
 
-// offset = "+10", "-20", "+10%", "-5%" etc.
-func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
-
-	// Percentage offset?
-	if strings.HasSuffix(offset, "%") {
-		pctStr := offset[:len(offset)-1]
-		pct, err := strconv.ParseFloat(pctStr, 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid percent offset: %w", err)
-		}
-		target := asOfPrice + (asOfPrice * pct / 100.0)
-		target = math.Round(target*100) / 100 // round to 2 decimals
-		return target, nil
-	}
-
-	// Absolute offset
-	absVal, err := strconv.ParseFloat(offset, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid absolute offset: %w", err)
-	}
-	return math.Round((asOfPrice+absVal)*100) / 100, nil
-}
-
 func resolveDeltaStrike(
 	underlying string,
 	expiryDate time.Time,
@@ -198,6 +192,29 @@ func resolveDeltaStrike(
 	return pricing.StrikeFromDelta(asOfPrice, targetDelta, 0.02, 0.0, iv, daysToExpiry, true), nil
 
 	//4. TODO: refine with real market data (after estimating strike, find closest strike from option chain by calculating deltas using market prices)
+}
+
+// offset = "+10", "-20", "+10%", "-5%" etc.
+func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
+
+	// Percentage offset?
+	if strings.HasSuffix(offset, "%") {
+		pctStr := offset[:len(offset)-1]
+		pct, err := strconv.ParseFloat(pctStr, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid percent offset: %w", err)
+		}
+		target := asOfPrice + (asOfPrice * pct / 100.0)
+		target = math.Round(target*100) / 100 // round to 2 decimals
+		return target, nil
+	}
+
+	// Absolute offset
+	absVal, err := strconv.ParseFloat(offset, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid absolute offset: %w", err)
+	}
+	return math.Round((asOfPrice+absVal)*100) / 100, nil
 }
 
 func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {

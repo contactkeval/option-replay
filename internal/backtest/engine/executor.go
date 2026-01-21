@@ -164,7 +164,7 @@ func (e *Engine) Run() (*Result, error) {
 		tr := Trade{ID: id, OpenDateTime: dt, UnderlyingAtOpen: openPrice, Legs: legs, OpenPremium: openPremium, HighPremium: openPremium, LowPremium: openPremium}
 		id++
 		// simulate
-		simCloseTrade(&tr, bars, barMap, *cfg, e.prov, hv)
+		simCloseTrade(&tr, bars, barMap, hv, *cfg, e.prov)
 		trades = append(trades, tr)
 		if cfg.Verbosity >= 1 {
 			log.Printf("[info] trade %d opened %s closed_by=%s pnl=%.2f", tr.ID, tr.OpenDateTime.Format("2006-01-02"), tr.ClosedBy, tr.ClosePremium-tr.OpenPremium)
@@ -216,8 +216,38 @@ func PriceOption(prov data.Provider, underlying string, S, K float64, asOfDate t
 	return pricing.BlackScholesPrice(S, K, (expiryDate.Sub(asOfDate).Hours() / (24 * 365)), 0.02, iv, strings.ToLower(optType) == "call"), nil
 }
 
-// simCloseTrade: corrected expiration handling (per-leg) and exits
-func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg Config, prov data.Provider, hv float64) {
+// simCloseTrade simulates the closing of a trade by iterating through historical bar data
+// to determine when and how the trade exits. It updates the trade's close details including
+// the close date, close premium, underlying price at close, and the reason for closure.
+//
+// The function searches for the bar corresponding to the trade's open date. If no data exists
+// for that date, it closes the trade immediately with no price change and marks it as "no_data".
+//
+// For each subsequent bar, it calculates the total premium of all trade legs:
+//   - If a leg has expired, it uses the intrinsic value (payoff at expiration)
+//   - If a leg is still active, it fetches the option price from the provider or falls back
+//     to Black-Scholes pricing if the provider returns no data
+//
+// The function tracks the high and low premiums reached during the trade's life. It then
+// checks for exit conditions (stop loss, profit target, etc.) via checkExits. If an exit
+// condition is met, the trade closes with that reason. If all legs expire naturally, the
+// trade closes with reason "expired". If the bar data ends without an explicit exit, the
+// trade closes at the last available bar with reason "data_end".
+//
+// Parameters:
+//   - tr: pointer to the Trade being simulated
+//   - bars: slice of historical bar data sorted chronologically
+//   - barMap: map of bar data by key (currently unused in function)
+//   - historicalVolatility: volatility used for Black-Scholes fallback pricing
+//   - cfg: configuration containing the underlying symbol and exit parameters
+//   - prov: data provider for fetching option prices
+func simCloseTrade(
+	tr *Trade,
+	bars []data.Bar,
+	barMap map[string]data.Bar,
+	historicalVolatility float64,
+	cfg Config,
+	prov data.Provider) {
 	openKey := tr.OpenDateTime.Format("2006-01-02")
 	idx := -1
 	for i, b := range bars {
@@ -259,7 +289,10 @@ func simCloseTrade(tr *Trade, bars []data.Bar, barMap map[string]data.Bar, cfg C
 			// active leg -> price via provider else BS
 			p, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, b.Date)
 			if err != nil || p <= 0 {
-				p = pricing.BlackScholesPrice(b.Close, leg.Strike, (leg.Expiration.Sub(b.Date).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.Spec.OptionType) == "call")
+				//TODO: risk-free rate from provider or config - using 2% fixed here
+				p = pricing.BlackScholesPrice(b.Close, leg.Strike,
+					(leg.Expiration.Sub(b.Date).Hours() / (24 * 365)),
+					0.02, historicalVolatility, strings.ToLower(leg.Spec.OptionType) == "call")
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0

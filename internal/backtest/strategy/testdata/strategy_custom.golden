@@ -8,7 +8,7 @@
     },
     "Strike": 581,
     "Expiration": "2025-01-15T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 4.49,
     "ClosePremium": 0
   },
   {
@@ -20,7 +20,7 @@
     },
     "Strike": 581,
     "Expiration": "2025-01-15T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 2.49,
     "ClosePremium": 0
   },
   {
@@ -33,7 +33,7 @@
     },
     "Strike": 581,
     "Expiration": "2025-01-16T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 5.37,
     "ClosePremium": 0
   },
   {
@@ -46,7 +46,7 @@
     },
     "Strike": 581,
     "Expiration": "2025-01-16T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 3.3,
     "ClosePremium": 0
   }
 ]

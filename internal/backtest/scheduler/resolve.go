@@ -171,7 +171,11 @@ func NewEntryRule(w EntryRule) *EntryRule {
 //
 // Returns:
 //   - []time.Time: sorted, unique list of scheduled trading dates (as time.Time).
-func ScheduleDates(entry EntryRule, barMap []data.Bar, expiries []time.Time) ([]time.Time, error) {
+func ScheduleDates(
+	entry EntryRule,
+	barMap []data.Bar,
+	expiries []time.Time,
+) ([]time.Time, error) {
 	const (
 		ModeEarningsOffset = "earnings_offset"
 		ModeExpiryOffset   = "expiry_offset"
