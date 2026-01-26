@@ -1,3 +1,16 @@
+// Package strategy contains logic for converting a high-level option strategy
+// definition into fully-resolved trade legs.
+//
+// Responsibilities:
+//   - Resolve expiration dates using market calendars
+//   - Resolve strikes using rules such as ATM, DELTA, or leg expressions
+//   - Fetch option prices and implied volatility via data providers
+//   - Produce deterministic, replayable trade legs
+//
+// Design notes:
+//   - This package is deterministic given inputs and provider behavior
+//   - Logging is informational only and does not affect execution
+//   - Errors are typed where useful and wrapped for caller inspection
 package strategy
 
 import (
@@ -12,33 +25,83 @@ import (
 	"github.com/Knetic/govaluate"
 
 	"github.com/contactkeval/option-replay/internal/data"
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pricing"
 )
 
-// Trade/TradeLeg/Bar types reused from original but simplified for internal use
+//
+// ==========================
+// Error taxonomy
+// ==========================
+//
+
+// Typed errors allow callers and tests to detect failure categories
+// without string matching.
+var (
+	ErrInvalidStrikeExpression = errors.New("invalid strike expression")
+	ErrLegIndexOutOfRange      = errors.New("leg index out of range")
+)
+
+//
+// ==========================
+// Domain Types
+// ==========================
+//
+
+// TradeLeg represents a fully resolved option leg.
+//
+// It is the output of strategy planning and contains concrete market
+// values derived from a LegSpec.
 type TradeLeg struct {
-	Spec         LegSpec
-	Strike       float64
-	Expiration   time.Time
-	OpenPremium  float64
-	ClosePremium float64
+	Spec         LegSpec   // Original leg specification
+	Strike       float64   // Resolved option strike
+	Expiration   time.Time // Resolved option expiration date
+	OpenPremium  float64   // Premium at trade open
+	ClosePremium float64   // Premium at trade close (filled later)
 }
 
-// Individual leg specification
+// LegSpec defines a single option leg as provided by the user or strategy JSON.
+//
+// This struct represents *intent*, not resolved market values.
 type LegSpec struct {
-	Side       string `json:"side,omitempty"`        // "buy" or "sell", defaults to "buy"
-	OptionType string `json:"option_type,omitempty"` // "call" or "put", defaults to "call"
-	StrikeRule string `json:"strike_rule"`           // "ATM", "ABS:100", "DELTA:0.3", etc.
-	Qty        int    `json:"qty,omitempty"`         // used for ratio spreads, defaults to one
-	Expiration int    `json:"expiration,omitempty"`  // used for calendar spreads, defaults DTE from config
+	Side       string `json:"side,omitempty"`        // buy or sell (default: buy)
+	OptionType string `json:"option_type,omitempty"` // call or put (default: call)
+	StrikeRule string `json:"strike_rule"`           // ATM, ATM:+10, DELTA:0.3, {LEG1.STRIKE}, etc.
+	Qty        int    `json:"qty,omitempty"`         // Quantity for ratio spreads
+	Expiration int    `json:"expiration,omitempty"`  // DTE override for this leg
 }
 
+// StrategySpec defines a multi-leg option strategy.
+//
+// Shared defaults apply unless overridden at the leg level.
 type StrategySpec struct {
-	DaysToExpiry  int                `json:"dte,omitempty"`             // default DTE if not overridden in legs
-	DateMatchType data.DateMatchType `json:"date_match_type,omitempty"` // date matching type, default "nearest"
-	Legs          []LegSpec          `json:"strategy"`
+	DaysToExpiry  int                `json:"dte,omitempty"`             // Default DTE
+	DateMatchType data.DateMatchType `json:"date_match_type,omitempty"` // Expiry matching rule
+	Legs          []LegSpec          `json:"strategy"`                  // Strategy legs
 }
 
+//
+// ==========================
+// Strategy Planning
+// ==========================
+//
+
+// PlanStrategy resolves a strategy specification into concrete trade legs.
+//
+// It determines expiration dates, resolves strikes, fetches option premiums,
+// and returns a slice of fully-specified TradeLegs ready for execution or replay.
+//
+// Parameters:
+//   - strategy: Strategy definition including defaults and legs
+//   - openDateTime: Timestamp when the strategy is opened
+//   - underlying: Underlying symbol (e.g. NIFTY, SPY)
+//   - openPrice: Spot price of the underlying at open
+//   - expiryList: Available option expiration dates
+//   - prov: Market data provider
+//
+// Returns:
+//   - []TradeLeg: Fully resolved trade legs in order
+//   - error: Non-nil if any leg cannot be resolved
 func PlanStrategy(
 	strategy StrategySpec,
 	openDateTime time.Time,
@@ -47,47 +110,93 @@ func PlanStrategy(
 	expiryList []time.Time,
 	prov data.Provider,
 ) ([]TradeLeg, error) {
+
+	logger.Infof(
+		"event=plan_strategy underlying=%s open_time=%s price=%.2f",
+		underlying,
+		openDateTime.Format(time.RFC3339),
+		openPrice,
+	)
+
 	legs := []TradeLeg{}
-	okLegs := true
-	for _, legSpec := range strategy.Legs {
+
+	for i, legSpec := range strategy.Legs {
+		logger.Debugf("event=resolve_leg index=%d spec=%+v", i+1, legSpec)
+
+		// Determine expiration offset
 		offset := strategy.DaysToExpiry
-		// Override if leg-specific expiration is set
 		if legSpec.Expiration != 0 {
 			offset = legSpec.Expiration
 		}
+
+		// Resolve expiration date
 		expiryDate := ResolveExpiration(openDateTime, offset, expiryList, strategy.DateMatchType)
-		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, prov)
+		logger.Tracef("event=expiry_resolved leg=%d expiry=%s", i+1, expiryDate.Format("2006-01-02"))
+
+		strike, err := ResolveStrike(
+			legSpec.StrikeRule,
+			underlying,
+			openPrice,
+			openDateTime,
+			expiryDate,
+			legs,
+			prov,
+		)
 		if err != nil {
-			okLegs = false
-			break
+			logger.Errorf("event=strike_resolution_failed leg=%d err=%v", i+1, err)
+			return nil, err
 		}
 
-		openPremium, err := prov.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
+		// Fetch option premium
+		openPremium, err := prov.GetOptionPrice(
+			underlying,
+			strike,
+			expiryDate,
+			legSpec.OptionType,
+			openDateTime,
+		)
 		if err != nil {
-			okLegs = false
-			break
+			logger.Errorf("event=premium_fetch_failed leg=%d err=%v", i+1, err)
+			return nil, err
 		}
 
-		legs = append(legs, TradeLeg{Spec: legSpec, Strike: strike, Expiration: expiryDate, OpenPremium: openPremium})
+		logger.Infof(
+			"event=leg_resolved leg=%d side=%s type=%s strike=%.2f premium=%.2f",
+			i+1,
+			legSpec.Side,
+			legSpec.OptionType,
+			strike,
+			openPremium,
+		)
+
+		// Append resolved leg
+		legs = append(legs, TradeLeg{
+			Spec:        legSpec,
+			Strike:      strike,
+			Expiration:  expiryDate,
+			OpenPremium: openPremium,
+		})
 	}
-	if !okLegs || len(legs) == 0 {
-		return nil, fmt.Errorf("failed to build legs")
-	}
+
 	return legs, nil
 }
 
-// ResolveExpiration computes and returns the expiration date for an option given an open date,
-// a day offset and a list of candidate expiries.
 //
-// It first constructs a candidate date by adding the given offset (in calendar days) to openDate.
-// It then selects and returns a matching date from the expiries slice according to dateMatchType.
-// The offset may be positive, zero, or negative. The expiries slice should contain the available
-// expiration dates (typically sorted); the exact selection behavior (e.g. exact match, nearest prior,
-// nearest next) is governed by the provided DateMatchType and implemented by the underlying matching
-// routine.
+// ==========================
+// Expiration Resolution
+// ==========================
 //
-// Note: if no expiry satisfies the matching rules, the result depends on the matching implementation
-// (it may return the zero time).
+
+// ResolveExpiration determines the expiration date for an option leg.
+//
+// Parameters:
+//   - openDate: Strategy open timestamp
+//   - offset: Days-to-expiry offset (calendar days)
+//   - expiries: Available expiration dates
+//   - dateMatchType: Matching rule (nearest, prior, next, etc.)
+//
+// Returns:
+//   - time.Time: Selected expiration date (may be zero if no match)
 func ResolveExpiration(
 	openDate time.Time,
 	offset int,
@@ -95,16 +204,37 @@ func ResolveExpiration(
 	dateMatchType data.DateMatchType,
 ) time.Time {
 	candidate := openDate.AddDate(0, 0, offset)
-	day := data.MatchBarDate(candidate, expiries, dateMatchType)
-
-	return day
+	return data.MatchBarDate(candidate, expiries, dateMatchType)
 }
 
-// ResolveStrike resolves a strike expression like:
-// "ATM", "ATM:+10", "ATM:-10%", "DELTA:30",
-// "{LEG1.STRIKE}+{LEG1.PREMIUM}" etc.
+//
+// ==========================
+// Strike Resolution
+// ==========================
+//
+
+// ResolveStrike converts a strike expression into a concrete strike price.
+//
+// Supported formats:
+//   - ATM
+//   - ATM:+10, ATM:-5%
+//   - DELTA:0.3
+//   - {LEG1.STRIKE}+{LEG1.PREMIUM}
+//
+// Parameters:
+//   - strikeExpr: Strike expression
+//   - underlying: Underlying symbol
+//   - asOfPrice: Spot price at evaluation time
+//   - openDate: Strategy open timestamp
+//   - expiryDate: Option expiration date
+//   - legs: Previously resolved legs
+//   - prov: Market data provider
+//
+// Returns:
+//   - float64: Resolved strike price
+//   - error: If expression cannot be evaluated
 func ResolveStrike(
-	strikeExpr string, // strike expression e.g. "ATM", "ATM:+10", "DELTA:30", "{LEG1.STRIKE}+{LEG1.PREMIUM}"
+	strikeExpr string,
 	underlying string,
 	asOfPrice float64,
 	openDate time.Time,
@@ -113,48 +243,46 @@ func ResolveStrike(
 	prov data.Provider,
 ) (float64, error) {
 
-	// Trim spaces for safety
 	strikeExpr = strings.TrimSpace(strings.ToUpper(strikeExpr))
+	logger.Debugf("event=resolve_strike expr=%s", strikeExpr)
 
-	// ---------------------------------------------------------
-	// 1. Simple ATM case
-	// ---------------------------------------------------------
 	if strikeExpr == "ATM" {
 		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice), nil
 	}
 
-	// ---------------------------------------------------------
-	// 2. ATM modifiers: ATM:+10, ATM:-10%, etc.
-	// ---------------------------------------------------------
 	if strings.HasPrefix(strikeExpr, "ATM:") {
-		offset := strikeExpr[len("ATM:"):] // "+10", "-10%", etc.
-		target, err := resolveATMOffset(offset, asOfPrice)
+		target, err := resolveATMOffset(strikeExpr[len("ATM:"):], asOfPrice)
 		if err != nil {
 			return 0, err
 		}
 		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
-	// ---------------------------------------------------------
-	// 3. DELTA:X rule
-	// ---------------------------------------------------------
 	if strings.HasPrefix(strikeExpr, "DELTA:") {
 		deltaStr := strings.TrimPrefix(strikeExpr, "DELTA:")
+		logger.Debugf("delta-based strike with target delta=%s", deltaStr)
 		targetDelta, err := strconv.ParseFloat(deltaStr, 64)
 		if err != nil {
+			logger.Errorf("parse float failed for DELTA expression:%s, %v", deltaStr, err)
 			return 0, fmt.Errorf("invalid DELTA value: %w", err)
 		}
-		target, err := resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, prov)
+		target, err := resolveDeltaStrike(
+			underlying,
+			expiryDate,
+			openDate,
+			asOfPrice,
+			targetDelta,
+			prov,
+		)
 		if err != nil {
+			logger.Errorf("resolve strike failed for DELTA expression:%s, %v", deltaStr, err)
 			return 0, err
 		}
+
 		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
-	// ---------------------------------------------------------
-	// 4. Expression evaluator using legs:
-	//    "{LEG1.STRIKE}+{LEG1.PREMIUM}"
-	// ---------------------------------------------------------
+	// Expression using previous legs
 	if strings.Contains(strikeExpr, "{LEG") {
 		target, err := evaluateLegExpression(strikeExpr, legs)
 		if err != nil {
@@ -163,9 +291,28 @@ func ResolveStrike(
 		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
-	return 0, fmt.Errorf("unrecognized strike expression: %s", strikeExpr)
+	return 0, fmt.Errorf("%w: %s", ErrInvalidStrikeExpression, strikeExpr)
 }
 
+//
+// ==========================
+// Helpers
+// ==========================
+//
+
+// resolveDeltaStrike computes a strike corresponding to a target delta.
+//
+// Parameters:
+//   - underlying: Underlying symbol
+//   - expiryDate: Option expiration date
+//   - openDate: Strategy open timestamp
+//   - asOfPrice: Spot price
+//   - targetDelta: Desired option delta
+//   - dataProv: Market data provider
+//
+// Returns:
+//   - float64: Estimated strike price
+//   - error: If IV or pricing fails
 func resolveDeltaStrike(
 	underlying string,
 	expiryDate time.Time,
@@ -175,77 +322,88 @@ func resolveDeltaStrike(
 	dataProv data.Provider,
 ) (float64, error) {
 
-	// 1. Fetch ATM option chain
-	strike, callPrice, putPrice, err := dataProv.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
+	// Fetch ATM option prices
+	strike, callPrice, putPrice, err := dataProv.GetATMOptionPrices(
+		underlying,
+		expiryDate,
+		openDate,
+		asOfPrice,
+	)
 	if err != nil {
 		return 0, err
 	}
 
-	// 2. Estimate implied volatility (stub)
+	// Estimate implied volatility
 	daysToExpiry := expiryDate.Sub(openDate).Hours() / 24 / 365.25
 	iv, err := pricing.ImpliedVolATM(asOfPrice, strike, daysToExpiry, 0.02, callPrice, putPrice)
 	if err != nil {
 		return 0, err
 	}
 
-	// 3. Compute strike for desired delta (Black–Scholes stub)
-	return pricing.StrikeFromDelta(asOfPrice, targetDelta, 0.02, 0.0, iv, daysToExpiry, true), nil
+	logger.Tracef("event=iv_estimated iv=%.4f dte=%.3f", iv, daysToExpiry)
 
-	//4. TODO: refine with real market data (after estimating strike, find closest strike from option chain by calculating deltas using market prices)
+	return pricing.StrikeFromDelta(asOfPrice, targetDelta, 0.02, 0.0, iv, daysToExpiry, true), nil
 }
 
-// offset = "+10", "-20", "+10%", "-5%" etc.
+// resolveATMOffset applies an absolute or percentage offset to a price.
+//
+// Parameters:
+//   - offset: Offset string (+10, -5%, etc.)
+//   - asOfPrice: Spot price
+//
+// Returns:
+//   - float64: Adjusted price
+//   - error: If offset cannot be parsed
 func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
 
-	// Percentage offset?
 	if strings.HasSuffix(offset, "%") {
-		pctStr := offset[:len(offset)-1]
-		pct, err := strconv.ParseFloat(pctStr, 64)
+		pct, err := strconv.ParseFloat(strings.TrimSuffix(offset, "%"), 64)
 		if err != nil {
-			return 0, fmt.Errorf("invalid percent offset: %w", err)
+			return 0, err
 		}
-		target := asOfPrice + (asOfPrice * pct / 100.0)
-		target = math.Round(target*100) / 100 // round to 2 decimals
-		return target, nil
+		return math.Round((asOfPrice+asOfPrice*pct/100)*100) / 100, nil
 	}
 
-	// Absolute offset
-	absVal, err := strconv.ParseFloat(offset, 64)
+	abs, err := strconv.ParseFloat(offset, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid absolute offset: %w", err)
+		return 0, err
 	}
-	return math.Round((asOfPrice+absVal)*100) / 100, nil
+
+	return math.Round((asOfPrice+abs)*100) / 100, nil
 }
 
+// evaluateLegExpression evaluates expressions referencing prior legs.
+//
+// Parameters:
+//   - expr: Expression string
+//   - legs: Previously resolved legs
+//
+// Returns:
+//   - float64: Evaluated numeric result
+//   - error: If expression is invalid or cannot be evaluated
 func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 
-	// Regex to find patterns like {LEG1.STRIKE} or {LEG1.PREMIUM}
 	re := regexp.MustCompile(`\{LEG(\d)\.(STRIKE|PREMIUM)\}`)
-
-	m := re.FindAllStringSubmatch(expr, -1)
-	if m == nil {
-		return 0, errors.New("invalid leg expression")
+	matches := re.FindAllStringSubmatch(expr, -1)
+	if matches == nil {
+		return 0, ErrInvalidStrikeExpression
 	}
 
-	// Replace tokens with numeric values
 	evalStr := expr
 
-	for _, match := range m {
-		legIndexStr := match[1]
-		field := match[2]
-
-		idx, _ := strconv.Atoi(legIndexStr)
-		idx = idx - 1 // LEG1 → index 0
+	for _, match := range matches {
+		idx, _ := strconv.Atoi(match[1])
+		idx-- // LEG1 → index 0
 
 		if idx < 0 || idx >= len(legs) {
-			return 0, fmt.Errorf("LEG%d out of range", idx+1)
+			return 0, ErrLegIndexOutOfRange
 		}
 
 		var value float64
-		switch field {
-		case "STRIKE":
+		if match[2] == "STRIKE" {
 			value = legs[idx].Strike
-		case "PREMIUM":
+		} else {
+			// "PREMIUM"
 			value = legs[idx].OpenPremium
 		}
 
@@ -254,17 +412,18 @@ func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
 
 	evalExpr, err := govaluate.NewEvaluableExpression(evalStr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse leg expression: %w", err)
+		return 0, err
 	}
 
-	calcVal, err := evalExpr.Evaluate(nil)
+	result, err := evalExpr.Evaluate(nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to evaluate leg expression: %w", err)
+		return 0, err
 	}
 
-	if calcValResult, ok := calcVal.(float64); ok {
-		return calcValResult, nil
-	} else {
-		return 0, fmt.Errorf("leg expression {%s} could not be evaluated to a number: %v", expr, calcValResult)
+	f, ok := result.(float64)
+	if !ok {
+		return 0, ErrInvalidStrikeExpression
 	}
+
+	return f, nil
 }
