@@ -482,9 +482,9 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(
 	expiryMap := map[string]time.Time{}
 
 	for _, strike := range roundedStrikes {
-		logger.Debugf("fetching contracts for strike %.2f", strike)
+		logger.Tracef("fetching contracts for strike %.2f", strike)
 		contracts, err := massiveDataProv.GetContracts(
-			ticker, strike, fromDate, time.Time{}, toDate,
+			ticker, strike, time.Time{}, fromDate, toDate,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("fetch contracts strike %.2f: %w", strike, err)

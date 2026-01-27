@@ -158,7 +158,22 @@ func (e *Engine) Run() (*Result, error) {
 			)
 			if err != nil {
 				// fallback to BS
-				p = pricing.BlackScholesPrice(openPrice, leg.Strike, (leg.Expiration.Sub(dt).Hours() / (24 * 365)), 0.02, hv, strings.ToLower(leg.Spec.OptionType) == "call")
+				logger.Debugf(
+					"option price fallback BS %s %s K=%.2f exp=%s err=%v",
+					cfg.Underlying,
+					leg.Spec.OptionType,
+					leg.Strike,
+					leg.Expiration.Format("2006-01-02"),
+					err,
+				)
+				p = pricing.BlackScholesPrice(
+					openPrice,
+					leg.Strike,
+					(leg.Expiration.Sub(dt).Hours() / (24 * 365)),
+					0.02,
+					hv, // historical volatility
+					strings.ToLower(leg.Spec.OptionType) == "call",
+				)
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0
@@ -177,14 +192,21 @@ func (e *Engine) Run() (*Result, error) {
 			HighPremium:      openPremium,
 			LowPremium:       openPremium,
 		}
+		logger.Infof(
+			"trade %d opened %s underlying=%.2f open premium=%.2f",
+			tr.ID,
+			dt.Format("2006-01-02"),
+			openPrice,
+			openPremium,
+		)
 		id++
 		// simulate
 		simCloseTrade(&tr, bars, barMap, hv, *cfg, e.prov)
 		trades = append(trades, tr)
-		logger.Infof("trade %d opened %s closed_by=%s pnl=%.2f",
+		logger.Infof("trade %d closed_by=%s close premium=%.2f pnl=%.2f",
 			tr.ID,
-			tr.OpenDateTime.Format("2006-01-02"),
 			tr.ClosedBy,
+			tr.ClosePremium,
 			tr.ClosePremium-tr.OpenPremium,
 		)
 	}
@@ -280,17 +302,27 @@ func simCloseTrade(
 	barMap map[string]data.Bar,
 	historicalVolatility float64,
 	cfg Config,
-	prov data.Provider) {
+	prov data.Provider,
+) {
 
-	openKey := tr.OpenDateTime.Format("2006-01-02")
-	idx := -1
-	for i, b := range bars {
-		if b.Date.Format("2006-01-02") == openKey {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
+	// openKey := tr.OpenDateTime.Format("2006-01-02")
+	// idx := -1
+	// for i, b := range bars {
+	// 	if b.Date.Format("2006-01-02") == openKey {
+	// 		idx = i
+	// 		break
+	// 	}
+	// }
+	// // If no bar found at or after open date
+	// if idx == -1 {
+
+	// Efficiently find the starting bar using binary search instead of string formatting
+	idx := sort.Search(len(bars), func(i int) bool {
+		return !bars[i].Date.Before(tr.OpenDateTime)
+	})
+
+	// If no bar found at or after open date
+	if idx == len(bars) {
 		now := time.Now().UTC()
 		tr.CloseDateTime = &now
 		tr.ClosePremium = tr.OpenPremium
@@ -324,9 +356,22 @@ func simCloseTrade(
 			p, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, b.Date)
 			if err != nil || p <= 0 {
 				//TODO: risk-free rate from provider or config - using 2% fixed here
-				p = pricing.BlackScholesPrice(b.Close, leg.Strike,
+				logger.Debugf(
+					"option price fallback BS %s %s K=%.2f exp=%s err=%v",
+					cfg.Underlying,
+					leg.Spec.OptionType,
+					leg.Strike,
+					leg.Expiration.Format("2006-01-02"),
+					err,
+				)
+				p = pricing.BlackScholesPrice(
+					b.Close,
+					leg.Strike,
 					(leg.Expiration.Sub(b.Date).Hours() / (24 * 365)),
-					0.02, historicalVolatility, strings.ToLower(leg.Spec.OptionType) == "call")
+					0.02,
+					historicalVolatility,
+					strings.ToLower(leg.Spec.OptionType) == "call",
+				)
 			}
 			side := strings.ToLower(leg.Spec.Side)
 			sign := 1.0
@@ -346,6 +391,14 @@ func simCloseTrade(
 		// check exits
 		reason := checkExits(tr, total, b, cfg)
 		if reason != "" {
+			logger.Debugf(
+				"trade %d exit %s on %s premium=%.2f underlying=%.2f",
+				tr.ID,
+				reason,
+				b.Date.Format("2006-01-02"),
+				total,
+				b.Close,
+			)
 			tr.ClosePremium = total
 			tr.UnderlyingAtClose = b.Close
 			t := b.Date
@@ -452,7 +505,7 @@ func checkExits(
 	}
 
 	if cfg.Exit.MaxDaysInTrade != nil {
-		days := int(bar.Date.Sub(tr.OpenDateTime).Hours() / 24.0)
+		days := int(math.Floor(bar.Date.Sub(tr.OpenDateTime).Hours() / 24))
 		if days >= *cfg.Exit.MaxDaysInTrade {
 			return fmt.Sprintf("max_days_%d", *cfg.Exit.MaxDaysInTrade)
 		}

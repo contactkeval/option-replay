@@ -11,14 +11,10 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/data"
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 type EarningsResponse struct {
-	// TODO : remove commented code if not needed
-	// AnnualEarnings []struct {
-	// 	FiscalDateEnding string `json:"fiscalDateEnding"`
-	// } `json:"annualEarnings"`
-
 	// Need quarterly earnings dates only
 	QuarterlyEarnings []struct {
 		ReportedDate string `json:"reportedDate"`
@@ -157,17 +153,17 @@ func NewEntryRule(w EntryRule) *EntryRule {
 //
 // Errors:
 //   - Returned for invalid input (e.g., Start after End), missing required
-//     parameters for a mode (e.g., missing Underlying or NthList), and for
-//     failures when fetching external data (earnings or expiries). Mode-specific
-//     errors wrap the underlying error to aid diagnosis.
+//     parameters for a mode (e.g., missing NthList), and for failures when
+//     fetching external data (earnings or expiries). Mode-specific errors
+//     wrap the underlying error to aid diagnosis.
 //
 // Parameters:
-//   - when: scheduling rule describing mode and parameters (Mode, Underlying, Nth,
-//     ExpiryCycle, Weekday, EveryNCalendar, etc.).
+//   - when: scheduling rule describing mode and parameters (Mode, Underlying,
+//     Nth, ExpiryCycle, Weekday, EveryNCalendar, etc.).
 //   - start: inclusive lower bound of the scheduling window.
 //   - end: inclusive upper bound of the scheduling window.
-//   - barMap: a map of available market bars (indexed by date) used to snap candidates
-//     to the nearest available trading date.
+//   - barMap: a map of available market bars (indexed by date) used to snap
+//     candidates to the nearest available trading date.
 //
 // Returns:
 //   - []time.Time: sorted, unique list of scheduled trading dates (as time.Time).
@@ -225,6 +221,7 @@ func ScheduleDates(
 
 		earnings, err := GetEarningsDates(entry.Underlying)
 		if err != nil {
+			logger.Infof("skipped %s due to error, %w", entry.Underlying, err)
 			return out, fmt.Errorf("backtest scheduler error: fetch earnings dates error, %w", err)
 		}
 
