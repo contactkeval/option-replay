@@ -8,7 +8,7 @@
     },
     "Strike": 591,
     "Expiration": "2025-01-17T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 1.45,
     "ClosePremium": 0
   },
   {
@@ -20,7 +20,7 @@
     },
     "Strike": 571,
     "Expiration": "2025-01-17T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 1.14,
     "ClosePremium": 0
   }
 ]

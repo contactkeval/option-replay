@@ -9,7 +9,7 @@
     },
     "Strike": 581,
     "Expiration": "2025-01-17T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 6.06,
     "ClosePremium": 0
   },
   {
@@ -20,9 +20,9 @@
       "qty": 1,
       "expiration": 2
     },
-    "Strike": 581.39,
+    "Strike": 581,
     "Expiration": "2025-01-17T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 3.65,
     "ClosePremium": 0
   },
   {
@@ -33,9 +33,9 @@
       "qty": 1,
       "expiration": 9
     },
-    "Strike": 581.39,
+    "Strike": 581,
     "Expiration": "2025-01-24T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 8.14,
     "ClosePremium": 0
   },
   {
@@ -46,9 +46,9 @@
       "qty": 1,
       "expiration": 9
     },
-    "Strike": 581.39,
+    "Strike": 581,
     "Expiration": "2025-01-24T00:00:00Z",
-    "OpenPremium": 0,
+    "OpenPremium": 5.35,
     "ClosePremium": 0
   }
 ]
