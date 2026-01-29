@@ -11,6 +11,7 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/backtest/engine"
 	"github.com/contactkeval/option-replay/internal/data"
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/report"
 )
 
@@ -47,7 +48,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/run", func(w http.ResponseWriter, r *http.Request) {
 			// quick endpoint to run a backtest once with the loaded config
-			log.Printf("[info] received /run request")
+			logger.Infof("received run request")
 			res, err := engine.Run()
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -75,3 +76,26 @@ func main() {
 	_ = report.WriteCSV(res.Trades, cfg.ReportDir)
 	log.Printf("[done] finished in %v, wrote %d trades to %s", time.Since(start), len(res.Trades), cfg.ReportDir)
 }
+
+// TODO: add REST endpoint to accept dynamic configs
+//  - accept JSON config in POST body
+//  - validate config
+//  - run backtest
+//  - return results as JSON response
+//  - consider adding job queue for longer backtests
+//  - add logging and error handling
+//  - secure endpoint with basic auth or API key
+//  - add example curl command in README
+//  - consider adding WebSocket support for real-time updates
+//  - add metrics endpoint for monitoring
+//  - add graceful shutdown handling
+//  - add rate limiting to prevent abuse
+//  - add CORS headers if needed for browser clients
+//  - add unit tests for REST handlers
+//  - document REST API endpoints and usage
+//  - consider adding Swagger/OpenAPI spec for the API
+//  - add Dockerfile for easy deployment
+//  - consider adding Kubernetes deployment manifests
+//  - add logging middleware for request tracing
+//  - consider adding authentication/authorization for secure access
+//  - add configuration options for REST server (port, timeouts, etc.)
