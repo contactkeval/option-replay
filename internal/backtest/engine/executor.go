@@ -14,45 +14,50 @@ import (
 	"github.com/contactkeval/option-replay/internal/pricing"
 )
 
+/*
+Engine orchestrates the backtest execution.
+It schedules trades, opens strategies, and simulates exits.
+*/
 type Engine struct {
 	cfg  *Config
 	prov data.Provider
 }
 
-// Config struct
+// Config defines runtime parameters for a backtest.
 type Config struct {
-	Underlying string          `json:"underlying"`           // e.g. "AAPL"
-	Entry      sch.EntryRule   `json:"entry"`                // entry rules
-	Strategy   st.StrategySpec `json:"strategy"`             // option legs
-	Exit       ExitSpec        `json:"exit"`                 // exit rules
-	ReportDir  string          `json:"report_dir,omitempty"` // report directory
-	// TODO: implement logic for below properties
-	MaxTrades int   `json:"max_trades,omitempty"` // max trades to execute, 0 = unlimited
-	Seed      int64 `json:"seed,omitempty"`       // random seed for stochastic elements
-	Verbosity int   `json:"verbosity,omitempty"`  // 0=errors,1=info,2=debug,3=trace
+	Underlying string          `json:"underlying"`
+	Entry      sch.EntryRule   `json:"entry"`
+	Strategy   st.StrategySpec `json:"strategy"`
+	Exit       ExitSpec        `json:"exit"`
+	ReportDir  string          `json:"report_dir,omitempty"`
+	MaxTrades  int             `json:"max_trades,omitempty"`
+	Seed       int64           `json:"seed,omitempty"`
+	Verbosity  int             `json:"verbosity,omitempty"`
 }
 
-// ExitSpec defines various exit rules for trades
+// ExitSpec defines exit rules for a trade.
+// The earliest satisfied rule closes the trade.
 type ExitSpec struct {
-	ExitByDaysToExpiry *int     `json:"exit_by_days_to_expiry,omitempty"` // e.g. 5 for exit when any leg has ≤5 days to expiry
-	MaxDaysInTrade     *int     `json:"max_days_in_trade,omitempty"`      // e.g. 10 for 10 days
-	UnderlyingMovePx   *float64 `json:"underlying_move_px,omitempty"`     // e.g. 5.0 for $5 move
-	ProfitTargetPct    *float64 `json:"profit_target_pct,omitempty"`      // e.g. 50.0 for 50%
-	StopLossPct        *float64 `json:"stop_loss_pct,omitempty"`          // e.g. 30.0 for 30%
+	ExitByDaysToExpiry *int     `json:"exit_by_days_to_expiry,omitempty"`
+	MaxDaysInTrade     *int     `json:"max_days_in_trade,omitempty"`
+	UnderlyingMovePx   *float64 `json:"underlying_move_px,omitempty"`
+	ProfitTargetPct    *float64 `json:"profit_target_pct,omitempty"`
+	StopLossPct        *float64 `json:"stop_loss_pct,omitempty"`
 }
 
+// Trade represents a complete lifecycle of a strategy execution.
 type Trade struct {
-	ID                int           // unique trade ID
-	OpenDateTime      time.Time     // trade open date time
-	CloseDateTime     *time.Time    // trade close date time
-	UnderlyingAtOpen  float64       // underlying price at open
-	UnderlyingAtClose float64       // underlying price at close
-	Legs              []st.TradeLeg // trade legs (strategy)
-	OpenPremium       float64       // total premium at open for entire strategy
-	ClosePremium      float64       // total premium at close for entire strategy
-	HighPremium       float64       // highest premium during trade
-	LowPremium        float64       // lowest premium during trade
-	ClosedBy          string        // reason for closing the trade
+	ID                int
+	OpenDateTime      time.Time
+	CloseDateTime     *time.Time
+	UnderlyingAtOpen  float64
+	UnderlyingAtClose float64
+	Legs              []st.TradeLeg
+	OpenPremium       float64
+	ClosePremium      float64
+	HighPremium       float64
+	LowPremium        float64
+	ClosedBy          string
 }
 
 const (
@@ -62,19 +67,20 @@ const (
 	VerbosityTrace        // 3
 )
 
-// Result mirrors original
+// Result holds all completed trades.
 type Result struct {
 	Trades []Trade `json:"trades"`
 }
 
+// NewEngine constructs a new backtest engine.
 func NewEngine(cfg *Config, prov data.Provider) *Engine {
 	return &Engine{cfg: cfg, prov: prov}
 }
 
-// Run executes the backtest
+// Run executes the backtest from scheduling to trade simulation.
 func (e *Engine) Run() (*Result, error) {
 	cfg := e.cfg
-	// fill defaults
+
 	if cfg.ReportDir == "" {
 		cfg.ReportDir = "./out"
 	}
@@ -86,24 +92,21 @@ func (e *Engine) Run() (*Result, error) {
 	}
 	logger.SetVerbosity(cfg.Verbosity)
 
-	// fetch bars
-	bars, err := e.prov.GetBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate, 1, "day")
-	if err != nil || len(bars) == 0 {
+	// Fetch daily bars
+	dailyBars, err := e.prov.GetBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate, 1, "day")
+	if err != nil || len(dailyBars) == 0 {
 		// fallback synthetic
 		logger.Infof("provider bars error or empty: %v - generating synthetic", err)
 		// bars = generateSyntheticSeries(cfg.Underlying, start, end)	/* 🔥 TODO: replaced with synthetic provider */
 	}
 
-	// build map
-	barMap := make(map[string]data.Bar, len(bars))
-	for _, b := range bars {
-		k := b.Date.Format("2006-01-02")
-		barMap[k] = b
+	barMap := make(map[string]data.Bar, len(dailyBars))
+	for _, b := range dailyBars {
+		barMap[b.Date.Format("2006-01-02")] = b
 	}
 
 	// historical vol
-	closes := extractCloses(bars)
-	hv := AnnualizedVolatility(closes)
+	hv := AnnualizedVolatility(extractCloses(dailyBars))
 	logger.Infof("hist vol = %.2f%%", hv*100)
 
 	// get list of expiryList for the underlying during backtest period
@@ -113,14 +116,10 @@ func (e *Engine) Run() (*Result, error) {
 	}
 
 	// schedule
-	dates, err := sch.ScheduleDates(cfg.Entry, bars, expiryList)
-	if err != nil {
+	dates, err := sch.ScheduleDates(cfg.Entry, dailyBars, expiryList)
+	if err != nil || len(dates) == 0 {
 		return nil, fmt.Errorf("failed to schedule dates: %w", err)
 	}
-	if len(dates) == 0 {
-		return nil, fmt.Errorf("no dates scheduled")
-	}
-	logger.Infof("%d schedule dates", len(dates))
 
 	var trades []Trade
 	id := 1
@@ -129,10 +128,9 @@ func (e *Engine) Run() (*Result, error) {
 		// if cfg.MaxTrades > 0 && len(trades) >= cfg.MaxTrades {
 		// 	break
 		// }
-		bk := dt.Format("2006-01-02")
-		bar, ok := barMap[bk]
+		bar, ok := barMap[dt.Format("2006-01-02")]
 		if !ok {
-			logger.Debugf("no bar for %s", bk)
+			logger.Debugf("no bar for %s", dt.Format("2006-01-02"))
 			continue
 		}
 		// intentionally using close price of bars as open (picking bar at open time)
@@ -193,6 +191,7 @@ func (e *Engine) Run() (*Result, error) {
 			HighPremium:      openPremium,
 			LowPremium:       openPremium,
 		}
+		id++
 		logger.Infof(
 			"trade %d opened %s underlying=%.2f open premium=%.2f",
 			trade.ID,
@@ -200,9 +199,8 @@ func (e *Engine) Run() (*Result, error) {
 			openPrice,
 			openPremium,
 		)
-		id++
-		// simulate
-		simCloseTrade(&trade, bars, hv, *cfg, e.prov)
+
+		simCloseTrade(&trade, dailyBars, hv, *cfg, e.prov)
 		trades = append(trades, trade)
 		logger.Infof("trade %d closed_by=%s close premium=%.2f pnl=%.2f",
 			trade.ID,
@@ -217,27 +215,6 @@ func (e *Engine) Run() (*Result, error) {
 
 	res := &Result{Trades: trades}
 	return res, nil
-}
-
-func AnnualizedVolatility(closes []float64) float64 {
-	if len(closes) < 2 {
-		return 0.30
-	}
-	var rets []float64
-	for i := 1; i < len(closes); i++ {
-		rets = append(rets, math.Log(closes[i]/closes[i-1]))
-	}
-	mean := 0.0
-	for _, v := range rets {
-		mean += v
-	}
-	mean /= float64(len(rets))
-	sd := 0.0
-	for _, v := range rets {
-		sd += (v - mean) * (v - mean)
-	}
-	sd = math.Sqrt(sd / float64(len(rets)-1))
-	return sd * math.Sqrt(252.0)
 }
 
 // PriceOption uses provider price else BS
@@ -274,7 +251,7 @@ func PriceOption(
 
 func simCloseTrade(
 	tr *Trade,
-	bars []data.Bar,
+	dailyBars []data.Bar,
 	historicalVolatility float64,
 	cfg Config,
 	prov data.Provider,
@@ -299,7 +276,8 @@ func simCloseTrade(
 	}
 
 	if cfg.Exit.UnderlyingMovePx != nil {
-		// TODO: find earliest underlying move exit date and adjust closeByDateTime
+		// check underlying move to adjust closeByDateTime
+		exitByUnderlyingMove(tr, dailyBars, &closeByDateTime, cfg, prov)
 	}
 
 	if cfg.Exit.ProfitTargetPct == nil &&
@@ -312,25 +290,149 @@ func simCloseTrade(
 func exitByUnderlyingMove(
 	tr *Trade,
 	dailyBars []data.Bar,
+	closeByDateTime *time.Time,
 	cfg Config,
-) time.Time {
+	prov data.Provider,
+) {
 
 	if cfg.Exit.UnderlyingMovePx == nil {
-		return time.Time{}
+		return
 	}
 
 	for _, dailyBar := range dailyBars {
+		if dailyBar.Date.After(*closeByDateTime) {
+			break
+		}
+
+		// find max move and check if exceeded threshold to exit trade early
 		move := dailyBar.High - tr.UnderlyingAtOpen
 		if tr.UnderlyingAtOpen-dailyBar.Low > move {
 			move = tr.UnderlyingAtOpen - dailyBar.Low
 		}
+
 		if move >= *cfg.Exit.UnderlyingMovePx {
-			// TODO: fetch minute bar for this bar date and find exact time
-			return dailyBar.Date
+			// TODO: remove hardcoded timespan and multiplier
+			minuteBars, err := prov.GetBars(cfg.Underlying, dailyBar.Date, dailyBar.Date, 1, "minute")
+			if err != nil || len(minuteBars) == 0 {
+				// fallback synthetic
+				logger.Infof("provider bars error or empty: %v - generating synthetic", err)
+				// bars = generateSyntheticSeries(cfg.Underlying, start, end)	/* 🔥 TODO: replaced with synthetic provider */
+			}
+			for _, minuteBar := range minuteBars {
+				move := minuteBar.High - tr.UnderlyingAtOpen
+				if tr.UnderlyingAtOpen-minuteBar.Low > move {
+					move = tr.UnderlyingAtOpen - minuteBar.Low
+				}
+				if move >= *cfg.Exit.UnderlyingMovePx {
+					*closeByDateTime = minuteBar.Date
+					return
+				}
+			}
+		}
+	}
+}
+
+// exitByPnL scans minute-by-minute option prices and exits
+// immediately when profit target or stop loss is hit.
+
+// Returns true if trade was closed.
+func exitByPnL(
+	trade *Trade,
+	closeByDateTime time.Time,
+	cfg Config,
+	prov data.Provider,
+) {
+	one := 1
+	minute := "minute"
+
+	legsData := make([][]data.Bar, len(trade.Legs)+1)
+
+	// fetch minute bars for all option legs
+	for i, leg := range trade.Legs {
+		symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
+		bars, err := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, one, minute)
+		if err != nil {
+			logger.Errorf("failed to get minute bars for leg %s (%d): %v", symbol, i, err)
+			continue
+		}
+		legsData[i+1] = bars
+	}
+
+	// fetch minute bars for underlying
+	bars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, one, minute)
+	if err != nil {
+		logger.Errorf("failed to get minute bars for underlying %s: %v", cfg.Underlying, err)
+	}
+	legsData[0] = bars
+
+	// scan minute by minute
+	minuteData := make(map[time.Time][]data.Bar)
+	for _, bars := range legsData {
+		for _, b := range bars {
+			minuteData[b.Date] = append(minuteData[b.Date], b)
 		}
 	}
 
-	return time.Time{}
+}
+
+// priceLegsAt prices all legs at a given timestamp.
+func priceLegsAt(
+	prov data.Provider,
+	underlying string,
+	legs []st.TradeLeg,
+	spot float64,
+	asOf time.Time,
+	hv float64,
+) float64 {
+	total := 0.0
+
+	for _, leg := range legs {
+		p, err := prov.GetOptionPrice(
+			underlying,
+			leg.Strike,
+			leg.Expiration,
+			leg.Spec.OptionType,
+			asOf,
+		)
+		if err != nil || p <= 0 {
+			p = pricing.BlackScholesPrice(
+				spot,
+				leg.Strike,
+				leg.Expiration.Sub(asOf).Hours()/(24*365),
+				0.02,
+				hv,
+				strings.ToLower(leg.Spec.OptionType) == "call",
+			)
+		}
+
+		sign := 1.0
+		if strings.ToLower(leg.Spec.Side) == "sell" {
+			sign = -1
+		}
+		total += sign * p * float64(leg.Spec.Qty) * 100
+	}
+	return total
+}
+
+func AnnualizedVolatility(closes []float64) float64 {
+	if len(closes) < 2 {
+		return 0.30
+	}
+	var rets []float64
+	for i := 1; i < len(closes); i++ {
+		rets = append(rets, math.Log(closes[i]/closes[i-1]))
+	}
+	mean := 0.0
+	for _, v := range rets {
+		mean += v
+	}
+	mean /= float64(len(rets))
+	sd := 0.0
+	for _, v := range rets {
+		sd += (v - mean) * (v - mean)
+	}
+	sd = math.Sqrt(sd / float64(len(rets)-1))
+	return sd * math.Sqrt(252.0)
 }
 
 func extractCloses(bars []data.Bar) []float64 {
