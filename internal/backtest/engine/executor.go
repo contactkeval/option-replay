@@ -344,8 +344,9 @@ func exitByPnL(
 ) {
 	one := 1
 	minute := "minute"
+	legs := len(trade.Legs)
 
-	legsData := make([][]data.Bar, len(trade.Legs)+1)
+	legsData := make([][]data.Bar, legs+1)
 
 	// fetch minute bars for all option legs
 	for i, leg := range trade.Legs {
@@ -365,14 +366,71 @@ func exitByPnL(
 	}
 	legsData[0] = bars
 
-	// scan minute by minute
+	// Assuming that spot would have minute bars for all timestamps, creating a map of timestamp to bars
 	minuteData := make(map[time.Time][]data.Bar)
-	for _, bars := range legsData {
-		for _, b := range bars {
-			minuteData[b.Date] = append(minuteData[b.Date], b)
+	for _, spotBar := range legsData[0] {
+		minuteData[spotBar.Date] = make([]data.Bar, legs+1)
+		minuteData[spotBar.Date][0] = spotBar
+	}
+
+	// populate leg bars into minuteData
+	for i := 1; i <= legs; i++ {
+		for _, legBar := range legsData[i] {
+			minuteData[legBar.Date][i] = legBar
 		}
 	}
 
+	legSign := make([]float64, legs)
+	for i, leg := range trade.Legs {
+		if strings.ToLower(leg.Spec.Side) == "buy" {
+			legSign[i] = 1.0
+		} else {
+			legSign[i] = -1.0
+		}
+	}
+
+	// ExitValidator returns true if the trade should close
+	type ExitValidator func(currentPrice float64, currentPnL float64) bool
+	validators := []ExitValidator{}
+
+	// Only add the Stop Loss check if it's actually defined
+	if cfg.Exit.StopLossPct != nil {
+		stopLossAmount := trade.OpenPremium * (*cfg.Exit.StopLossPct / 100.0)
+		validators = append(validators, func(openPremium, currentPrice float64) bool {
+			return currentPrice <= openPremium-stopLossAmount
+		})
+	}
+
+	// Only add the Profit Target check if it's defined
+	if cfg.Exit.ProfitTargetPct != nil {
+		targetAmount := trade.OpenPremium * (*cfg.Exit.ProfitTargetPct / 100.0)
+		validators = append(validators, func(openPremium, currentPrice float64) bool {
+			return currentPrice >= openPremium+targetAmount
+		})
+	}
+
+	lastPrice := make([]float64, legs)
+	// scan minute by minute
+	for _, bars := range minuteData {
+		sum := 0.0
+		for i := 0; i < legs; i++ {
+			if bars[i+1].Date.IsZero() {
+				// missing leg data for this timestamp
+				sum += legSign[i] * lastPrice[i] * float64(trade.Legs[i].Spec.Qty)
+				continue
+			} else {
+				sum += legSign[i] * bars[i+1].Close * float64(trade.Legs[i].Spec.Qty)
+			}
+			lastPrice[i] = bars[i+1].Close
+		}
+		for _, checkExit := range validators {
+			if checkExit(trade.OpenPremium, sum) {
+				// EXIT TRIGGERED
+				closeByDateTime = bars[0].Date
+				return
+			}
+		}
+	}
 }
 
 // priceLegsAt prices all legs at a given timestamp.
