@@ -264,6 +264,7 @@ func simCloseTrade(
 			// invalid config
 		} else {
 			closeByDateTime = closeByDateTime.AddDate(0, 0, -*cfg.Exit.ExitByDaysToExpiry)
+			tr.ClosedBy = "ExitByDaysToExpiry"
 		}
 	}
 
@@ -272,6 +273,7 @@ func simCloseTrade(
 			// invalid config
 		} else if openDateTime.AddDate(0, 0, *cfg.Exit.MaxDaysInTrade).Before(closeByDateTime) {
 			closeByDateTime = openDateTime.AddDate(0, 0, *cfg.Exit.MaxDaysInTrade)
+			tr.ClosedBy = "ExitByMaxDaysInTrade"
 		}
 	}
 
@@ -280,15 +282,12 @@ func simCloseTrade(
 		exitByUnderlyingMove(tr, dailyBars, &closeByDateTime, cfg, prov)
 	}
 
-	if cfg.Exit.ProfitTargetPct == nil &&
-		cfg.Exit.StopLossPct == nil {
-		// TODO: no exit rules - just close the trade on closeByDateTime and exit
-		return
-	}
+	exitByPriceChange(tr, closeByDateTime, cfg, prov)
+
 }
 
 func exitByUnderlyingMove(
-	tr *Trade,
+	trade *Trade,
 	dailyBars []data.Bar,
 	closeByDateTime *time.Time,
 	cfg Config,
@@ -305,132 +304,188 @@ func exitByUnderlyingMove(
 		}
 
 		// find max move and check if exceeded threshold to exit trade early
-		move := dailyBar.High - tr.UnderlyingAtOpen
-		if tr.UnderlyingAtOpen-dailyBar.Low > move {
-			move = tr.UnderlyingAtOpen - dailyBar.Low
-		}
-
+		move := max(dailyBar.High-trade.UnderlyingAtOpen, trade.UnderlyingAtOpen-dailyBar.Low)
 		if move >= *cfg.Exit.UnderlyingMovePx {
-			// TODO: remove hardcoded timespan and multiplier
-			minuteBars, err := prov.GetBars(cfg.Underlying, dailyBar.Date, dailyBar.Date, 1, "minute")
-			if err != nil || len(minuteBars) == 0 {
-				// fallback synthetic
-				logger.Infof("provider bars error or empty: %v - generating synthetic", err)
-				// bars = generateSyntheticSeries(cfg.Underlying, start, end)	/* 🔥 TODO: replaced with synthetic provider */
-			}
-			for _, minuteBar := range minuteBars {
-				move := minuteBar.High - tr.UnderlyingAtOpen
-				if tr.UnderlyingAtOpen-minuteBar.Low > move {
-					move = tr.UnderlyingAtOpen - minuteBar.Low
-				}
-				if move >= *cfg.Exit.UnderlyingMovePx {
-					*closeByDateTime = minuteBar.Date
-					return
-				}
-			}
+			*closeByDateTime = dailyBar.Date
+			trade.ClosedBy = "ExitByUnderlyingMovePx"
+			return
 		}
 	}
 }
 
-// exitByPnL scans minute-by-minute option prices and exits
+// exitByPriceChange scans minute-by-minute option prices and exits
 // immediately when profit target or stop loss is hit.
-
+//
 // Returns true if trade was closed.
-func exitByPnL(
+func exitByPriceChange(
 	trade *Trade,
 	closeByDateTime time.Time,
 	cfg Config,
 	prov data.Provider,
 ) {
-	one := 1
-	minute := "minute"
+	multiplierOne := 1
+	timespanMinute := "minute"
 	legs := len(trade.Legs)
 
 	legsData := make([][]data.Bar, legs+1)
 
-	// fetch minute bars for all option legs
-	for i, leg := range trade.Legs {
-		symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
-		bars, err := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, one, minute)
-		if err != nil {
-			logger.Errorf("failed to get minute bars for leg %s (%d): %v", symbol, i, err)
-			continue
-		}
-		legsData[i+1] = bars
-	}
-
-	// fetch minute bars for underlying
-	bars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, one, minute)
+	// fetch minute bars for underlying first
+	bars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
 	if err != nil {
 		logger.Errorf("failed to get minute bars for underlying %s: %v", cfg.Underlying, err)
 	}
-	legsData[0] = bars
 
-	// Assuming that spot would have minute bars for all timestamps, creating a map of timestamp to bars
-	minuteData := make(map[time.Time][]data.Bar)
-	for _, spotBar := range legsData[0] {
-		minuteData[spotBar.Date] = make([]data.Bar, legs+1)
-		minuteData[spotBar.Date][0] = spotBar
-	}
-
-	// populate leg bars into minuteData
-	for i := 1; i <= legs; i++ {
-		for _, legBar := range legsData[i] {
-			minuteData[legBar.Date][i] = legBar
+	if cfg.Exit.UnderlyingMovePx != nil {
+		// Since we already checked with daily bars, now check minute bars for more precision
+		// TODO: optimize by checking for last day only.  Currently checking all bars again.
+		// Could be done by merging with daily bar check above, but that would require additional call
+		// for minute bars anyway. Minute bars for entire duration is needed for profit/stop checks below.
+		for _, minuteBar := range bars {
+			move := max(minuteBar.High-trade.UnderlyingAtOpen, trade.UnderlyingAtOpen-minuteBar.Low)
+			if move >= *cfg.Exit.UnderlyingMovePx {
+				closeByDateTime = minuteBar.Date
+				trade.UnderlyingAtClose = minuteBar.Close
+				trade.ClosedBy = "ExitByUnderlyingMovePx"
+			}
 		}
 	}
 
-	legSign := make([]float64, legs)
-	for i, leg := range trade.Legs {
-		if strings.ToLower(leg.Spec.Side) == "buy" {
-			legSign[i] = 1.0
-		} else {
-			legSign[i] = -1.0
+	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
+
+		legsData[0] = bars
+
+		// Assuming that spot would have minute bars for all timestamps, creating a map of timestamp to bars
+		minuteData := make(map[time.Time][]data.Bar)
+		for _, spotBar := range legsData[0] {
+			minuteData[spotBar.Date] = make([]data.Bar, legs+1)
+			minuteData[spotBar.Date][0] = spotBar
 		}
-	}
 
-	// ExitValidator returns true if the trade should close
-	type ExitValidator func(currentPrice float64, currentPnL float64) bool
-	validators := []ExitValidator{}
-
-	// Only add the Stop Loss check if it's actually defined
-	if cfg.Exit.StopLossPct != nil {
-		stopLossAmount := trade.OpenPremium * (*cfg.Exit.StopLossPct / 100.0)
-		validators = append(validators, func(openPremium, currentPrice float64) bool {
-			return currentPrice <= openPremium-stopLossAmount
-		})
-	}
-
-	// Only add the Profit Target check if it's defined
-	if cfg.Exit.ProfitTargetPct != nil {
-		targetAmount := trade.OpenPremium * (*cfg.Exit.ProfitTargetPct / 100.0)
-		validators = append(validators, func(openPremium, currentPrice float64) bool {
-			return currentPrice >= openPremium+targetAmount
-		})
-	}
-
-	lastPrice := make([]float64, legs)
-	// scan minute by minute
-	for _, bars := range minuteData {
-		sum := 0.0
-		for i := 0; i < legs; i++ {
-			if bars[i+1].Date.IsZero() {
-				// missing leg data for this timestamp
-				sum += legSign[i] * lastPrice[i] * float64(trade.Legs[i].Spec.Qty)
+		// fetch minute bars for all option legs
+		for i, leg := range trade.Legs {
+			symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
+			bars, err := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
+			if err != nil {
+				logger.Errorf("failed to get minute bars for leg %s (%d): %v", symbol, i, err)
 				continue
-			} else {
-				sum += legSign[i] * bars[i+1].Close * float64(trade.Legs[i].Spec.Qty)
 			}
-			lastPrice[i] = bars[i+1].Close
+			legsData[i+1] = bars
 		}
-		for _, checkExit := range validators {
-			if checkExit(trade.OpenPremium, sum) {
-				// EXIT TRIGGERED
-				closeByDateTime = bars[0].Date
-				return
+
+		// populate leg bars into minuteData
+		for i := 1; i <= legs; i++ {
+			for _, legBar := range legsData[i] {
+				minuteData[legBar.Date][i] = legBar
+			}
+		}
+
+		legSign := make([]float64, legs)
+		for i, leg := range trade.Legs {
+			if strings.ToLower(leg.Spec.Side) == "buy" {
+				legSign[i] = 1.0
+			} else {
+				legSign[i] = -1.0
+			}
+		}
+
+		// ExitValidator returns true if the trade should close
+		type ExitValidator func(currentPrice float64, currentPnL float64) bool
+		validators := []ExitValidator{}
+
+		// Only add the Stop Loss check if it's actually defined
+		if cfg.Exit.StopLossPct != nil {
+			stopLossAmount := trade.OpenPremium * (*cfg.Exit.StopLossPct / 100.0)
+			validators = append(validators, func(openPremium, currentPrice float64) bool {
+				return currentPrice <= openPremium-stopLossAmount
+			})
+		}
+
+		// Only add the Profit Target check if it's defined
+		if cfg.Exit.ProfitTargetPct != nil {
+			targetAmount := trade.OpenPremium * (*cfg.Exit.ProfitTargetPct / 100.0)
+			validators = append(validators, func(openPremium, currentPrice float64) bool {
+				return currentPrice >= openPremium+targetAmount
+			})
+		}
+
+		lastPrice := make([]float64, legs)
+		for i := 0; i < legs; i++ {
+			lastPrice[i] = trade.Legs[i].OpenPremium
+		}
+
+		// scan minute by minute
+		for _, bars := range minuteData {
+			sum := 0.0
+			for i := 0; i < legs; i++ {
+				if bars[i+1].Date.IsZero() {
+					// missing leg data for this timestamp
+					sum += legSign[i] * lastPrice[i] * float64(trade.Legs[i].Spec.Qty)
+					continue
+				} else {
+					sum += legSign[i] * bars[i+1].Close * float64(trade.Legs[i].Spec.Qty)
+					lastPrice[i] = bars[i+1].Close
+				}
+			}
+
+			for _, checkExit := range validators {
+				if checkExit(trade.OpenPremium, sum) {
+					// EXIT TRIGGERED
+					closeByDateTime = bars[0].Date
+					trade.ClosedBy = "ExitByOptionPriceChange"
+
+					for i := 0; i < legs; i++ {
+						trade.Legs[i].ClosePremium = lastPrice[i]
+					}
+					trade.ClosePremium = sum
+					break
+				}
 			}
 		}
 	}
+
+	if trade.ClosePremium == 0.0 {
+		// price legs
+		closePremium := 0.0
+		for _, leg := range trade.Legs {
+			premium, err := prov.GetOptionPrice(
+				cfg.Underlying,
+				leg.Strike,
+				leg.Expiration,
+				leg.Spec.OptionType,
+				closeByDateTime,
+			)
+			if err != nil {
+				// fallback to BS
+				logger.Debugf(
+					"close option price fallback BS %s %s K=%.2f exp=%s err=%v",
+					cfg.Underlying,
+					leg.Spec.OptionType,
+					leg.Strike,
+					leg.Expiration.Format("2006-01-02"),
+					err,
+				)
+				if trade.UnderlyingAtClose == 0.0 {
+					trade.UnderlyingAtClose = legsData[0][len(legsData[0])-1].Close
+				}
+				premium = pricing.BlackScholesPrice(
+					trade.UnderlyingAtClose,
+					leg.Strike,
+					(leg.Expiration.Sub(closeByDateTime).Hours() / (24 * 365)),
+					0.02, // risk-free rate
+					0.2,  // historical volatility
+					strings.ToLower(leg.Spec.OptionType) == "call",
+				)
+			}
+			sign := 1.0
+			if strings.ToLower(leg.Spec.Side) == "sell" {
+				sign = -1.0
+			}
+			closePremium += sign * premium * float64(leg.Spec.Qty)
+		}
+		trade.ClosePremium = closePremium
+	}
+
+	trade.CloseDateTime = &closeByDateTime
 }
 
 // priceLegsAt prices all legs at a given timestamp.

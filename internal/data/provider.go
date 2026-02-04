@@ -16,7 +16,7 @@ type Provider interface {
 	Secondary() Provider
 	GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)
 	GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error)
-	GetBars(underlying string, fromDate, toDate time.Time, timespan int, multiplier string) ([]Bar, error)
+	GetBars(underlying string, fromDate, toDate time.Time, multiplier int, timespan string) ([]Bar, error)
 	GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error)
 	GetRelevantExpiries(underlying string, fromDate, toDate time.Time) ([]time.Time, error)
 	RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64
