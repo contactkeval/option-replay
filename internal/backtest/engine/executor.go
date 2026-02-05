@@ -1,9 +1,9 @@
+// Package engine provides the core simulation logic for backtesting option strategies.
+// It handles trade scheduling, entry execution, and lifecycle management via price action and exit conditions.
 package engine
 
 import (
 	"fmt"
-	"math"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,544 +14,306 @@ import (
 	"github.com/contactkeval/option-replay/internal/pricing"
 )
 
-/*
-Engine orchestrates the backtest execution.
-It schedules trades, opens strategies, and simulates exits.
-*/
+// Engine orchestrates the backtest execution.
+// It acts as the central coordinator between the data provider and strategy logic.
 type Engine struct {
 	cfg  *Config
 	prov data.Provider
 }
 
-// Config defines runtime parameters for a backtest.
+// Config defines the operational parameters for a single backtest run.
 type Config struct {
-	Underlying string          `json:"underlying"`
-	Entry      sch.EntryRule   `json:"entry"`
-	Strategy   st.StrategySpec `json:"strategy"`
-	Exit       ExitSpec        `json:"exit"`
+	Underlying string          `json:"underlying"` // Ticker symbol of the asset
+	Entry      sch.EntryRule   `json:"entry"`      // Rules governing when to open trades
+	Strategy   st.StrategySpec `json:"strategy"`   // The option structure (e.g., Iron Condor)
+	Exit       ExitSpec        `json:"exit"`       // Rules governing when to close trades
 	ReportDir  string          `json:"report_dir,omitempty"`
 	MaxTrades  int             `json:"max_trades,omitempty"`
 	Seed       int64           `json:"seed,omitempty"`
 	Verbosity  int             `json:"verbosity,omitempty"`
 }
 
-// ExitSpec defines exit rules for a trade.
-// The earliest satisfied rule closes the trade.
+// ExitSpec defines the multi-condition exit logic for a trade.
+// The engine checks these conditions in a specific order; the first condition met triggers the exit.
 type ExitSpec struct {
-	ExitByDaysToExpiry *int     `json:"exit_by_days_to_expiry,omitempty"`
-	MaxDaysInTrade     *int     `json:"max_days_in_trade,omitempty"`
-	UnderlyingMovePx   *float64 `json:"underlying_move_px,omitempty"`
-	ProfitTargetPct    *float64 `json:"profit_target_pct,omitempty"`
-	StopLossPct        *float64 `json:"stop_loss_pct,omitempty"`
+	// ExitByDaysToExpiry forces an exit N days before the contract expires.
+	ExitByDaysToExpiry *int `json:"exit_by_days_to_expiry,omitempty"`
+	// MaxDaysInTrade limits the duration of the trade regardless of profit/loss.
+	MaxDaysInTrade *int `json:"max_days_in_trade,omitempty"`
+	// UnderlyingMovePx triggers an exit if the stock price moves by this absolute dollar amount.
+	UnderlyingMovePx *float64 `json:"underlying_move_px,omitempty"`
+	// ProfitTargetPct triggers an exit if the net premium gains this percentage.
+	ProfitTargetPct *float64 `json:"profit_target_pct,omitempty"`
+	// StopLossPct triggers an exit if the net premium loses this percentage.
+	StopLossPct *float64 `json:"stop_loss_pct,omitempty"`
 }
 
-// Trade represents a complete lifecycle of a strategy execution.
+// Trade represents the full history and state of a single strategy execution.
 type Trade struct {
-	ID                int
-	OpenDateTime      time.Time
-	CloseDateTime     *time.Time
-	UnderlyingAtOpen  float64
-	UnderlyingAtClose float64
-	Legs              []st.TradeLeg
-	OpenPremium       float64
-	ClosePremium      float64
-	HighPremium       float64
-	LowPremium        float64
-	ClosedBy          string
+	ID                int           // Unique trade identifier
+	OpenDateTime      time.Time     // Entry timestamp
+	CloseDateTime     *time.Time    // Exit timestamp (nil if trade is open)
+	UnderlyingAtOpen  float64       // Stock price at entry
+	UnderlyingAtClose float64       // Stock price at exit
+	Legs              []st.TradeLeg // The individual option contracts involved
+	OpenPremium       float64       // Net premium at entry (negative for debit, positive for credit)
+	ClosePremium      float64       // Net premium at exit
+	HighPremium       float64       // Maximum observed premium during trade life
+	LowPremium        float64       // Minimum observed premium during trade life
+	ClosedBy          string        // Label of the rule that triggered the exit
 }
 
+// Global log verbosity levels.
 const (
-	VerbosityError = iota // 0
-	VerbosityInfo         // 1
-	VerbosityDebug        // 2
-	VerbosityTrace        // 3
+	VerbosityError = iota // 0 - System crashes or critical data missing
+	VerbosityWarn         // 1 - Non-fatal issues (e.g., using Black-Scholes instead of Market Data)
+	VerbosityInfo         // 2 - High-level trade progress (Open/Close summaries)
+	VerbosityDebug        // 3 - Logic flow (Why a specific exit was triggered)
+	VerbosityTrace        // 4 - Minute-by-minute price data/granular math
 )
 
-// Result holds all completed trades.
+// Result contains the collection of all trades generated during a backtest session.
 type Result struct {
 	Trades []Trade `json:"trades"`
 }
 
-// NewEngine constructs a new backtest engine.
+// NewEngine initializes a new backtester with the provided configuration and data source.
 func NewEngine(cfg *Config, prov data.Provider) *Engine {
 	return &Engine{cfg: cfg, prov: prov}
 }
 
-// Run executes the backtest from scheduling to trade simulation.
+// Run is the main entry point for the backtest. It performs data fetching,
+// volatility calculation, trade scheduling, and execution loop.
 func (e *Engine) Run() (*Result, error) {
-	cfg := e.cfg
+	e.initConfiguration()
+	logger.Infof("Starting backtest for %s | Range: %s to %s",
+		e.cfg.Underlying, e.cfg.Entry.StartDate.Format("2006-01-02"), e.cfg.Entry.EndDate.Format("2006-01-02"))
 
-	if cfg.ReportDir == "" {
-		cfg.ReportDir = "./out"
-	}
-	if cfg.Seed == 0 {
-		cfg.Seed = time.Now().UnixNano()
-	}
-	if cfg.Verbosity < VerbosityError || cfg.Verbosity > VerbosityTrace {
-		cfg.Verbosity = VerbosityInfo
-	}
-	logger.SetVerbosity(cfg.Verbosity)
-
-	// Fetch daily bars
-	dailyBars, err := e.prov.GetBars(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate, 1, "day")
-	if err != nil || len(dailyBars) == 0 {
-		// fallback synthetic
-		logger.Infof("provider bars error or empty: %v - generating synthetic", err)
-		// bars = generateSyntheticSeries(cfg.Underlying, start, end)	/* 🔥 TODO: replaced with synthetic provider */
-	}
-
-	barMap := make(map[string]data.Bar, len(dailyBars))
-	for _, b := range dailyBars {
-		barMap[b.Date.Format("2006-01-02")] = b
-	}
-
-	// historical vol
-	hv := AnnualizedVolatility(extractCloses(dailyBars))
-	logger.Infof("hist vol = %.2f%%", hv*100)
-
-	// get list of expiryList for the underlying during backtest period
-	expiryList, err := e.prov.GetRelevantExpiries(cfg.Underlying, cfg.Entry.StartDate, cfg.Entry.EndDate)
+	dailyBars, err := e.fetchDailyData()
 	if err != nil {
-		return nil, fmt.Errorf("backtest scheduler error: get relevant expiries error, %w", err)
+		logger.Errorf("Failed to fetch underlying data: %v", err)
+		return nil, err
 	}
 
-	// schedule
-	dates, err := sch.ScheduleDates(cfg.Entry, dailyBars, expiryList)
-	if err != nil || len(dates) == 0 {
+	hv := AnnualizedVolatility(extractCloses(dailyBars))
+	logger.Infof("Calculated Historical Volatility: %.2f%%", hv*100)
+
+	expiryList, err := e.prov.GetRelevantExpiries(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expiries: %w", err)
+	}
+
+	// Scheduling
+	entryDates, err := sch.ScheduleDates(e.cfg.Entry, dailyBars, expiryList)
+	if err != nil || len(entryDates) == 0 {
+		logger.Warnf("No entry dates scheduled for the given criteria.")
 		return nil, fmt.Errorf("failed to schedule dates: %w", err)
 	}
 
+	logger.Infof("Scheduled %d potential trade entries", len(entryDates))
+	trades := e.executeBacktest(entryDates, dailyBars, expiryList, hv)
+
+	return &Result{Trades: trades}, nil
+}
+
+// executeBacktest iterates through scheduled dates to open, manage, and close trades.
+func (e *Engine) executeBacktest(dates []time.Time, dailyBars []data.Bar, expiries []time.Time, hv float64) []Trade {
 	var trades []Trade
-	id := 1
-	for _, dt := range dates {
-		// TODO: max trades limit
-		// if cfg.MaxTrades > 0 && len(trades) >= cfg.MaxTrades {
-		// 	break
-		// }
-		bar, ok := barMap[dt.Format("2006-01-02")]
+	barMap := createBarMap(dailyBars)
+
+	for i, dt := range dates {
+		dateStr := dt.Format("2006-01-02")
+		bar, ok := barMap[dateStr]
 		if !ok {
-			logger.Debugf("no bar for %s", dt.Format("2006-01-02"))
+			logger.Debugf("[%s] Skipping: No underlying bar data available", dateStr)
 			continue
 		}
-		// intentionally using close price of bars as open (picking bar at open time)
-		openPrice := bar.Close
 
-		// build legs
-		var legs []st.TradeLeg
-		legs, err = st.PlanStrategy(cfg.Strategy, dt, cfg.Underlying, openPrice, expiryList, e.prov)
+		// Plan Strategy Legs
+		legs, err := st.PlanStrategy(e.cfg.Strategy, dt, e.cfg.Underlying, bar.Close, expiries, e.prov)
 		if err != nil {
-			logger.Infof("error on trade date %s, skipped", dt.Format("2006-01-02"))
-			logger.Debugf("skipping trade on %s: build legs error: %v", dt.Format("2006-01-02"), err)
+			logger.Warnf("[%s] Entry Failed: Could not plan strategy legs: %v", dateStr, err)
 			continue
 		}
 
-		// price legs
-		openPremium := 0.0
-		for _, leg := range legs {
-			p, err := e.prov.GetOptionPrice(
-				cfg.Underlying,
-				leg.Strike,
-				leg.Expiration,
-				leg.Spec.OptionType,
-				dt,
-			)
-			if err != nil {
-				// fallback to BS
-				logger.Debugf(
-					"option price fallback BS %s %s K=%.2f exp=%s err=%v",
-					cfg.Underlying,
-					leg.Spec.OptionType,
-					leg.Strike,
-					leg.Expiration.Format("2006-01-02"),
-					err,
-				)
-				p = pricing.BlackScholesPrice(
-					openPrice,
-					leg.Strike,
-					(leg.Expiration.Sub(dt).Hours() / (24 * 365)),
-					0.02,
-					hv, // historical volatility
-					strings.ToLower(leg.Spec.OptionType) == "call",
-				)
-			}
-			side := strings.ToLower(leg.Spec.Side)
-			sign := 1.0
-			if side == "sell" {
-				sign = -1.0
-			}
-			openPremium += sign * p * float64(leg.Spec.Qty) * 100.0
-		}
+		trade := e.openTrade(i+1, dt, bar.Close, legs, hv)
+		logger.Infof("[%s] OPEN Trade #%d | Spot: %.2f | Net Prem: %.2f", dateStr, trade.ID, bar.Close, trade.OpenPremium)
 
-		trade := Trade{
-			ID:               id,
-			OpenDateTime:     dt,
-			UnderlyingAtOpen: openPrice,
-			Legs:             legs,
-			OpenPremium:      openPremium,
-			HighPremium:      openPremium,
-			LowPremium:       openPremium,
-		}
-		id++
-		logger.Infof(
-			"trade %d opened %s underlying=%.2f open premium=%.2f",
-			trade.ID,
-			dt.Format("2006-01-02"),
-			openPrice,
-			openPremium,
-		)
+		// Simulate Lifecycle (Exit logic)
+		simCloseTrade(&trade, dailyBars, hv, *e.cfg, e.prov)
 
-		simCloseTrade(&trade, dailyBars, hv, *cfg, e.prov)
 		trades = append(trades, trade)
-		logger.Infof("trade %d closed_by=%s close premium=%.2f pnl=%.2f",
-			trade.ID,
-			trade.ClosedBy,
-			trade.ClosePremium,
-			trade.ClosePremium-trade.OpenPremium,
-		)
+		e.logTradeSummary(trade)
 	}
-
-	// sort trades by ID (stable)
-	sort.Slice(trades, func(i, j int) bool { return trades[i].ID < trades[j].ID })
-
-	res := &Result{Trades: trades}
-	return res, nil
+	return trades
 }
 
-// PriceOption uses provider price else BS
-func PriceOption(
-	prov data.Provider,
-	underlying string,
-	S, K float64,
-	asOfDate time.Time,
-	expiryDate time.Time,
-	optType string,
-	hv float64,
-	overrideIV *float64,
-) (float64, error) {
-	if prov != nil {
-		p, err := prov.GetOptionPrice(underlying, K, expiryDate, optType, asOfDate)
-		if err == nil && p > 0 {
-			return p, nil
+// openTrade handles initial premium pricing and trade initialization.
+func (e *Engine) openTrade(id int, dt time.Time, price float64, legs []st.TradeLeg, hv float64) Trade {
+	openPremium := 0.0
+	for _, leg := range legs {
+		p := e.getOpeningPrice(leg, dt, price, hv)
+
+		sign := 1.0
+		if strings.ToLower(leg.Spec.Side) == "sell" {
+			sign = -1.0
 		}
-	}
-	iv := hv // use historical vol
-	if overrideIV != nil {
-		iv = *overrideIV // override if provided
+
+		openPremium += sign * p * float64(leg.Spec.Qty)
 	}
 
-	// TODO: risk-free rate from provider or config - using 2% fixed here
-	return pricing.BlackScholesPrice(
-		S, K,
-		(expiryDate.Sub(asOfDate).Hours() / (24 * 365)),
-		0.02,
-		iv,
-		strings.ToLower(optType) == "call",
-	), nil
+	return Trade{
+		ID:               id,
+		OpenDateTime:     dt,
+		UnderlyingAtOpen: price,
+		Legs:             legs,
+		OpenPremium:      openPremium,
+		HighPremium:      openPremium,
+		LowPremium:       openPremium,
+	}
 }
 
-func simCloseTrade(
-	tr *Trade,
-	dailyBars []data.Bar,
-	historicalVolatility float64,
-	cfg Config,
-	prov data.Provider,
-) {
-	closeByDateTime := tr.Legs[0].Expiration // default to first leg expiry date
-	openDateTime := tr.OpenDateTime
+// simCloseTrade determines the exit date and final trade value.
+// It prioritizes time-based exits, then price-movement exits, and finally intraday PnL.
+func simCloseTrade(tr *Trade, dailyBars []data.Bar, hv float64, cfg Config, prov data.Provider) {
+	closeByDateTime := tr.Legs[0].Expiration // Default to expiration
+	logger.Debugf("Trade #%d: Initial exit target set to Expiration: %s", tr.ID, closeByDateTime.Format("2006-01-02"))
 
-	if cfg.Exit.ExitByDaysToExpiry != nil {
-		if *cfg.Exit.ExitByDaysToExpiry <= 0 {
-			// invalid config
-		} else {
-			closeByDateTime = closeByDateTime.AddDate(0, 0, -*cfg.Exit.ExitByDaysToExpiry)
-			tr.ClosedBy = "ExitByDaysToExpiry"
-		}
+	// Apply hard time limits
+	if cfg.Exit.ExitByDaysToExpiry != nil && *cfg.Exit.ExitByDaysToExpiry > 0 {
+		closeByDateTime = tr.Legs[0].Expiration.AddDate(0, 0, -*cfg.Exit.ExitByDaysToExpiry)
+		tr.ClosedBy = "ExitByDaysToExpiry"
+		logger.Debugf("Trade #%d: Exit adjusted to DTE limit: %s", tr.ID, closeByDateTime.Format("2006-01-02"))
 	}
 
-	if cfg.Exit.MaxDaysInTrade != nil {
-		if *cfg.Exit.MaxDaysInTrade <= 0 {
-			// invalid config
-		} else if openDateTime.AddDate(0, 0, *cfg.Exit.MaxDaysInTrade).Before(closeByDateTime) {
-			closeByDateTime = openDateTime.AddDate(0, 0, *cfg.Exit.MaxDaysInTrade)
+	if cfg.Exit.MaxDaysInTrade != nil && *cfg.Exit.MaxDaysInTrade > 0 {
+		maxDate := tr.OpenDateTime.AddDate(0, 0, *cfg.Exit.MaxDaysInTrade)
+		if maxDate.Before(closeByDateTime) {
+			closeByDateTime = maxDate
 			tr.ClosedBy = "ExitByMaxDaysInTrade"
+			logger.Debugf("Trade #%d: Exit adjusted to Max Days limit: %s", tr.ID, closeByDateTime.Format("2006-01-02"))
 		}
 	}
 
+	// Check underlying move (Coarse daily filter)
 	if cfg.Exit.UnderlyingMovePx != nil {
-		// check underlying move to adjust closeByDateTime
-		exitByUnderlyingMove(tr, dailyBars, &closeByDateTime, cfg, prov)
+		exitByUnderlyingMove(tr, dailyBars, &closeByDateTime, cfg)
 	}
 
+	// Check intraday price action (Fine minute filter)
 	exitByPriceChange(tr, closeByDateTime, cfg, prov)
-
 }
 
-func exitByUnderlyingMove(
-	trade *Trade,
-	dailyBars []data.Bar,
-	closeByDateTime *time.Time,
-	cfg Config,
-	prov data.Provider,
-) {
-
-	if cfg.Exit.UnderlyingMovePx == nil {
-		return
-	}
-
-	for _, dailyBar := range dailyBars {
-		if dailyBar.Date.After(*closeByDateTime) {
+// exitByUnderlyingMove scans daily bars to find if the asset moved past a dollar threshold.
+func exitByUnderlyingMove(trade *Trade, dailyBars []data.Bar, closeByDateTime *time.Time, cfg Config) {
+	for _, bar := range dailyBars {
+		if bar.Date.Before(trade.OpenDateTime) {
+			continue
+		}
+		if bar.Date.After(*closeByDateTime) {
 			break
 		}
 
-		// find max move and check if exceeded threshold to exit trade early
-		move := max(dailyBar.High-trade.UnderlyingAtOpen, trade.UnderlyingAtOpen-dailyBar.Low)
+		move := max(bar.High-trade.UnderlyingAtOpen, trade.UnderlyingAtOpen-bar.Low)
 		if move >= *cfg.Exit.UnderlyingMovePx {
-			*closeByDateTime = dailyBar.Date
+			*closeByDateTime = bar.Date
 			trade.ClosedBy = "ExitByUnderlyingMovePx"
 			return
 		}
 	}
 }
 
-// exitByPriceChange scans minute-by-minute option prices and exits
-// immediately when profit target or stop loss is hit.
-//
-// Returns true if trade was closed.
-func exitByPriceChange(
-	trade *Trade,
-	closeByDateTime time.Time,
-	cfg Config,
-	prov data.Provider,
-) {
-	multiplierOne := 1
-	timespanMinute := "minute"
-	legs := len(trade.Legs)
-
-	legsData := make([][]data.Bar, legs+1)
-
-	// fetch minute bars for underlying first
-	bars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
+// exitByPriceChange performs high-fidelity minute-by-minute simulation for the trade exit.
+func exitByPriceChange(trade *Trade, closeByDateTime time.Time, cfg Config, prov data.Provider) {
+	bars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, 1, "minute")
 	if err != nil {
-		logger.Errorf("failed to get minute bars for underlying %s: %v", cfg.Underlying, err)
+		logger.Errorf("Trade #%d: Data error fetching minute bars: %v", trade.ID, err)
 	}
 
+	// Precise underlying move check
 	if cfg.Exit.UnderlyingMovePx != nil {
-		// Since we already checked with daily bars, now check minute bars for more precision
-		// TODO: optimize by checking for last day only.  Currently checking all bars again.
-		// Could be done by merging with daily bar check above, but that would require additional call
-		// for minute bars anyway. Minute bars for entire duration is needed for profit/stop checks below.
-		for _, minuteBar := range bars {
-			move := max(minuteBar.High-trade.UnderlyingAtOpen, trade.UnderlyingAtOpen-minuteBar.Low)
-			if move >= *cfg.Exit.UnderlyingMovePx {
-				closeByDateTime = minuteBar.Date
-				trade.UnderlyingAtClose = minuteBar.Close
-				trade.ClosedBy = "ExitByUnderlyingMovePx"
-			}
+		if hitTime, movePrice, hit := checkUnderlyingMove(bars, trade, *cfg.Exit.UnderlyingMovePx); hit {
+			closeByDateTime = hitTime
+			trade.UnderlyingAtClose = movePrice
+			trade.ClosedBy = "ExitByUnderlyingMovePx"
 		}
 	}
 
+	// Profit/Stop Target checks
 	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
-
-		legsData[0] = bars
-
-		// Assuming that spot would have minute bars for all timestamps, creating a map of timestamp to bars
-		minuteData := make(map[time.Time][]data.Bar)
-		for _, spotBar := range legsData[0] {
-			minuteData[spotBar.Date] = make([]data.Bar, legs+1)
-			minuteData[spotBar.Date][0] = spotBar
-		}
-
-		// fetch minute bars for all option legs
-		for i, leg := range trade.Legs {
-			symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
-			bars, err := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
-			if err != nil {
-				logger.Errorf("failed to get minute bars for leg %s (%d): %v", symbol, i, err)
-				continue
-			}
-			legsData[i+1] = bars
-		}
-
-		// populate leg bars into minuteData
-		for i := 1; i <= legs; i++ {
-			for _, legBar := range legsData[i] {
-				minuteData[legBar.Date][i] = legBar
-			}
-		}
-
-		legSign := make([]float64, legs)
-		for i, leg := range trade.Legs {
-			if strings.ToLower(leg.Spec.Side) == "buy" {
-				legSign[i] = 1.0
-			} else {
-				legSign[i] = -1.0
-			}
-		}
-
-		// ExitValidator returns true if the trade should close
-		type ExitValidator func(currentPrice float64, currentPnL float64) bool
-		validators := []ExitValidator{}
-
-		// Only add the Stop Loss check if it's actually defined
-		if cfg.Exit.StopLossPct != nil {
-			stopLossAmount := trade.OpenPremium * (*cfg.Exit.StopLossPct / 100.0)
-			validators = append(validators, func(openPremium, currentPrice float64) bool {
-				return currentPrice <= openPremium-stopLossAmount
-			})
-		}
-
-		// Only add the Profit Target check if it's defined
-		if cfg.Exit.ProfitTargetPct != nil {
-			targetAmount := trade.OpenPremium * (*cfg.Exit.ProfitTargetPct / 100.0)
-			validators = append(validators, func(openPremium, currentPrice float64) bool {
-				return currentPrice >= openPremium+targetAmount
-			})
-		}
-
-		lastPrice := make([]float64, legs)
-		for i := 0; i < legs; i++ {
-			lastPrice[i] = trade.Legs[i].OpenPremium
-		}
-
-		// scan minute by minute
-		for _, bars := range minuteData {
-			sum := 0.0
-			for i := 0; i < legs; i++ {
-				if bars[i+1].Date.IsZero() {
-					// missing leg data for this timestamp
-					sum += legSign[i] * lastPrice[i] * float64(trade.Legs[i].Spec.Qty)
-					continue
-				} else {
-					sum += legSign[i] * bars[i+1].Close * float64(trade.Legs[i].Spec.Qty)
-					lastPrice[i] = bars[i+1].Close
-				}
-			}
-
-			for _, checkExit := range validators {
-				if checkExit(trade.OpenPremium, sum) {
-					// EXIT TRIGGERED
-					closeByDateTime = bars[0].Date
-					trade.ClosedBy = "ExitByOptionPriceChange"
-
-					for i := 0; i < legs; i++ {
-						trade.Legs[i].ClosePremium = lastPrice[i]
-					}
-					trade.ClosePremium = sum
-					break
-				}
-			}
+		minuteData := fetchAndAlignLegData(trade, bars, closeByDateTime, cfg, prov)
+		if triggered := scanOptionExits(trade, minuteData, cfg, &closeByDateTime); triggered {
+			logger.Debugf("Trade #%d: Exit triggered by PnL Target at %s", trade.ID, closeByDateTime.Format("2006-01-02 15:04"))
+			trade.ClosedBy = "ExitByOptionPriceChange"
 		}
 	}
 
 	if trade.ClosePremium == 0.0 {
-		// price legs
-		closePremium := 0.0
-		for _, leg := range trade.Legs {
-			premium, err := prov.GetOptionPrice(
-				cfg.Underlying,
-				leg.Strike,
-				leg.Expiration,
-				leg.Spec.OptionType,
-				closeByDateTime,
-			)
-			if err != nil {
-				// fallback to BS
-				logger.Debugf(
-					"close option price fallback BS %s %s K=%.2f exp=%s err=%v",
-					cfg.Underlying,
-					leg.Spec.OptionType,
-					leg.Strike,
-					leg.Expiration.Format("2006-01-02"),
-					err,
-				)
-				if trade.UnderlyingAtClose == 0.0 {
-					trade.UnderlyingAtClose = legsData[0][len(legsData[0])-1].Close
-				}
-				premium = pricing.BlackScholesPrice(
-					trade.UnderlyingAtClose,
-					leg.Strike,
-					(leg.Expiration.Sub(closeByDateTime).Hours() / (24 * 365)),
-					0.02, // risk-free rate
-					0.2,  // historical volatility
-					strings.ToLower(leg.Spec.OptionType) == "call",
-				)
-			}
-			sign := 1.0
-			if strings.ToLower(leg.Spec.Side) == "sell" {
-				sign = -1.0
-			}
-			closePremium += sign * premium * float64(leg.Spec.Qty)
-		}
-		trade.ClosePremium = closePremium
+		trade.ClosePremium = calculateFinalClosePremium(trade, closeByDateTime, cfg, prov)
 	}
-
 	trade.CloseDateTime = &closeByDateTime
 }
 
-// priceLegsAt prices all legs at a given timestamp.
-func priceLegsAt(
-	prov data.Provider,
-	underlying string,
-	legs []st.TradeLeg,
-	spot float64,
-	asOf time.Time,
-	hv float64,
-) float64 {
-	total := 0.0
+// scanOptionExits simulates the PnL of the entire strategy at every minute to check for target triggers.
+func scanOptionExits(trade *Trade, minuteData map[time.Time][]data.Bar, cfg Config, closeDate *time.Time) bool {
+	legsCount := len(trade.Legs)
+	legSigns := make([]float64, legsCount)
+	lastPrices := make([]float64, legsCount)
 
-	for _, leg := range legs {
-		p, err := prov.GetOptionPrice(
-			underlying,
-			leg.Strike,
-			leg.Expiration,
-			leg.Spec.OptionType,
-			asOf,
-		)
-		if err != nil || p <= 0 {
-			p = pricing.BlackScholesPrice(
-				spot,
-				leg.Strike,
-				leg.Expiration.Sub(asOf).Hours()/(24*365),
-				0.02,
-				hv,
-				strings.ToLower(leg.Spec.OptionType) == "call",
-			)
+	for i, leg := range trade.Legs {
+		lastPrices[i] = leg.OpenPremium
+		legSigns[i] = 1.0
+		if strings.ToLower(leg.Spec.Side) == "sell" {
+			legSigns[i] = -1.0
+		}
+	}
+
+	validators := getValidators(cfg, trade.OpenPremium)
+
+	// Sort keys or iterate carefully if order matters,
+	// though map iteration is usually fine for "first hit" in backtests
+	for ts, bars := range minuteData {
+		currentTotal := 0.0
+		for i := 0; i < legsCount; i++ {
+			bar := bars[i+1]
+			if !bar.Date.IsZero() {
+				lastPrices[i] = bar.Close
+			}
+			currentTotal += legSigns[i] * lastPrices[i] * float64(trade.Legs[i].Spec.Qty)
+		}
+
+		for _, check := range validators {
+			if check(currentTotal) {
+				*closeDate = ts
+				trade.ClosePremium = currentTotal
+				for i := 0; i < legsCount; i++ {
+					trade.Legs[i].ClosePremium = lastPrices[i]
+				}
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// calculateFinalClosePremium determines the final value of the trade if no specific exit was triggered.
+func calculateFinalClosePremium(trade *Trade, closeByDateTime time.Time, cfg Config, prov data.Provider) float64 {
+	totalPremium := 0.0
+	for _, leg := range trade.Legs {
+		premium, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, closeByDateTime)
+
+		if err != nil {
+			logger.Debugf("fallback to Black-Scholes for %s %s at %s", cfg.Underlying, leg.Spec.OptionType, closeByDateTime)
+			premium = pricing.BlackScholesPrice(trade.UnderlyingAtClose, leg.Strike,
+				(leg.Expiration.Sub(closeByDateTime).Hours() / (24 * 365)), 0.02, 0.2,
+				strings.ToLower(leg.Spec.OptionType) == "call")
 		}
 
 		sign := 1.0
 		if strings.ToLower(leg.Spec.Side) == "sell" {
-			sign = -1
+			sign = -1.0
 		}
-		total += sign * p * float64(leg.Spec.Qty) * 100
+		totalPremium += sign * premium * float64(leg.Spec.Qty)
 	}
-	return total
-}
-
-func AnnualizedVolatility(closes []float64) float64 {
-	if len(closes) < 2 {
-		return 0.30
-	}
-	var rets []float64
-	for i := 1; i < len(closes); i++ {
-		rets = append(rets, math.Log(closes[i]/closes[i-1]))
-	}
-	mean := 0.0
-	for _, v := range rets {
-		mean += v
-	}
-	mean /= float64(len(rets))
-	sd := 0.0
-	for _, v := range rets {
-		sd += (v - mean) * (v - mean)
-	}
-	sd = math.Sqrt(sd / float64(len(rets)-1))
-	return sd * math.Sqrt(252.0)
-}
-
-func extractCloses(bars []data.Bar) []float64 {
-	var closes []float64
-	for _, b := range bars {
-		closes = append(closes, b.Close)
-	}
-	return closes
+	return totalPremium
 }

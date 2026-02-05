@@ -80,6 +80,12 @@ func Errorf(format string, args ...any) {
 	logf(Error, "[ERROR] ", format, args...)
 }
 
+// Warnf logs a warning-level message.
+// Use this for non-critical issues that should be investigated.
+func Warnf(format string, args ...any) {
+	logf(Error, "[WARN]  ", format, args...)
+}
+
 // Infof logs an informational message.
 // Use this for major lifecycle events.
 func Infof(format string, args ...any) {
