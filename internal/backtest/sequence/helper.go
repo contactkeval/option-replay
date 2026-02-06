@@ -1,4 +1,4 @@
-package scheduler
+package sequence
 
 import (
 	"fmt"
@@ -42,6 +42,19 @@ func CombineDateTime(
 	)
 
 	return result, nil
+}
+
+func deduplicateDates(dates []time.Time) []time.Time {
+	seen := map[string]bool{}
+	final := []time.Time{}
+	for _, d := range dates {
+		k := d.Format("2006-01-02")
+		if !seen[k] {
+			final = append(final, d)
+			seen[k] = true
+		}
+	}
+	return final
 }
 
 func intSliceContains(list []int, v int) bool {

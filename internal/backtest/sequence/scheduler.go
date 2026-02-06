@@ -1,4 +1,7 @@
-package scheduler
+// Package sequence computes the chronological timeline for a backtest.
+// It maps high-level scheduling rules (e.g., "5 days before earnings") 
+// into a concrete, sorted sequence of opening trade timestamps.
+package sequence
 
 import (
 	"encoding/json"
@@ -180,6 +183,8 @@ func ScheduleDates(
 		ModeDailyTime      = "daily_time"
 	)
 	now := time.Now().UTC()
+	logger.Debugf("Scheduling dates | Mode: %s | Range: %s to %s",
+		entry.Mode, entry.StartDate.Format("2006-01-02"), entry.EndDate.Format("2006-01-02"))
 
 	barDates := make([]time.Time, 0, len(barMap))
 	for _, b := range barMap {
@@ -201,11 +206,12 @@ func ScheduleDates(
 
 	// invalid range, swap if needed
 	if entry.StartDate.After(entry.EndDate) {
+		logger.Warnf("StartDate %s is after EndDate %s. Swapping values.", entry.StartDate, entry.EndDate)
 		entry.StartDate, entry.EndDate = entry.EndDate, entry.StartDate
 	}
 
 	// NthList is required for modes except (default) daily_time
-	if len(entry.NthList) == 0 && !(entry.Mode == "" || entry.Mode == ModeDailyTime || entry.Mode == "default") {
+	if len(entry.NthList) == 0 && !(mode == "" || mode == ModeDailyTime || mode == "default") {
 		return out, fmt.Errorf("nth_list is required for mode %s", entry.Mode)
 	}
 
@@ -215,18 +221,21 @@ func ScheduleDates(
 	// earnings_offset - e.g., NthList = [-5] means 5 days before earnings
 	// ----------------------------------------------------------------------------------------
 	case ModeEarningsOffset:
+		logger.Infof("Fetching earnings dates for %s...", entry.Underlying)
 		if entry.Underlying == "" {
-			return out, fmt.Errorf("backtest scheduler error: earnings_offset mode requires non-empty underlying")
+			return nil, fmt.Errorf("scheduler: %s requires underlying symbol", ModeEarningsOffset)
 		}
 
 		earnings, err := GetEarningsDates(entry.Underlying)
 		if err != nil {
-			logger.Infof("skipped %s due to error, %w", entry.Underlying, err)
-			return out, fmt.Errorf("backtest scheduler error: fetch earnings dates error, %w", err)
+			logger.Errorf("skipped %s due to error, %w", entry.Underlying, err)
+			return nil, fmt.Errorf("scheduler: failed to get earnings for %s: %w", entry.Underlying, err)
 		}
 
 		// use first NthList element as offset, TODO: remove hardcoding
 		offset := entry.NthList[0]
+		logger.Debugf("Applying earnings offset: %d days", offset)
+
 		for _, e := range earnings {
 			candidate := e.AddDate(0, 0, offset)
 
@@ -234,10 +243,10 @@ func ScheduleDates(
 			if candidate.Before(entry.StartDate) || candidate.After(entry.EndDate) {
 				continue
 			}
-
-			day := data.MatchBarDate(candidate, barDates, entry.DateMatchType)
-			if !day.IsZero() {
+			if day := data.MatchBarDate(candidate, barDates, entry.DateMatchType); !day.IsZero() {
 				out = append(out, day)
+			} else {
+				logger.Tracef("No bar match for earnings candidate: %s", candidate.Format("2006-01-02"))
 			}
 		}
 
@@ -247,6 +256,7 @@ func ScheduleDates(
 	case ModeExpiryOffset:
 		// use first NthList element as offset, TODO: remove hardcoding
 		offset := entry.NthList[0]
+		logger.Debugf("Scanning %d expiries with offset: %d", len(expiries), offset)
 		for _, expiry := range expiries {
 			candidate := expiry.AddDate(0, 0, offset)
 
@@ -254,9 +264,7 @@ func ScheduleDates(
 			if candidate.Before(entry.StartDate) || candidate.After(entry.EndDate) {
 				continue
 			}
-
-			day := data.MatchBarDate(candidate, barDates, entry.DateMatchType)
-			if !day.IsZero() {
+			if day := data.MatchBarDate(candidate, barDates, entry.DateMatchType); !day.IsZero() {
 				out = append(out, day)
 			}
 		}
@@ -299,6 +307,7 @@ func ScheduleDates(
 	// nth_weekday - e.g., every Tue, Thu or every Mon etc.
 	// ----------------------------------------------------------------------------------------
 	case ModeNthWeekday:
+		logger.Debugf("Filtering by weekdays: %v", entry.NthList)
 		// Iterate through full date range
 		cur := entry.StartDate
 		for !cur.After(entry.EndDate) {
@@ -319,14 +328,17 @@ func ScheduleDates(
 	// default → daily schedule (ModeDailyTime)
 	// ----------------------------------------------------------------------------------------
 	default:
+		logger.Debugf("Using Daily/Default scheduling mode")
 		for d := entry.StartDate; !d.After(entry.EndDate); d = d.AddDate(0, 0, 1) {
 			day := data.MatchBarDate(d, barDates, entry.DateMatchType)
 			if !day.IsZero() {
-				day, err := CombineDateTime(day, entry.TimeOfDay, entry.Timezone)
+				// Combine with time and zone
+				finalDay, err := CombineDateTime(day, entry.TimeOfDay, entry.Timezone)
 				if err != nil {
-					return nil, err
+					logger.Errorf("Failed to combine time/zone for %s: %v", day, err)
+					return nil, fmt.Errorf("scheduler: time combination failed for %s: %w", day, err)
 				}
-				out = append(out, day)
+				out = append(out, finalDay)
 			}
 		}
 	}
@@ -334,15 +346,9 @@ func ScheduleDates(
 	// Sort + unique
 	sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
 
-	seen := map[string]bool{}
-	final := []time.Time{}
-	for _, d := range out {
-		k := d.Format("2006-01-02")
-		if !seen[k] {
-			final = append(final, d)
-			seen[k] = true
-		}
-	}
+	final := deduplicateDates(out)
+	logger.Infof("Scheduling complete: Produced %d unique trading dates", len(final))
+
 	return final, nil
 }
 
@@ -364,16 +370,17 @@ func ScheduleDates(
 func GetEarningsDates(underlying string) ([]time.Time, error) {
 	apiKey := os.Getenv("ALPHAVANTAGE_API_KEY")
 	if apiKey == "" {
-		return nil, fmt.Errorf("missing ALPHAVANTAGE_API_KEY")
+		logger.Warnf("ALPHAVANTAGE_API_KEY not set. Earnings-based scheduling will fail.")
+		return nil, fmt.Errorf("environment: ALPHAVANTAGE_API_KEY is not set")
 	}
 
-	url := fmt.Sprintf(
-		"https://www.alphavantage.co/query?function=EARNINGS&symbol=%s&apikey=%s",
-		underlying, apiKey)
+	url := fmt.Sprintf("https://www.alphavantage.co/query?function=EARNINGS&symbol=%s&apikey=%s", underlying, apiKey)
+	logger.Debugf("Querying AlphaVantage for %s earnings...", underlying)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		logger.Errorf("HTTP error fetching earnings for %s: %v", underlying, err)
+		return nil, fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -381,14 +388,16 @@ func GetEarningsDates(underlying string) ([]time.Time, error) {
 
 	var er EarningsResponse
 	if err := json.Unmarshal(body, &er); err != nil {
-		return nil, err
+		logger.Errorf("Failed to parse earnings JSON: %v", err)
+		return nil, fmt.Errorf("json unmarshal failed: %w", err)
 	}
 
-	out := []time.Time{}
+	var out []time.Time
 	for _, q := range er.QuarterlyEarnings {
 		if t, err := time.Parse("2006-01-02", q.ReportedDate); err == nil {
 			out = append(out, t)
 		}
 	}
+	logger.Debugf("Found %d quarterly earnings dates for %s", len(out), underlying)
 	return out, nil
 }

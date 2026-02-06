@@ -1,4 +1,4 @@
-package scheduler_test
+package sequence_test
 
 // import (
 // 	"testing"

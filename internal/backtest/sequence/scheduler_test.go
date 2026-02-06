@@ -1,4 +1,4 @@
-package scheduler
+package sequence
 
 import (
 	"testing"
@@ -12,8 +12,8 @@ var (
 	locNY      *time.Location
 	startDate  time.Time
 	endDate    time.Time
-	timespan   int
-	multiplier string
+	multiplier int
+	timespan   string
 
 	dataProv data.Provider
 )
@@ -28,8 +28,8 @@ func init() {
 	startDate = time.Date(2025, 1, 1, 0, 0, 0, 0, locNY)
 	endDate = time.Date(2026, 1, 1, 0, 0, 0, 0, locNY)
 
-	timespan = 1
-	multiplier = "day"
+	multiplier = 1
+	timespan = "day"
 
 	dataProv = data.GetMassiveDataProvider()
 }
@@ -41,7 +41,7 @@ func TestBeforeEarningsSchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestBeforeEarningsHigherSchedule(t *testing.T) {
 		DateMatchType: data.MatchHigher,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestBeforeEarningsLowerSchedule(t *testing.T) {
 		DateMatchType: data.MatchLower,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestBeforeEarningsExactSchedule(t *testing.T) {
 		DateMatchType: data.MatchExact,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestBeforeEarningsNearestSchedule(t *testing.T) {
 		DateMatchType: data.MatchNearest,
 		StartDate:     startDate,
 		EndDate:       endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAfterEarningsSchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestBeforeExpirySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestOnceMonthlySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestThriceMonthlySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestOnceWeeklySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    endDate})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestThriceWeeklySchedule(t *testing.T) {
 		TimeOfDay:  "10:00",
 		StartDate:  startDate,
 		EndDate:    startDate.AddDate(0, 3, -1)})
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestDailySchedule(t *testing.T) {
 		StartDate:  startDate,
 		EndDate:    startDate.AddDate(0, 1, -1)})
 
-	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, timespan, multiplier)
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
 	if err != nil {
 		t.Fatalf("failed to get daily bars: %v", err)
 	}

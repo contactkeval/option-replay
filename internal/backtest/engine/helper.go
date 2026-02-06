@@ -36,7 +36,12 @@ func (e *Engine) fetchDailyData() ([]data.Bar, error) {
 }
 
 // getOpeningPrice attempts a market lookup, falling back to Black-Scholes if data is missing.
-func (e *Engine) getOpeningPrice(leg st.TradeLeg, dt time.Time, underlyingPrice float64, hv float64) float64 {
+func (e *Engine) getOpeningPrice(
+	leg st.TradeLeg,
+	dt time.Time,
+	underlyingPrice float64,
+	hv float64,
+) float64 {
 	p, err := e.prov.GetOptionPrice(e.cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, dt)
 
 	if err != nil {
@@ -78,7 +83,11 @@ func (e *Engine) logTradeSummary(t Trade) {
 }
 
 // checkUnderlyingMove scans minute bars to find the exact timestamp of a price breach.
-func checkUnderlyingMove(bars []data.Bar, trade *Trade, limit float64) (time.Time, float64, bool) {
+func checkUnderlyingMove(
+	bars []data.Bar,
+	trade *Trade,
+	limit float64,
+) (time.Time, float64, bool) {
 	for _, minuteBar := range bars {
 		move := max(minuteBar.High-trade.UnderlyingAtOpen, trade.UnderlyingAtOpen-minuteBar.Low)
 		if move >= limit {
@@ -89,7 +98,13 @@ func checkUnderlyingMove(bars []data.Bar, trade *Trade, limit float64) (time.Tim
 }
 
 // fetchAndAlignLegData synchronizes time series for the underlying and all option legs.
-func fetchAndAlignLegData(trade *Trade, underlyingBars []data.Bar, end time.Time, cfg Config, prov data.Provider) map[time.Time][]data.Bar {
+func fetchAndAlignLegData(
+	trade *Trade,
+	underlyingBars []data.Bar,
+	end time.Time,
+	cfg Config,
+	prov data.Provider,
+) map[time.Time][]data.Bar {
 	legsCount := len(trade.Legs)
 	minuteData := make(map[time.Time][]data.Bar)
 

@@ -35,6 +35,7 @@ import (
 var (
 	ErrInvalidStrikeExpression = errors.New("invalid strike expression")
 	ErrLegIndexOutOfRange      = errors.New("leg index out of range")
+	ErrExpiryNotFound          = errors.New("no valid expiration found for offset")
 )
 
 //
@@ -106,16 +107,13 @@ func PlanStrategy(
 	prov data.Provider,
 ) ([]TradeLeg, error) {
 
-	logger.Infof(
-		"event=plan_strategy underlying=%s open_time=%s price=%.2f",
-		underlying,
-		openDateTime.Format(time.RFC3339),
-		openPrice,
-	)
+	logger.Infof("event=plan_strategy underlying=%s open_time=%s price=%.2f",
+		underlying, openDateTime.Format(time.RFC3339), openPrice)
 
-	legs := []TradeLeg{}
+	legs := make([]TradeLeg, 0, len(strategy.Legs))
 
 	for i, legSpec := range strategy.Legs {
+		legNum := i + 1
 		logger.Debugf("event=resolve_leg index=%d spec=%+v", i+1, legSpec)
 
 		// Determine expiration offset
@@ -126,43 +124,24 @@ func PlanStrategy(
 
 		// Resolve expiration date
 		expiryDate := ResolveExpiration(openDateTime, offset, expiryList, strategy.DateMatchType)
+		if expiryDate.IsZero() {
+			return nil, fmt.Errorf("leg %d: %w (offset %d)", legNum, ErrExpiryNotFound, offset)
+		}
 		logger.Tracef("event=expiry_resolved leg=%d expiry=%s", i+1, expiryDate.Format("2006-01-02"))
 
-		strike, err := ResolveStrike(
-			legSpec.StrikeRule,
-			underlying,
-			openPrice,
-			openDateTime,
-			expiryDate,
-			legs,
-			prov,
-		)
+		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, prov)
 		if err != nil {
-			logger.Errorf("event=strike_resolution_failed leg=%d err=%v", i+1, err)
-			return nil, err
+			return nil, fmt.Errorf("leg %d strike resolution failed: %w", legNum, err)
 		}
 
 		// Fetch option premium
-		openPremium, err := prov.GetOptionPrice(
-			underlying,
-			strike,
-			expiryDate,
-			legSpec.OptionType,
-			openDateTime,
-		)
+		openPremium, err := prov.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
 		if err != nil {
-			logger.Errorf("event=premium_fetch_failed leg=%d err=%v", i+1, err)
-			return nil, err
+			return nil, fmt.Errorf("leg %d premium fetch failed: %w", legNum, err)
 		}
 
-		logger.Infof(
-			"event=leg_resolved leg=%d side=%s type=%s strike=%.2f premium=%.2f",
-			i+1,
-			legSpec.Side,
-			legSpec.OptionType,
-			strike,
-			openPremium,
-		)
+		logger.Debugf("event=leg_resolved leg=%d side=%s type=%s strike=%.2f premium=%.2f",
+			i+1, legSpec.Side, legSpec.OptionType, strike, openPremium)
 
 		// Append resolved leg
 		legs = append(legs, TradeLeg{
@@ -261,14 +240,7 @@ func ResolveStrike(
 			logger.Errorf("parse float failed for DELTA expression:%s, %v", deltaStr, err)
 			return 0, fmt.Errorf("invalid DELTA value: %w", err)
 		}
-		target, err := resolveDeltaStrike(
-			underlying,
-			expiryDate,
-			openDate,
-			asOfPrice,
-			targetDelta,
-			prov,
-		)
+		target, err := resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, prov)
 		if err != nil {
 			logger.Errorf("resolve strike failed for DELTA expression:%s, %v", deltaStr, err)
 			return 0, err

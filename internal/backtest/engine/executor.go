@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	sch "github.com/contactkeval/option-replay/internal/backtest/scheduler"
+	sch "github.com/contactkeval/option-replay/internal/backtest/sequence"
 	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
 	"github.com/contactkeval/option-replay/internal/logger"
@@ -117,7 +117,12 @@ func (e *Engine) Run() (*Result, error) {
 }
 
 // executeBacktest iterates through scheduled dates to open, manage, and close trades.
-func (e *Engine) executeBacktest(dates []time.Time, dailyBars []data.Bar, expiries []time.Time, hv float64) []Trade {
+func (e *Engine) executeBacktest(
+	dates []time.Time,
+	dailyBars []data.Bar,
+	expiries []time.Time,
+	hv float64,
+) []Trade {
 	var trades []Trade
 	barMap := createBarMap(dailyBars)
 
@@ -149,7 +154,13 @@ func (e *Engine) executeBacktest(dates []time.Time, dailyBars []data.Bar, expiri
 }
 
 // openTrade handles initial premium pricing and trade initialization.
-func (e *Engine) openTrade(id int, dt time.Time, price float64, legs []st.TradeLeg, hv float64) Trade {
+func (e *Engine) openTrade(
+	id int,
+	dt time.Time,
+	price float64,
+	legs []st.TradeLeg,
+	hv float64,
+) Trade {
 	openPremium := 0.0
 	for _, leg := range legs {
 		p := e.getOpeningPrice(leg, dt, price, hv)
@@ -175,7 +186,13 @@ func (e *Engine) openTrade(id int, dt time.Time, price float64, legs []st.TradeL
 
 // simCloseTrade determines the exit date and final trade value.
 // It prioritizes time-based exits, then price-movement exits, and finally intraday PnL.
-func simCloseTrade(tr *Trade, dailyBars []data.Bar, hv float64, cfg Config, prov data.Provider) {
+func simCloseTrade(
+	tr *Trade,
+	dailyBars []data.Bar,
+	hv float64,
+	cfg Config,
+	prov data.Provider,
+) {
 	closeByDateTime := tr.Legs[0].Expiration // Default to expiration
 	logger.Debugf("Trade #%d: Initial exit target set to Expiration: %s", tr.ID, closeByDateTime.Format("2006-01-02"))
 
@@ -205,7 +222,12 @@ func simCloseTrade(tr *Trade, dailyBars []data.Bar, hv float64, cfg Config, prov
 }
 
 // exitByUnderlyingMove scans daily bars to find if the asset moved past a dollar threshold.
-func exitByUnderlyingMove(trade *Trade, dailyBars []data.Bar, closeByDateTime *time.Time, cfg Config) {
+func exitByUnderlyingMove(
+	trade *Trade,
+	dailyBars []data.Bar,
+	closeByDateTime *time.Time,
+	cfg Config,
+) {
 	for _, bar := range dailyBars {
 		if bar.Date.Before(trade.OpenDateTime) {
 			continue
@@ -224,7 +246,12 @@ func exitByUnderlyingMove(trade *Trade, dailyBars []data.Bar, closeByDateTime *t
 }
 
 // exitByPriceChange performs high-fidelity minute-by-minute simulation for the trade exit.
-func exitByPriceChange(trade *Trade, closeByDateTime time.Time, cfg Config, prov data.Provider) {
+func exitByPriceChange(
+	trade *Trade,
+	closeByDateTime time.Time,
+	cfg Config,
+	prov data.Provider,
+) {
 	bars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, 1, "minute")
 	if err != nil {
 		logger.Errorf("Trade #%d: Data error fetching minute bars: %v", trade.ID, err)
@@ -255,7 +282,12 @@ func exitByPriceChange(trade *Trade, closeByDateTime time.Time, cfg Config, prov
 }
 
 // scanOptionExits simulates the PnL of the entire strategy at every minute to check for target triggers.
-func scanOptionExits(trade *Trade, minuteData map[time.Time][]data.Bar, cfg Config, closeDate *time.Time) bool {
+func scanOptionExits(
+	trade *Trade,
+	minuteData map[time.Time][]data.Bar,
+	cfg Config,
+	closeDate *time.Time,
+) bool {
 	legsCount := len(trade.Legs)
 	legSigns := make([]float64, legsCount)
 	lastPrices := make([]float64, legsCount)
@@ -297,7 +329,12 @@ func scanOptionExits(trade *Trade, minuteData map[time.Time][]data.Bar, cfg Conf
 }
 
 // calculateFinalClosePremium determines the final value of the trade if no specific exit was triggered.
-func calculateFinalClosePremium(trade *Trade, closeByDateTime time.Time, cfg Config, prov data.Provider) float64 {
+func calculateFinalClosePremium(
+	trade *Trade,
+	closeByDateTime time.Time,
+	cfg Config,
+	prov data.Provider,
+) float64 {
 	totalPremium := 0.0
 	for _, leg := range trade.Legs {
 		premium, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, closeByDateTime)

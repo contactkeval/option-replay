@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/contactkeval/option-replay/internal/backtest/engine"
-	sch "github.com/contactkeval/option-replay/internal/backtest/scheduler"
+	sch "github.com/contactkeval/option-replay/internal/backtest/sequence"
 	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
 )
