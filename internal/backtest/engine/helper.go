@@ -28,7 +28,7 @@ func (e *Engine) initConfiguration() {
 
 // fetchDailyData retrieves daily underlying price bars for the duration of the backtest.
 func (e *Engine) fetchDailyData() ([]data.Bar, error) {
-	bars, err := e.prov.GetBars(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate, 1, "day")
+	bars, err := e.prov.GetBars(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate, multiplierOne, timespanDay)
 	if err != nil || len(bars) == 0 {
 		return nil, fmt.Errorf("underlying data unavailable: %w", err)
 	}
@@ -101,73 +101,64 @@ func checkUnderlyingMove(
 func fetchAndAlignLegData(
 	trade *Trade,
 	underlyingBars []data.Bar,
-	end time.Time,
-	cfg Config,
+	closeByDateTime time.Time,
 	prov data.Provider,
-) map[time.Time][]data.Bar {
+	cfg Config,
+) []MinuteRow {
 	legsCount := len(trade.Legs)
-	minuteData := make(map[time.Time][]data.Bar)
+	
+	// We use a temporary map for the 'Alignment' phase.
+	// This handles cases where leg data might have gaps or different start times.
+	alignmentMap := make(map[time.Time][]data.Bar)
+	
+	// Track timestamps in a slice to preserve the order of underlyingBars
+	timestamps := make([]time.Time, 0, len(underlyingBars))
 
+	// 1. Initialize alignment map with Underlying data
 	for _, bar := range underlyingBars {
-		minuteData[bar.Date] = make([]data.Bar, legsCount+1)
-		minuteData[bar.Date][0] = bar
+		row := make([]data.Bar, legsCount+1)
+		row[legsCount] = bar
+		alignmentMap[bar.Date] = row
+		timestamps = append(timestamps, bar.Date)
 	}
 
+	// 2. Overlay Leg data into the alignment map
 	for i, leg := range trade.Legs {
 		symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
-		bars, _ := prov.GetBars(symbol, trade.OpenDateTime, end, 1, "minute")
+		
+		// Note: We ignore errors here assuming gaps result in zero-value bars
+		bars, _ := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
 
-		for _, b := range bars {
-			if _, exists := minuteData[b.Date]; exists {
-				minuteData[b.Date][i+1] = b
+		for _, bar := range bars {
+			if row, exists := alignmentMap[bar.Date]; exists {
+				row[i] = bar
 			}
 		}
 	}
+
+	// 3. Convert map to a sorted slice (The 'Flattening' phase)
+	// Since 'timestamps' was built from 'underlyingBars', it is already sorted.
+	minuteData := make([]MinuteRow, 0, len(timestamps))
+	for _, ts := range timestamps {
+		minuteData = append(minuteData, MinuteRow{
+			Timestamp: ts,
+			LegBars:   alignmentMap[ts],
+		})
+	}
+
 	return minuteData
 }
 
 // getValidators returns a slice of boolean functions used to evaluate exit criteria.
-func getValidators(cfg Config, openPremium float64) []func(float64) bool {
+func getValidators(cfg Config, currentPremium float64) []func(float64) bool {
 	var v []func(float64) bool
 	if cfg.Exit.StopLossPct != nil {
-		stopAmt := openPremium * (*cfg.Exit.StopLossPct / 100.0)
-		v = append(v, func(curr float64) bool { return curr <= openPremium-stopAmt })
+		stopAmt := currentPremium * (*cfg.Exit.StopLossPct / 100.0)
+		v = append(v, func(curr float64) bool { return curr <= currentPremium-stopAmt })
 	}
 	if cfg.Exit.ProfitTargetPct != nil {
-		profAmt := openPremium * (*cfg.Exit.ProfitTargetPct / 100.0)
-		v = append(v, func(curr float64) bool { return curr >= openPremium+profAmt })
+		profAmt := currentPremium * (*cfg.Exit.ProfitTargetPct / 100.0)
+		v = append(v, func(curr float64) bool { return curr >= currentPremium+profAmt })
 	}
 	return v
-}
-
-// extractCloses transforms a slice of data bars into a simple slice of close prices.
-func extractCloses(bars []data.Bar) []float64 {
-	var closes []float64
-	for _, b := range bars {
-		closes = append(closes, b.Close)
-	}
-	return closes
-}
-
-// TODO: move to a data.BlackScholes package
-// AnnualizedVolatility calculates the standard deviation of logarithmic returns normalized for a 252-day trading year.
-func AnnualizedVolatility(closes []float64) float64 {
-	if len(closes) < 2 {
-		return 0.30
-	}
-	var rets []float64
-	for i := 1; i < len(closes); i++ {
-		rets = append(rets, math.Log(closes[i]/closes[i-1]))
-	}
-	mean := 0.0
-	for _, v := range rets {
-		mean += v
-	}
-	mean /= float64(len(rets))
-	sd := 0.0
-	for _, v := range rets {
-		sd += (v - mean) * (v - mean)
-	}
-	sd = math.Sqrt(sd / float64(len(rets)-1))
-	return sd * math.Sqrt(252.0)
 }

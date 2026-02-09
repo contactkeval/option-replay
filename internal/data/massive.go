@@ -68,6 +68,12 @@ type massiveContractsResp struct {
 	NextURL   string            `json:"next_url"`
 }
 
+const (
+	multiplierOne  = 1
+	timespanDay    = "day"
+	timespanMinute = "minute"
+)
+
 // NewMassiveDataProvider constructs a Massive-backed data provider.
 //
 // It initializes an HTTP client with sensible defaults for:
@@ -430,7 +436,7 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(
 	)
 
 	// Step 1: Load spot bars
-	bars, err := massiveDataProv.GetBars(ticker, fromDate, toDate, 1, "day")
+	bars, err := massiveDataProv.GetBars(ticker, fromDate, toDate, multiplierOne, timespanDay)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
 	}
@@ -545,13 +551,8 @@ func (massiveDataProv *massiveDataProvider) GetOptionPrice(
 	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	price := 0.0
 
-	bars, err := massiveDataProv.GetBars(
-		symbol,
-		tradeDateTime.Add(-5*time.Minute),
-		tradeDateTime,
-		1,
-		"minute",
-	)
+	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime,
+		multiplierOne, timespanMinute)
 	if err != nil {
 		return 0, fmt.Errorf("fetch option bars: %w", err)
 	}
@@ -561,13 +562,8 @@ func (massiveDataProv *massiveDataProvider) GetOptionPrice(
 	} else {
 		logger.Tracef("no bars before trade time, trying forward window")
 
-		bars, err := massiveDataProv.GetBars(
-			symbol,
-			tradeDateTime,
-			tradeDateTime.Add(5*time.Minute),
-			1,
-			"minute",
-		)
+		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute),
+			multiplierOne, timespanMinute)
 		if err != nil {
 			logger.Errorf("no option bars found for %s", symbol)
 			return 0, fmt.Errorf("fetch option bars: %w", err)

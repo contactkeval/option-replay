@@ -80,3 +80,35 @@ func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 
 	}
 	return 0 // default
 }
+
+// extractCloses transforms a slice of data bars into a simple slice of close prices.
+func ExtractCloses(bars []Bar) []float64 {
+	var closes []float64
+	for _, b := range bars {
+		closes = append(closes, b.Close)
+	}
+	return closes
+}
+
+// TODO: move to a data.BlackScholes package
+// AnnualizedVolatility calculates the standard deviation of logarithmic returns normalized for a 252-day trading year.
+func AnnualizedVolatility(closes []float64) float64 {
+	if len(closes) < 2 {
+		return 0.30
+	}
+	var rets []float64
+	for i := 1; i < len(closes); i++ {
+		rets = append(rets, math.Log(closes[i]/closes[i-1]))
+	}
+	mean := 0.0
+	for _, v := range rets {
+		mean += v
+	}
+	mean /= float64(len(rets))
+	sd := 0.0
+	for _, v := range rets {
+		sd += (v - mean) * (v - mean)
+	}
+	sd = math.Sqrt(sd / float64(len(rets)-1))
+	return sd * math.Sqrt(252.0)
+}
