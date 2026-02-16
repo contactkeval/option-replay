@@ -2,15 +2,14 @@ package engine
 
 import (
 	"testing"
-	"time"
+
 	"github.com/contactkeval/option-replay/internal/data"
-	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 func TestExecuteBacktest(t *testing.T) {
 	cfg := &Config{
 		Underlying: "SPY",
-		Entry:      EntryRule{Mode: "daily_time"},	
+		Entry:      EntryRule{Mode: "daily_time"},
 		Strategy:   StrategySpec{Legs: []LegSpec{{Side: "buy", OptionType: "put", StrikeRule: "ATM", Qty: 1, Expiration: 20}}, DateMatchType: "Nearest"},
 		ReportDir:  "./test_out",
 	}
@@ -20,6 +19,5 @@ func TestExecuteBacktest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("engine run failed: %v", err)
 	}
-
 
 }

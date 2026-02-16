@@ -3,7 +3,6 @@ package data
 import (
 	"encoding/csv"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 // localFileDataProvider implements Data Provider from local files.
@@ -69,7 +70,7 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 
 	f, err := os.Open(filepath.Join(localFileDataProv.dir, "intervals.csv"))
 	if err != nil {
-		log.Printf("open intervals file: %v", err)
+		logger.Infof("open intervals file: %v", err)
 		return 0
 	}
 	defer f.Close()
@@ -77,7 +78,7 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 	r := csv.NewReader(f)
 	records, err := r.ReadAll()
 	if err != nil {
-		log.Printf("read csv: %v", err)
+		logger.Infof("read csv: %v", err)
 		return 0
 	}
 

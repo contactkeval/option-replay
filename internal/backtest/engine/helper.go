@@ -23,6 +23,21 @@ func (e *Engine) initConfiguration() {
 	if e.cfg.Verbosity < VerbosityError || e.cfg.Verbosity > VerbosityTrace {
 		e.cfg.Verbosity = VerbosityInfo
 	}
+	if e.cfg.Entry.StartDate.IsZero() {
+		e.cfg.Entry.StartDate = time.Now().AddDate(0, -1, 0) // default to 1 month ago
+	}
+	if e.cfg.Entry.EndDate.IsZero() {
+		e.cfg.Entry.EndDate = time.Now()
+	}
+	if e.cfg.Entry.Mode == "" {
+		e.cfg.Entry.Mode = "daily_time"
+	}
+	if e.cfg.Entry.TimeOfDay == "" {
+		e.cfg.Entry.TimeOfDay = "9:45"
+	}
+	if e.cfg.Entry.Timezone == "" {
+		e.cfg.Entry.Timezone = "America/New_York"
+	}
 	logger.SetVerbosity(e.cfg.Verbosity)
 }
 
@@ -106,11 +121,11 @@ func fetchAndAlignLegData(
 	cfg Config,
 ) []MinuteRow {
 	legsCount := len(trade.Legs)
-	
+
 	// We use a temporary map for the 'Alignment' phase.
 	// This handles cases where leg data might have gaps or different start times.
 	alignmentMap := make(map[time.Time][]data.Bar)
-	
+
 	// Track timestamps in a slice to preserve the order of underlyingBars
 	timestamps := make([]time.Time, 0, len(underlyingBars))
 
@@ -125,7 +140,7 @@ func fetchAndAlignLegData(
 	// 2. Overlay Leg data into the alignment map
 	for i, leg := range trade.Legs {
 		symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
-		
+
 		// Note: We ignore errors here assuming gaps result in zero-value bars
 		bars, _ := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
 

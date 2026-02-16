@@ -29,6 +29,7 @@ type Level int
 
 const (
 	Error Level = iota // Error logs only critical failures.
+	Warn               // Warn logs non-critical issues that should be investigated.
 	Info               // Info logs high-level application progress.
 	Debug              // Debug logs detailed diagnostic information.
 	Trace              // Trace logs very fine-grained execution details.

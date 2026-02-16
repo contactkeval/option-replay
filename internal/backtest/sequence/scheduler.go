@@ -1,5 +1,5 @@
 // Package sequence computes the chronological timeline for a backtest.
-// It maps high-level scheduling rules (e.g., "5 days before earnings") 
+// It maps high-level scheduling rules (e.g., "5 days before earnings")
 // into a concrete, sorted sequence of opening trade timestamps.
 package sequence
 
@@ -182,7 +182,6 @@ func ScheduleDates(
 		ModeNthWeekday     = "nth_weekday"
 		ModeDailyTime      = "daily_time"
 	)
-	now := time.Now().UTC()
 	logger.Debugf("Scheduling dates | Mode: %s | Range: %s to %s",
 		entry.Mode, entry.StartDate.Format("2006-01-02"), entry.EndDate.Format("2006-01-02"))
 
@@ -191,15 +190,16 @@ func ScheduleDates(
 		barDates = append(barDates, b.Date)
 	}
 
-	// Default start = today - 1 year
-	if entry.StartDate.IsZero() {
-		entry.StartDate = now.AddDate(-1, 0, 0)
-	}
+	// now := time.Now().UTC()
+	// // Default start = today - 1 year
+	// if entry.StartDate.IsZero() {
+	// 	entry.StartDate = now.AddDate(-1, 0, 0)
+	// }
 
-	// Default end = today
-	if entry.EndDate.IsZero() {
-		entry.EndDate = now
-	}
+	// // Default end = today
+	// if entry.EndDate.IsZero() {
+	// 	entry.EndDate = now
+	// }
 
 	out := []time.Time{}
 	mode := strings.ToLower(strings.TrimSpace(entry.Mode))
