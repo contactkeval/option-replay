@@ -25,8 +25,10 @@ type EarningsResponse struct {
 }
 
 type EntryRule struct {
-	StartDate         time.Time          `json:"start,omitempty"`           // inclusive, default: one year before now
-	EndDate           time.Time          `json:"end,omitempty"`             // inclusive, default: now
+	StDt              string             `json:"start,omitempty"` // inclusive, default: one year before now
+	EnDt              string             `json:"end,omitempty"`   // inclusive, YYYY-MM-DD format date only, default: now
+	StartDate         time.Time          // inclusive, default: one year before now
+	EndDate           time.Time          // inclusive, YYYY-MM-DD format date only, default: now
 	Underlying        string             `json:"underlying,omitempty"`      // e.g., "AAPL", "SPY", etc.
 	Mode              string             `json:"mode"`                      // "earnings_offset", "expiry_offset", "nth_weekday", "nth_month_day", "daily_time"
 	NthList           []int              `json:"nth_list,omitempty"`        // e.g., [-5] or [5] for 5 days prior or after respectively (for earnings_offset, expiry_offset), [1,3], etc. for nth_weekday or nth_month_day

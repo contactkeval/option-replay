@@ -73,7 +73,7 @@ type LegSpec struct {
 type StrategySpec struct {
 	DaysToExpiry  int                `json:"dte,omitempty"`             // Default DTE
 	DateMatchType data.DateMatchType `json:"date_match_type,omitempty"` // Expiry matching rule
-	Legs          []LegSpec          `json:"strategy"`                  // Strategy legs
+	Legs          []LegSpec          `json:"legs"`                      // Strategy legs
 }
 
 //

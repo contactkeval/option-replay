@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	sch "github.com/contactkeval/option-replay/internal/backtest/sequence"
 	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
 	"github.com/contactkeval/option-replay/internal/logger"
@@ -14,6 +15,7 @@ import (
 
 // initConfiguration ensures default values and logging levels are set correctly.
 func (e *Engine) initConfiguration() {
+	logger.SetVerbosity(e.cfg.Verbosity)
 	if e.cfg.ReportDir == "" {
 		e.cfg.ReportDir = "./out"
 	}
@@ -23,11 +25,11 @@ func (e *Engine) initConfiguration() {
 	if e.cfg.Verbosity < VerbosityError || e.cfg.Verbosity > VerbosityTrace {
 		e.cfg.Verbosity = VerbosityInfo
 	}
-	if e.cfg.Entry.StartDate.IsZero() {
-		e.cfg.Entry.StartDate = time.Now().AddDate(0, -1, 0) // default to 1 month ago
+	if e.cfg.Entry.StDt == "" {
+		e.cfg.Entry.StDt = time.Now().AddDate(-1, 0, 0).Format("2006-01-02") // default to 1 month ago
 	}
-	if e.cfg.Entry.EndDate.IsZero() {
-		e.cfg.Entry.EndDate = time.Now()
+	if e.cfg.Entry.EnDt == "" {
+		e.cfg.Entry.EnDt = time.Now().Format("2006-01-02") // default to today
 	}
 	if e.cfg.Entry.Mode == "" {
 		e.cfg.Entry.Mode = "daily_time"
@@ -38,7 +40,19 @@ func (e *Engine) initConfiguration() {
 	if e.cfg.Entry.Timezone == "" {
 		e.cfg.Entry.Timezone = "America/New_York"
 	}
-	logger.SetVerbosity(e.cfg.Verbosity)
+
+	// Parse and combine entry date/time into time.Time objects
+	t, err := time.Parse("2006-01-02", e.cfg.Entry.StDt)
+	if err != nil {
+		logger.Errorf("invalid start date format (YYYY-MM-DD): %v", err)
+	}
+	e.cfg.Entry.StartDate, _ = sch.CombineDateTime(t, e.cfg.Entry.TimeOfDay, e.cfg.Entry.Timezone)
+	t, err = time.Parse("2006-01-02", e.cfg.Entry.EnDt)
+	if err != nil {
+		logger.Errorf("invalid end date format (YYYY-MM-DD): %v", err)
+	}
+	t = t.Add(time.Duration(24*time.Hour) - time.Minute)
+	e.cfg.Entry.EndDate, _ = sch.CombineDateTime(t, t.Format("15:04"), e.cfg.Entry.Timezone)
 }
 
 // fetchDailyData retrieves daily underlying price bars for the duration of the backtest.

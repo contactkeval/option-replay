@@ -4,7 +4,7 @@
     "start": "2026-01-01",
     "end": "2026-01-31",
     "mode": "daily_time",
-    "date_match_type": "higher"
+    "date_match_type": "higher",
     "time_of_day": "9:45",
     "timezone": "America/New_York"
   },
@@ -14,10 +14,6 @@
     "underlying_move_px_commented": 0,
     "profit_target_pct_commented": 0,
     "stop_loss_pct_commented": 0
-  },
-  "position": {
-    "shares_per_contract": 100,
-    "max_contracts": 5
   },
   "strategy": {
     "name": "covered_call",
