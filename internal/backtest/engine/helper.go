@@ -153,7 +153,7 @@ func fetchAndAlignLegData(
 
 	// 2. Overlay Leg data into the alignment map
 	for i, leg := range trade.Legs {
-		symbol := data.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
+		symbol := prov.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
 
 		// Note: We ignore errors here assuming gaps result in zero-value bars
 		bars, _ := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)

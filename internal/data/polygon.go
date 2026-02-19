@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 // polygonDataProvider implements Data Provider using Polygon.io API.
@@ -114,12 +117,12 @@ func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate,
 	}
 	var body struct {
 		Results []struct {
-			Time  int64   `json:"t"`
-			Open  float64 `json:"o"`
-			High  float64 `json:"h"`
-			Low   float64 `json:"l"`
-			Close float64 `json:"c"`
-			Vol   float64 `json:"v"`
+			Time   int64   `json:"t"`
+			Open   float64 `json:"o"`
+			High   float64 `json:"h"`
+			Low    float64 `json:"l"`
+			Close  float64 `json:"c"`
+			Volume uint32  `json:"v"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -127,14 +130,14 @@ func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate,
 	}
 	out := make([]Bar, 0, len(body.Results))
 	for _, r := range body.Results {
-		out = append(out, Bar{Date: time.UnixMilli(r.Time).UTC(), Open: r.Open, High: r.High, Low: r.Low, Close: r.Close, Vol: r.Vol})
+		out = append(out, Bar{Date: time.UnixMilli(r.Time).UTC(), Open: r.Open, High: r.High, Low: r.Low, Close: r.Close, Volume: r.Volume})
 	}
 	return out, nil
 }
 
 func (polygonDataProv *polygonDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
-	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+	symbol := polygonDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", symbol, polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
@@ -176,6 +179,42 @@ func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, f
 func (polygonDataProv *polygonDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
 	intervals := polygonDataProv.getIntervals(underlying)
 	return math.Round(asOfPrice/intervals) * intervals
+}
+
+// OptionSymbolFromParts: improved OCC-like formatter (best-effort)
+func (polygonDataProv *polygonDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
+	expDt := expiryDate.UTC().Format("060102")
+	optType := "C"
+	if opt := strings.ToLower(optionType); opt == "put" || opt == "p" {
+		optType = "P"
+	}
+	strikeStr := fmt.Sprintf("%08d", int(math.Round(strike*1000)))
+	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strikeStr)
+}
+
+func (polygonDataProv *polygonDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+	// Strip the "O:" prefix if present
+	cleanSym := strings.TrimPrefix(symbol, "O:")
+
+	// The OCC format suffix is fixed length:
+	// YYMMDD (6) + Type (1) + Strike (8) = 15 characters
+	if len(cleanSym) < 15 {
+		logger.Errorf("invalid option symbol length: %s", symbol)
+		return time.Time{}
+	}
+
+	// Extract the 6 digits for the date.
+	// It starts at (Total Length - 15) and ends 6 characters later.
+	datePart := cleanSym[len(cleanSym)-15 : len(cleanSym)-9]
+
+	expiry, err := time.Parse("060102", datePart)
+	if err != nil {
+		logger.Errorf("failed to parse expiry from %s: %v", symbol, err)
+		return time.Time{}
+	}
+
+	return expiry
 }
 
 func (polygonDataProv *polygonDataProvider) getIntervals(underlying string) float64 {

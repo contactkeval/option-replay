@@ -64,6 +64,14 @@ func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker strin
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for localFileDataProvider")
 }
 
+func (localFileDataProv *localFileDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+	return localFileDataProv.Secondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
+}
+
+func (localFileDataProv *localFileDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+	return localFileDataProv.Secondary().parseExpiryFromSymbol(symbol)
+}
+
 // getIntervals reads the CSV once and caches it
 func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) float64 {
 	intervals := make(map[string]float64)

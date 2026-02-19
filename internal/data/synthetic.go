@@ -47,7 +47,7 @@ func (synthDataProv *synthDataProvider) GetBars(underlying string, fromDate, toD
 			close := price + delta
 			high := math.Max(open, close) + math.Abs(rand.NormFloat64()*0.3)
 			low := math.Min(open, close) - math.Abs(rand.NormFloat64()*0.3)
-			out = append(out, Bar{Date: cur, Open: open, High: high, Low: low, Close: close, Vol: float64(1000 + rand.Intn(5000))})
+			out = append(out, Bar{Date: cur, Open: open, High: high, Low: low, Close: close, Volume: uint32(1000 + rand.Intn(5000))})
 			price = close
 		}
 		cur = cur.AddDate(0, 0, 1)
@@ -72,6 +72,15 @@ func (synthDataProv *synthDataProvider) GetRelevantExpiries(ticker string, fromD
 func (synthDataProv *synthDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
 	intervals := synthDataProv.getIntervals(underlying)
 	return math.Round(asOfPrice/intervals) * intervals
+}
+
+func (synthDataProv *synthDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+	// Simple formatter: <UNDERLYING>-<YYMMDD>-<C|P>-<STRIKE>
+	return synthDataProv.Secondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
+}
+
+func (synthDataProv *synthDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+	return synthDataProv.Secondary().parseExpiryFromSymbol(symbol)
 }
 
 func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {

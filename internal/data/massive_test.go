@@ -18,6 +18,21 @@ var (
 	prov          = NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
 )
 
+func TestOptionSymbolFromParts(t *testing.T) {
+	expDt := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
+	symbol := prov.OptionSymbolFromParts("SPY", expDt, "put", 500.0)
+	expected := "O:SPY250113P00500000"
+	if symbol != expected {
+		t.Fatalf("expected %s, got %s", expected, symbol)
+	}
+
+	symbol = prov.OptionSymbolFromParts("SPXW", expDt, "c", 5000.0)
+	expected = "O:SPXW250113C05000000"
+	if symbol != expected {
+		t.Fatalf("expected %s, got %s", expected, symbol)
+	}
+}
+
 func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 	// fake server returning 500
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/logger"
@@ -368,7 +369,7 @@ func (massiveDataProv *massiveDataProvider) GetBars(
 			High      float64 `json:"h"`
 			Low       float64 `json:"l"`
 			VWAP      float64 `json:"vw"` // volume-weighted average price
-			Volume    float64 `json:"v"`  // trading volume of the symbol in the given time period
+			Volume    uint32  `json:"v"`  // trading volume of the symbol in the given time period
 			Trades    int64   `json:"n"`  // number of transactions in the aggregate window
 			Timestamp int64   `json:"t"`  // epoch millis
 		} `json:"results"`
@@ -384,12 +385,12 @@ func (massiveDataProv *massiveDataProvider) GetBars(
 	out := make([]Bar, 0, len(body.Results))
 	for _, r := range body.Results {
 		out = append(out, Bar{
-			Date:  time.UnixMilli(r.Timestamp).UTC(),
-			Open:  r.Open,
-			High:  r.High,
-			Low:   r.Low,
-			Close: r.Close,
-			Vol:   r.Volume,
+			Date:   time.UnixMilli(r.Timestamp).UTC(),
+			Open:   r.Open,
+			High:   r.High,
+			Low:    r.Low,
+			Close:  r.Close,
+			Volume: r.Volume,
 		})
 	}
 
@@ -548,7 +549,7 @@ func (massiveDataProv *massiveDataProvider) GetOptionPrice(
 		tradeDateTime.Format(time.RFC3339),
 	)
 
-	symbol := OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+	symbol := massiveDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	price := 0.0
 
 	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime,
@@ -677,4 +678,40 @@ func (massiveDataProv *massiveDataProvider) getIntervals(
 	underlying string,
 ) float64 {
 	return 0.0
+}
+
+// OptionSymbolFromParts: improved OCC-like formatter (best-effort)
+func (massiveDataProv *massiveDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
+	expDt := expiryDate.UTC().Format("060102")
+	optType := "C"
+	if opt := strings.ToLower(optionType); opt == "put" || opt == "p" {
+		optType = "P"
+	}
+	strikeStr := fmt.Sprintf("%08d", int(math.Round(strike*1000)))
+	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strikeStr)
+}
+
+func (massiveDataProv *massiveDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+	// Strip the "O:" prefix if present
+	cleanSym := strings.TrimPrefix(symbol, "O:")
+
+	// The OCC format suffix is fixed length:
+	// YYMMDD (6) + Type (1) + Strike (8) = 15 characters
+	if len(cleanSym) < 15 {
+		logger.Errorf("invalid option symbol length: %s", symbol)
+		return time.Time{}
+	}
+
+	// Extract the 6 digits for the date.
+	// It starts at (Total Length - 15) and ends 6 characters later.
+	datePart := cleanSym[len(cleanSym)-15 : len(cleanSym)-9]
+
+	expiry, err := time.Parse("060102", datePart)
+	if err != nil {
+		logger.Errorf("failed to parse expiry from %s: %v", symbol, err)
+		return time.Time{}
+	}
+
+	return expiry
 }

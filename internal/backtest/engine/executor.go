@@ -162,7 +162,7 @@ func (e *Engine) executeBacktest(
 		logger.Infof("[%s] OPEN Trade #%d | Spot: %.2f | Net Prem: %.2f", entryDateStr, trade.ID, bar.Close, trade.OpenPremium)
 
 		// Simulate Lifecycle (Exit logic)
-		simCloseTrade(&trade, dailyBars, *e.cfg, e.prov)
+		simulatedCloseTrade(&trade, dailyBars, *e.cfg, e.prov)
 
 		trades = append(trades, trade)
 		e.logTradeSummary(trade)
@@ -201,9 +201,9 @@ func (e *Engine) openTrade(
 	}
 }
 
-// simCloseTrade determines the exit date and final trade value.
+// simulatedCloseTrade determines the exit date and final trade value.
 // It prioritizes time-based exits, then price-movement exits, and finally intraday PnL.
-func simCloseTrade(
+func simulatedCloseTrade(
 	trade *Trade,
 	dailyBars []data.Bar,
 	cfg Config,

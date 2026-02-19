@@ -1,11 +1,9 @@
 package data
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -20,6 +18,8 @@ type Provider interface {
 	GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error)
 	GetRelevantExpiries(underlying string, fromDate, toDate time.Time) ([]time.Time, error)
 	RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64
+	OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string
+	parseExpiryFromSymbol(symbol string) time.Time
 	getIntervals(underlying string) float64
 }
 
@@ -32,13 +32,13 @@ const (
 
 // Bar simplified OHLC
 type Bar struct {
-	Date  time.Time
-	Open  float64
-	High  float64
-	Low   float64
-	Close float64
-	Vol   float64
-	Count int64
+	Date   time.Time
+	Open   float64
+	High   float64
+	Low    float64
+	Close  float64
+	Volume uint32
+	Count  uint32
 }
 
 type OptionContract struct {
@@ -61,19 +61,6 @@ func GetMassiveDataProvider() Provider {
 // --------------------------------------------------------------------------------------------
 // Helper functions
 // --------------------------------------------------------------------------------------------
-
-// OptionSymbolFromParts: improved OCC-like formatter (best-effort)
-func OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
-	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
-	expDt := expiryDate.UTC().Format("060102")
-	optType := "C"
-	if strings.ToLower(optionType) == "put" || strings.ToLower(optionType) == "p" {
-		optType = "P"
-	}
-	strikeInt := int(math.Round(strike * 1000))
-	strFmt := fmt.Sprintf("%08d", strikeInt)
-	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strFmt)
-}
 
 func MatchBarDate(d time.Time, dates []time.Time, mode DateMatchType) time.Time {
 
