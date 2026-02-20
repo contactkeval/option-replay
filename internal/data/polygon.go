@@ -22,8 +22,16 @@ func NewPolygonDataProvider(apiKey string) Provider {
 	return &polygonDataProvider{apiKey: apiKey, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
-func (polygonDataProv *polygonDataProvider) Secondary() Provider {
+func (polygonDataProv *polygonDataProvider) GetSecondary() Provider {
 	return polygonDataProv.secondary
+}
+
+func (polygonDataProv *polygonDataProvider) SetSecondary(secondary Provider) {
+	polygonDataProv.secondary = secondary
+}
+
+func (polygonDataProv *polygonDataProvider) Set(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+	return polygonDataProv.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 }
 
 func (polygonDataProv *polygonDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
@@ -122,7 +130,7 @@ func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate,
 			High   float64 `json:"h"`
 			Low    float64 `json:"l"`
 			Close  float64 `json:"c"`
-			Volume uint32  `json:"v"`
+			Volume float64  `json:"v"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {

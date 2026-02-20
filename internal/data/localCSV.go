@@ -25,8 +25,12 @@ func NewLocalFileDataProvider(dir string, secondary Provider) *localFileDataProv
 	return &localFileDataProvider{dir: dir, secondary: secondary}
 }
 
-func (localFileDataProv *localFileDataProvider) Secondary() Provider {
+func (localFileDataProv *localFileDataProvider) GetSecondary() Provider {
 	return localFileDataProv.secondary
+}
+
+func (localFileDataProv *localFileDataProvider) SetSecondary(secondary Provider) {
+	localFileDataProv.secondary = secondary
 }
 
 func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
@@ -65,11 +69,11 @@ func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker strin
 }
 
 func (localFileDataProv *localFileDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
-	return localFileDataProv.Secondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
+	return localFileDataProv.GetSecondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 }
 
 func (localFileDataProv *localFileDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
-	return localFileDataProv.Secondary().parseExpiryFromSymbol(symbol)
+	return localFileDataProv.GetSecondary().parseExpiryFromSymbol(symbol)
 }
 
 // getIntervals reads the CSV once and caches it

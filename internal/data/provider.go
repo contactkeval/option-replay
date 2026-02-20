@@ -11,7 +11,8 @@ type DateMatchType string
 
 // Provider supplies market data
 type Provider interface {
-	Secondary() Provider
+	GetSecondary() Provider
+	SetSecondary(secondary Provider)
 	GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)
 	GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error)
 	GetBars(underlying string, fromDate, toDate time.Time, multiplier int, timespan string) ([]Bar, error)
@@ -37,7 +38,7 @@ type Bar struct {
 	High   float64
 	Low    float64
 	Close  float64
-	Volume uint32
+	Volume float64
 	Count  uint32
 }
 

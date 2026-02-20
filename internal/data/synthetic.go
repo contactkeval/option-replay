@@ -14,8 +14,12 @@ type synthDataProvider struct {
 
 func NewSyntheticProvider() Provider { return &synthDataProvider{} }
 
-func (synthDataProv *synthDataProvider) Secondary() Provider {
+func (synthDataProv *synthDataProvider) GetSecondary() Provider {
 	return synthDataProv.secondary
+}
+
+func (synthDataProv *synthDataProvider) SetSecondary(secondary Provider) {
+	synthDataProv.secondary = secondary
 }
 
 func (synthDataProv *synthDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
@@ -47,7 +51,7 @@ func (synthDataProv *synthDataProvider) GetBars(underlying string, fromDate, toD
 			close := price + delta
 			high := math.Max(open, close) + math.Abs(rand.NormFloat64()*0.3)
 			low := math.Min(open, close) - math.Abs(rand.NormFloat64()*0.3)
-			out = append(out, Bar{Date: cur, Open: open, High: high, Low: low, Close: close, Volume: uint32(1000 + rand.Intn(5000))})
+			out = append(out, Bar{Date: cur, Open: open, High: high, Low: low, Close: close, Volume: float64(1000 + rand.Intn(5000))})
 			price = close
 		}
 		cur = cur.AddDate(0, 0, 1)
@@ -76,11 +80,11 @@ func (synthDataProv *synthDataProvider) RoundToNearestStrike(underlying string, 
 
 func (synthDataProv *synthDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
 	// Simple formatter: <UNDERLYING>-<YYMMDD>-<C|P>-<STRIKE>
-	return synthDataProv.Secondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
+	return synthDataProv.GetSecondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 }
 
 func (synthDataProv *synthDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
-	return synthDataProv.Secondary().parseExpiryFromSymbol(symbol)
+	return synthDataProv.GetSecondary().parseExpiryFromSymbol(symbol)
 }
 
 func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {

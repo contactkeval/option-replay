@@ -109,9 +109,13 @@ func NewMassiveDataProvider(apiKey string) *massiveDataProvider {
 	}
 }
 
-// Secondary returns the configured secondary Provider, if any.
-func (massiveDataProv *massiveDataProvider) Secondary() Provider {
+// GetSecondary returns the configured secondary Provider, if any.
+func (massiveDataProv *massiveDataProvider) GetSecondary() Provider {
 	return massiveDataProv.secondary
+}
+
+func (massiveDataProv *massiveDataProvider) SetSecondary(secondary Provider) {
+	massiveDataProv.secondary = secondary
 }
 
 // GetATMOptionPrices returns the ATM strike along with call and put prices.
@@ -364,14 +368,15 @@ func (massiveDataProv *massiveDataProvider) GetBars(
 		Ticker   string `json:"ticker"`
 		Adjusted bool   `json:"adjusted"`
 		Results  []struct {
-			Open      float64 `json:"o"`
-			Close     float64 `json:"c"`
-			High      float64 `json:"h"`
-			Low       float64 `json:"l"`
-			VWAP      float64 `json:"vw"` // volume-weighted average price
-			Volume    uint32  `json:"v"`  // trading volume of the symbol in the given time period
-			Trades    int64   `json:"n"`  // number of transactions in the aggregate window
-			Timestamp int64   `json:"t"`  // epoch millis
+			Open  float64 `json:"o"`
+			Close float64 `json:"c"`
+			High  float64 `json:"h"`
+			Low   float64 `json:"l"`
+			VWAP  float64 `json:"vw"` // volume-weighted average price
+			// Volume is a number in Massive's API, but some symbols can have very large volumes that exceed uint32 limits (eg. {"v":1.558824e+06,"vw":584.5036,"o":584.97,"c":584.9,"h":584.97,"l":584.9,"t":1735852380000,"n":62}). Using float64 to avoid overflow issues.
+			Volume    float64 `json:"v"` // trading volume of the symbol in the given time period
+			Trades    int64   `json:"n"` // number of transactions in the aggregate window
+			Timestamp int64   `json:"t"` // epoch millis
 		} `json:"results"`
 		Status string `json:"status"`
 	}
@@ -639,6 +644,7 @@ func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(
 func (massiveDataProv *massiveDataProvider) processGetRequest(
 	req *http.Request,
 ) (*http.Response, error) {
+	logger.Infof("request: %s", req.URL.String())
 
 	for {
 		resp, err := massiveDataProv.Client.Do(req)
