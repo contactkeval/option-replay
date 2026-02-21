@@ -7,6 +7,46 @@
 
 A high-performance, modular options backtesting engine written in Go. `option-replay` is designed to simulate complex options strategies using historical minute-level data, featuring an intelligent local data caching system to minimize API latency and costs.
 
+## ⚙️ Configuration Guide
+
+The engine is driven by a `.json` configuration file. This allows you to define complex strategies (like Iron Condors, Diagonals, or Covered Calls) without recompiling the code.
+
+### Example: Iron Condor
+```json
+{
+  "underlying": "AAPL",
+  "entry": {
+    "start": "2026-01-01",
+    "end": "2026-01-31",
+    "mode": "daily_time",
+    "nth_list": [1,3],
+    "date_match_type": "higher",
+    "time_of_day": "9:45",
+    "timezone": "America/New_York"
+  },
+  "exit": {
+    "exit_by_days_to_expiry": 0,
+    "max_days_in_trade": 1,
+    "underlying_move_px": 10,
+    "profit_target_pct": 5,
+    "stop_loss_pct": 2
+  },
+  "strategy": {
+    "name": "iron_condor",
+    "dte": 9,
+    "date_match_type": "nearest",
+    "legs": [
+      { "side": "sell", "option_type": "call", "strike_rule": "ATM", "qty": 1},
+      { "side": "sell", "option_type": "put",  "strike_rule": "ATM", "qty": 1},
+      { "side": "buy",  "option_type": "call", "strike_rule": "ATM+3", "qty": 1},
+      { "side": "buy",  "option_type": "put",  "strike_rule": "ATM-3", "qty": 1}
+    ]
+  },
+  "report_dir": "output\\dir",
+  "verbosity": 2
+}
+```
+
 ## ?? Key Features
 
 * **Symmetric Architecture**: Clean separation between the **Sequencer** (time management), **Planner** (strategy logic), and **Executor** (trade execution).
@@ -55,42 +95,3 @@ cd option-replay
 go mod tidy
 ```
 
-## ⚙️ Configuration Guide
-
-The engine is driven by a `.json` configuration file. This allows you to define complex strategies (like Iron Condors, Diagonals, or Covered Calls) without recompiling the code.
-
-### Example: Iron Condor
-```json
-{
-  "underlying": "AAPL",
-  "entry": {
-    "start": "2026-01-01",
-    "end": "2026-01-31",
-    "mode": "daily_time",
-    "nth_list": [1,3],
-    "date_match_type": "higher",
-    "time_of_day": "9:45",
-    "timezone": "America/New_York"
-  },
-  "exit": {
-    "exit_by_days_to_expiry": 0,
-    "max_days_in_trade": 1,
-    "underlying_move_px": 10,
-    "profit_target_pct": 5,
-    "stop_loss_pct": 2
-  },
-  "strategy": {
-    "name": "iron_condor",
-    "dte": 9,
-    "date_match_type": "nearest",
-    "legs": [
-      { "side": "sell", "option_type": "call", "strike_rule": "ATM", "qty": 1},
-      { "side": "sell", "option_type": "put",  "strike_rule": "ATM", "qty": 1},
-      { "side": "buy",  "option_type": "call", "strike_rule": "ATM+3", "qty": 1},
-      { "side": "buy",  "option_type": "put",  "strike_rule": "ATM-3", "qty": 1}
-    ]
-  },
-  "report_dir": "output\\dir",
-  "verbosity": 2
-}
-```
