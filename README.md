@@ -59,7 +59,7 @@ go mod tidy
 
 The engine is driven by a `.json` configuration file. This allows you to define complex strategies (like Iron Condors, Diagonals, or Covered Calls) without recompiling the code.
 
-### Example: Double Diagonal / Complex Spread
+### Example: Iron Condor
 ```json
 {
   "underlying": "AAPL",
@@ -67,22 +67,30 @@ The engine is driven by a `.json` configuration file. This allows you to define 
     "start": "2026-01-01",
     "end": "2026-01-31",
     "mode": "daily_time",
+    "nth_list": [1,3],
     "date_match_type": "higher",
     "time_of_day": "9:45",
     "timezone": "America/New_York"
   },
   "exit": {
     "exit_by_days_to_expiry": 0,
-    "max_days_in_trade": 1
+    "max_days_in_trade": 1,
+    "underlying_move_px": 10,
+    "profit_target_pct": 5,
+    "stop_loss_pct": 2
   },
   "strategy": {
-    "name": "double_diagonal",
+    "name": "iron_condor",
+    "dte": 9,
+    "date_match_type": "nearest",
     "legs": [
-      { "side": "sell", "option_type": "call", "strike_rule": "ATM", "qty": 1, "expiration": 2 },
-      { "side": "sell", "option_type": "put",  "strike_rule": "ATM", "qty": 1, "expiration": 2 },
-      { "side": "buy",  "option_type": "call", "strike_rule": "ATM", "qty": 1, "expiration": 9 },
-      { "side": "buy",  "option_type": "put",  "strike_rule": "ATM", "qty": 1, "expiration": 9 }
+      { "side": "sell", "option_type": "call", "strike_rule": "ATM", "qty": 1},
+      { "side": "sell", "option_type": "put",  "strike_rule": "ATM", "qty": 1},
+      { "side": "buy",  "option_type": "call", "strike_rule": "ATM+3", "qty": 1},
+      { "side": "buy",  "option_type": "put",  "strike_rule": "ATM-3", "qty": 1}
     ]
   },
-  "data_provider": { "provider": "massive" }
+  "report_dir": "output\\dir",
+  "verbosity": 2
 }
+```
