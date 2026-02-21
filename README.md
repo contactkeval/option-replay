@@ -1,4 +1,6 @@
 # Option-Replay
+### High-performance strategy testing, made simpler.
+**Define. Replay. Refine.**
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/contactkeval/option-replay)](https://goreportcard.com/report/github.com/contactkeval/option-replay)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -51,7 +53,7 @@ git clone [https://github.com/contactkeval/option-replay.git](https://github.com
 # Install dependencies
 cd option-replay
 go mod tidy
-
+```
 
 ## ⚙️ Configuration Guide
 
