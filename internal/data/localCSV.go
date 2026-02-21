@@ -3,9 +3,11 @@ package data
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,32 +42,184 @@ func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying st
 	return 0, 0, 0, fmt.Errorf("GetATMOptionPrices not implemented for localFileDataProvider")
 }
 
-func (localFileDataProv *localFileDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
-	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetContracts(underlying, strike, expiryDate, fromDate, toDate)
+// GetContracts scans the local data directory for files matching the underlying.
+func (localFileDataProv *localFileDataProvider) GetContracts(
+	underlying string,
+	strike float64,
+	expiryDate, fromDate, toDate time.Time,
+) ([]OptionContract, error) {
+
+	files, err := os.ReadDir(localFileDataProv.dir)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
+
+	var out []OptionContract
+	prefix := fmt.Sprintf("O-%s", strings.ToUpper(underlying)) // Note the "-" from getSymbolPath sanitize
+
+	for _, f := range files {
+		if !strings.HasPrefix(f.Name(), prefix) {
+			continue
+		}
+
+		// Use the helper to extract the date
+		sym := strings.TrimSuffix(f.Name(), ".csv")
+		sym = strings.ReplaceAll(sym, "-", ":") // Convert back to O: format for parser
+
+		expiry := localFileDataProv.parseExpiryFromSymbol(sym)
+
+		if !expiryDate.IsZero() && !expiry.Equal(expiryDate) {
+			continue
+		}
+		if expiry.Before(fromDate) || expiry.After(toDate) {
+			continue
+		}
+
+		out = append(out, OptionContract{
+			ExpiryDate: expiry,
+			Strike:     strike, // In a full impl, parse this from the symbol string
+		})
+	}
+	return out, nil
 }
 
-func (localFileDataProv *localFileDataProvider) GetBars(underlying string, fromDate, toDate time.Time, timespan int, multiplier string) ([]Bar, error) {
-	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetBars(underlying, fromDate, toDate, timespan, multiplier)
+// GetBars mimics Massive's GetBars by streaming from local CSVs.
+// It uses a high-performance scanner-like approach to avoid RAM bloat.
+func (localFileDataProv *localFileDataProvider) GetBars(
+	underlying string,
+	fromDate, toDate time.Time,
+	timespan int,
+	multiplier string,
+) ([]Bar, error) {
+
+	// Ensure data exists locally before trying to read it
+	if err := localFileDataProv.EnsureLocalData(underlying, fromDate, toDate); err != nil {
+		logger.Warnf("EnsureLocalData failed for %s: %v", underlying, err)
 	}
-	return nil, fmt.Errorf("GetBars not implemented for localFileDataProvider")
+
+	filePath := localFileDataProv.getSymbolPath(underlying)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("local file not found: %w", err)
+	}
+	defer file.Close()
+
+	var out []Bar
+	reader := csv.NewReader(file)
+
+	// Skip Header
+	if _, err := reader.Read(); err != nil {
+		return nil, err
+	}
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			continue
+		}
+
+		// CSV format: date(RFC3339), open, high, low, close, volume
+		t, _ := time.Parse(time.RFC3339, row[0])
+
+		// Logic from massive.go: Filter range and stop early if possible
+		if t.Before(fromDate) {
+			continue
+		}
+		if t.After(toDate) {
+			break // Data is sorted, so we can stop scanning
+		}
+
+		out = append(out, Bar{
+			Date:   t.UTC(),
+			Open:   parseFloat(row[1]),
+			High:   parseFloat(row[2]),
+			Low:    parseFloat(row[3]),
+			Close:  parseFloat(row[4]),
+			Volume: parseFloat(row[5]),
+		})
+	}
+
+	return out, nil
 }
 
-func (localFileDataProv *localFileDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
-	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetOptionPrice(underlying, strike, expiryDate, optType, openDate)
+// GetOptionPrice mimics Massive's lookup by searching a ±5m window in local files.
+func (localFileDataProv *localFileDataProvider) GetOptionPrice(
+	underlying string,
+	strike float64,
+	expiryDate time.Time,
+	optType string,
+	openDate time.Time,
+) (float64, error) {
+	symbol := localFileDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+
+	// Search back-window (Massive logic)
+	bars, err := localFileDataProv.GetBars(symbol, openDate.Add(-5*time.Minute), openDate, 1, "minute")
+	if err == nil && len(bars) > 0 {
+		return bars[len(bars)-1].Close, nil
 	}
-	return 0, fmt.Errorf("GetOptionMidPrice not implemented for localFileDataProvider")
+
+	// Search forward-window (Massive logic)
+	bars, err = localFileDataProv.GetBars(symbol, openDate, openDate.Add(5*time.Minute), 1, "minute")
+	if err == nil && len(bars) > 0 {
+		return bars[0].Open, nil
+	}
+
+	return 0, fmt.Errorf("no local price for %s at %s", symbol, openDate)
 }
 
-func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
-	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
+// GetRelevantExpiries mirrors the 5-step logic from Massive.go but pulls from local bars.
+func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(
+	underlying string,
+	fromDate, toDate time.Time,
+) ([]time.Time, error) {
+	logger.Infof("locally resolving expiries for %s", underlying)
+
+	// Step 1: Load spot bars from local disk
+	bars, err := localFileDataProv.GetBars(underlying, fromDate, toDate, 1, "day")
+	if err != nil || len(bars) == 0 {
+		return nil, fmt.Errorf("failed to fetch local spot data: %w", err)
 	}
-	return nil, fmt.Errorf("GetRelevantExpiries not implemented for localFileDataProvider")
+
+	// Step 2-6: Range calculations (Exactly as in massive.go)
+	low, high := bars[0].Low, bars[0].High
+	for _, b := range bars {
+		if b.Low < low {
+			low = b.Low
+		}
+		if b.High > high {
+			high = b.High
+		}
+	}
+
+	multiplier := 1.0
+	if low >= 100 {
+		multiplier = 10
+	} // simplified multiplier logic
+
+	step := (high - low) / 5
+	levels := []float64{low + step, low + 3*step}
+
+	// Step 7: Fetch local contracts
+	expiryMap := map[string]time.Time{}
+	for _, l := range levels {
+		strike := math.Round(l/multiplier) * multiplier
+		contracts, _ := localFileDataProv.GetContracts(underlying, strike, time.Time{}, fromDate, toDate)
+		for _, c := range contracts {
+			expiryMap[c.ExpiryDate.Format("2006-01-02")] = c.ExpiryDate
+		}
+	}
+
+	// Step 8: Sort and return
+	expiries := make([]time.Time, 0, len(expiryMap))
+	for _, dt := range expiryMap {
+		expiries = append(expiries, dt)
+	}
+	sort.Slice(expiries, func(i, j int) bool { return expiries[i].Before(expiries[j]) })
+
+	return expiries, nil
 }
 
 func (localFileDataProv *localFileDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
@@ -152,3 +306,4 @@ func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying 
 	}
 	return strike
 }
+

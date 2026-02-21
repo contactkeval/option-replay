@@ -3,6 +3,7 @@ package data
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -17,13 +18,17 @@ func TestEnsureLocal(t *testing.T) {
 	localProv := dataProv.(*localFileDataProvider)
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
-	err := localProv.EnsureLocalData("SPY", startDate, endDate)
+	underlying := "O:SPY250117C00580000" // SPY call option expiring on Jan 17, 2025 with strike 580.0
+	err := localProv.EnsureLocalData(underlying, startDate, endDate)
 	if err != nil {
 		t.Fatalf("Error ensuring local data: %v", err)
 	}
 
 	// Check if the file was created
-	expectedFile := filepath.Join("..\\..\\input\\data", "SPY.csv")
+	if strings.Contains(underlying, ":") {
+		underlying = strings.ReplaceAll(underlying, ":", "-") // sanitize for file name
+	}
+	expectedFile := filepath.Join("..\\..\\input\\data", underlying+".csv")
 	if _, err := os.Stat(expectedFile); os.IsNotExist(err) {
 		t.Fatalf("Expected file not found: %s", expectedFile)
 	}
