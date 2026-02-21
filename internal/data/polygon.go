@@ -130,7 +130,7 @@ func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate,
 			High   float64 `json:"h"`
 			Low    float64 `json:"l"`
 			Close  float64 `json:"c"`
-			Volume float64  `json:"v"`
+			Volume float64 `json:"v"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {

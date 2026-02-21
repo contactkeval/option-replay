@@ -14,94 +14,103 @@ type DataRecord struct {
 	LastDate  time.Time `csv:"last_date"`
 }
 
-func (localFileDataProv *localFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
-	// 1. Identify instrument type using your prefix convention
-	isOption := strings.HasPrefix(symbol, "O:")
-
-	// 2. Open list file (manifest)
-	records, err := localFileDataProv.loadManifest()
+func (p *localFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
+	records, err := p.loadManifest()
 	if err != nil {
 		return fmt.Errorf("ensure local: %w", err)
 	}
 
 	record, exists := records[symbol]
+	isOption := strings.HasPrefix(symbol, "O:")
 	now := time.Now()
 
+	var updatedRecord DataRecord
 	if exists {
-		// 3. Record exists: Check if we need to expand the data
-		if isOption {
-			// Requirements:
-			// a. If within range, return
-			// b. No need to check startDate
-			// c. if end after lastDate, fetch till TODAY
-			if endDate.After(record.LastDate) {
-				logger.Infof("Option %s: Extending data to today", symbol)
-				if err := localFileDataProv.fetchAndAppend(symbol, record.LastDate, now); err != nil {
-					return err
-				}
-				record.LastDate = now
-				records[symbol] = record // Update map
-			}
-		} else {
-			// Stock or Index Logic:
-			// if startDate prior to firstDate, fetch start -> first
-			if startDate.Before(record.FirstDate) {
-				logger.Infof("Symbol %s: Fetching historical gap", symbol)
-				if err := localFileDataProv.fetchAndAppend(symbol, startDate, record.FirstDate); err != nil {
-					return err
-				}
-				record.FirstDate = startDate
-			}
-			// if endDate after lastDate, fetch lastDate -> today
-			if endDate.After(record.LastDate) {
-				logger.Infof("Symbol %s: Fetching recent gap", symbol)
-				if err := localFileDataProv.fetchAndAppend(symbol, record.LastDate, now); err != nil {
-					return err
-				}
-				record.LastDate = now
-			}
-			records[symbol] = record
-		}
+		updatedRecord, err = p.handleExistingRecord(symbol, record, isOption, startDate, endDate, now)
 	} else {
-		// 4. Record does not exist: Initial Fetch
-		if isOption {
-			// Requirement: fetch 2 years prior from expiryDate till today
-			expiryDate := localFileDataProv.parseExpiryFromSymbol(symbol)
-			if expiryDate.IsZero() {
-				return fmt.Errorf("failed to parse expiry from %s", symbol)
-			}
-
-			fetchStart := expiryDate.AddDate(-2, 0, 0)
-			if err := localFileDataProv.fetchAndAppend(symbol, fetchStart, now); err != nil {
-				return err
-			}
-
-			// Add record to file with specific conditions
-			newRec := DataRecord{Symbol: symbol}
-			// firstDate added only if expiry within 6 months from requested start
-			if expiryDate.Before(startDate.AddDate(0, 6, 0)) {
-				newRec.FirstDate = fetchStart
-			}
-			// lastDate added only if expiry is in the future
-			if expiryDate.After(now) {
-				newRec.LastDate = now
-			}
-			records[symbol] = newRec
-		} else {
-			// Stocks/Indices: Fetch for given period
-			if err := localFileDataProv.fetchAndAppend(symbol, startDate, endDate); err != nil {
-				return err
-			}
-			records[symbol] = DataRecord{
-				Symbol:    symbol,
-				FirstDate: startDate,
-				LastDate:  endDate,
-			}
-		}
+		updatedRecord, err = p.handleNewRecord(symbol, isOption, startDate, endDate, now)
 	}
 
-	// 5. Update the manifest file
-	return localFileDataProv.saveManifest(records)
+	if err != nil {
+		return err
+	}
+
+	records[symbol] = updatedRecord
+	return p.saveManifest(records)
+}
+
+// --- Specialized Handlers ---
+
+func (p *localFileDataProvider) handleExistingRecord(symbol string, rec DataRecord, isOption bool, start, end, now time.Time) (DataRecord, error) {
+	// Options: Only extend the end date to today if needed
+	if isOption {
+		if end.After(rec.LastDate) {
+			logger.Infof("Option %s: Extending data to today", symbol)
+			if err := p.fetchAndAppend(symbol, rec.LastDate, now); err != nil {
+				return rec, err
+			}
+			rec.LastDate = now
+		}
+		return rec, nil
+	}
+
+	// Stocks/Indices: Check both historical and recent gaps
+	if start.Before(rec.FirstDate) {
+		logger.Infof("Symbol %s: Fetching historical gap", symbol)
+		if err := p.fetchAndAppend(symbol, start, rec.FirstDate); err != nil {
+			return rec, err
+		}
+		rec.FirstDate = start
+	}
+
+	if end.After(rec.LastDate) {
+		logger.Infof("Symbol %s: Fetching recent gap", symbol)
+		if err := p.fetchAndAppend(symbol, rec.LastDate, now); err != nil {
+			return rec, err
+		}
+		rec.LastDate = now
+	}
+
+	return rec, nil
+}
+
+func (p *localFileDataProvider) handleNewRecord(symbol string, isOption bool, start, end, now time.Time) (DataRecord, error) {
+	if isOption {
+		return p.initializeOptionRecord(symbol, start, now)
+	}
+
+	// Standard Stock/Index initialization
+	if err := p.fetchAndAppend(symbol, start, end); err != nil {
+		return DataRecord{}, err
+	}
+	return DataRecord{
+		Symbol:    symbol,
+		FirstDate: start,
+		LastDate:  end,
+	}, nil
+}
+
+func (p *localFileDataProvider) initializeOptionRecord(symbol string, requestedStart, now time.Time) (DataRecord, error) {
+	expiryDate := p.parseExpiryFromSymbol(symbol)
+	if expiryDate.IsZero() {
+		return DataRecord{}, fmt.Errorf("failed to parse expiry from %s", symbol)
+	}
+
+	fetchStart := expiryDate.AddDate(-2, 0, 0)
+	if err := p.fetchAndAppend(symbol, fetchStart, now); err != nil {
+		return DataRecord{}, err
+	}
+
+	newRec := DataRecord{Symbol: symbol}
+	// firstDate added only if expiry within 6 months from requested start
+	if expiryDate.Before(requestedStart.AddDate(0, 6, 0)) {
+		newRec.FirstDate = fetchStart
+	}
+	// lastDate added only if expiry is in the future
+	if expiryDate.After(now) {
+		newRec.LastDate = now
+	}
+	return newRec, nil
 }
 
 func (localFileDataProv *localFileDataProvider) RunMaintenancePipeline() error {
