@@ -11,30 +11,69 @@ import (
 	"github.com/contactkeval/option-replay/internal/logger"
 )
 
-// polygonDataProvider implements Data Provider using Polygon.io API.
-type polygonDataProvider struct {
+// PolygonDataProvider implements Data Provider using Polygon.io API.
+type PolygonDataProvider struct {
 	apiKey    string
 	client    *http.Client
 	secondary Provider
 }
 
+// NewPolygonDataProvider creates a new instance of PolygonDataProvider with the specified API key.
+// It initializes an HTTP client with a 30-second timeout.
+// Returns a Provider interface implementation for interacting with Polygon data services.
 func NewPolygonDataProvider(apiKey string) Provider {
-	return &polygonDataProvider{apiKey: apiKey, client: &http.Client{Timeout: 30 * time.Second}}
+	return &PolygonDataProvider{apiKey: apiKey, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
-func (polygonDataProv *polygonDataProvider) GetSecondary() Provider {
+// GetSecondary returns the secondary data provider associated with the PolygonDataProvider.
+// This can be used to access backup or alternative data sources.
+func (polygonDataProv *PolygonDataProvider) GetSecondary() Provider {
 	return polygonDataProv.secondary
 }
 
-func (polygonDataProv *polygonDataProvider) SetSecondary(secondary Provider) {
+// SetSecondary sets the secondary data provider for the PolygonDataProvider.
+// This allows the PolygonDataProvider to use an alternative provider for data retrieval
+// when the primary source is unavailable or insufficient.
+//
+// secondary: The Provider instance to be used as the secondary data source.
+func (polygonDataProv *PolygonDataProvider) SetSecondary(secondary Provider) {
 	polygonDataProv.secondary = secondary
 }
 
-func (polygonDataProv *polygonDataProvider) Set(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+// Set retrieves the at-the-money (ATM) option prices for the specified underlying asset.
+// It takes the underlying symbol, expiry date, open date, and the as-of price as input parameters.
+// Returns the strike price, call option price, put option price, and an error if any occurs during retrieval.
+func (polygonDataProv *PolygonDataProvider) Set(
+	underlying string,
+	expiryDate, openDate time.Time,
+	asOfPrice float64,
+) (strike, callPrice, putPrice float64, err error) {
 	return polygonDataProv.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 }
 
-func (polygonDataProv *polygonDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+// GetATMOptionPrices retrieves the at-the-money (ATM) option prices for a given underlying asset.
+// It queries the Polygon API for a snapshot of option data, finds the strike price closest to the provided asOfPrice,
+// and returns the strike, call price, put price, and any error encountered.
+// The call and put prices are calculated as the average of their ask and bid prices if both are available.
+// If no suitable option data is found, an error is returned.
+//
+// Parameters:
+//
+//	underlying   - The symbol of the underlying asset (e.g., "AAPL").
+//	openDate     - The date for which to retrieve option prices (unused in this implementation).
+//	asOfPrice    - The price used to determine the ATM strike.
+//
+// Returns:
+//
+//	strike       - The strike price closest to asOfPrice.
+//	callPrice    - The average call option price at the ATM strike.
+//	putPrice     - The average put option price at the ATM strike.
+//	err          - Any error encountered during the process.
+func (polygonDataProv *PolygonDataProvider) GetATMOptionPrices(
+	underlying string,
+	_, openDate time.Time,
+	asOfPrice float64,
+) (strike, callPrice, putPrice float64, err error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/underlying/%s?apiKey=%s", underlying, polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
@@ -104,13 +143,35 @@ func (polygonDataProv *polygonDataProvider) GetATMOptionPrices(underlying string
 	return strike, callPrice, putPrice, nil
 }
 
-func (polygonDataProv *polygonDataProvider) GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error) {
+func (polygonDataProv *PolygonDataProvider) GetContracts(
+	underlying string,
+	strike float64,
+	expiryDate, fromDate, toDate time.Time,
+) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
 	// This method is not implemented.
 	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate, toDate time.Time, timespan int, multiplier string) ([]Bar, error) {
+// GetBars retrieves historical bar data (OHLCV) for a specified underlying ticker symbol
+// from the Polygon API within a given date range and timespan.
+//
+// Parameters:
+//   - underlying: the symbol of the underlying asset.
+//   - strike: the strike price of the option contract.
+//   - expiryDate: the expiration date of the option contract.
+//   - fromDate: the start date of the search range.
+//   - toDate: the end date of the search range.
+//
+// Returns:
+//   - a slice of OptionContract (always nil).
+//   - an error indicating the method is not implemented.
+func (polygonDataProv *PolygonDataProvider) GetBars(
+	underlying string,
+	fromDate, toDate time.Time,
+	timespan int,
+	multiplier string,
+) ([]Bar, error) {
 	base := "https://api.polygon.io"
 	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/%d/%s/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
 		base, underlying, timespan, multiplier, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey)
@@ -143,7 +204,29 @@ func (polygonDataProv *polygonDataProvider) GetBars(underlying string, fromDate,
 	return out, nil
 }
 
-func (polygonDataProv *polygonDataProvider) GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error) {
+// GetOptionPrice retrieves the price of an option contract for the specified underlying asset,
+// strike price, expiry date, option type, and open date. It attempts to fetch the option price
+// using Polygon's snapshot API. If both ask and bid prices are available, it returns their average;
+// otherwise, it returns the last traded price if available. Returns an error if no usable price
+// is found or if the API request fails.
+//
+// Parameters:
+//   - underlying: The symbol of the underlying asset (e.g., "AAPL").
+//   - strike: The strike price of the option.
+//   - expiryDate: The expiration date of the option.
+//   - optType: The option type ("call" or "put").
+//   - openDate: The date when the option was opened.
+//
+// Returns:
+//   - float64: The calculated option price.
+//   - error: An error if the price cannot be retrieved or parsed.
+func (polygonDataProv *PolygonDataProvider) GetOptionPrice(
+	underlying string,
+	strike float64,
+	expiryDate time.Time,
+	optType string,
+	openDate time.Time,
+) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
 	symbol := polygonDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", symbol, polygonDataProv.apiKey)
@@ -177,20 +260,58 @@ func (polygonDataProv *polygonDataProvider) GetOptionPrice(underlying string, st
 	return 0, fmt.Errorf("no usable option price for %s", symbol)
 }
 
-func (polygonDataProv *polygonDataProvider) GetRelevantExpiries(ticker string, fromDate, toDate time.Time) ([]time.Time, error) {
+// GetRelevantExpiries retrieves a list of relevant option expiry dates for the specified ticker
+// within the provided date range [fromDate, toDate]. If a secondary data provider is configured,
+// the request is delegated to it. Otherwise, an error is returned indicating that the method is
+// not implemented for PolygonProvider.
+//
+// Parameters:
+//   - ticker: The symbol for which to fetch expiry dates.
+//   - fromDate: The start of the date range.
+//   - toDate: The end of the date range.
+//
+// Returns:
+//   - A slice of time.Time representing the relevant expiry dates.
+//   - An error if the operation is not supported or fails.
+func (polygonDataProv *PolygonDataProvider) GetRelevantExpiries(
+	ticker string,
+	fromDate, toDate time.Time,
+) ([]time.Time, error) {
 	if polygonDataProv.secondary != nil {
 		return polygonDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
 }
 
-func (polygonDataProv *polygonDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
+// RoundToNearestStrike rounds the given asOfPrice to the nearest valid strike price interval
+// for the specified underlying asset. The interval is determined by the underlying's strike
+// price configuration. The function takes the underlying symbol, expiry date, open date, and
+// the price as of which to round, and returns the nearest strike price.
+//
+// Parameters:
+//   - underlying: the symbol of the underlying asset.
+//   - expiryDate: the expiration date of the option.
+//   - openDate: the date the option was opened.
+//   - asOfPrice: the price to round to the nearest strike.
+//
+// Returns:
+//   - float64: the nearest strike price rounded based on the underlying's interval.
+func (polygonDataProv *PolygonDataProvider) RoundToNearestStrike(
+	underlying string,
+	expiryDate, openDate time.Time,
+	asOfPrice float64,
+) float64 {
 	intervals := polygonDataProv.getIntervals(underlying)
 	return math.Round(asOfPrice/intervals) * intervals
 }
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
-func (polygonDataProv *polygonDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+func (polygonDataProv *PolygonDataProvider) OptionSymbolFromParts(
+	underlying string,
+	expiryDate time.Time,
+	optionType string,
+	strike float64,
+) string {
 	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
 	expDt := expiryDate.UTC().Format("060102")
 	optType := "C"
@@ -201,7 +322,11 @@ func (polygonDataProv *polygonDataProvider) OptionSymbolFromParts(underlying str
 	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strikeStr)
 }
 
-func (polygonDataProv *polygonDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+// parseExpiryFromSymbol extracts the expiry date from an OCC-formatted option symbol.
+// It removes the "O:" prefix if present, validates the symbol length, and parses the
+// 6-digit expiry date (YYMMDD) from the symbol. Returns the parsed expiry as time.Time,
+// or zero time if parsing fails.
+func (polygonDataProv *PolygonDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
 	// Strip the "O:" prefix if present
 	cleanSym := strings.TrimPrefix(symbol, "O:")
 
@@ -225,6 +350,17 @@ func (polygonDataProv *polygonDataProvider) parseExpiryFromSymbol(symbol string)
 	return expiry
 }
 
-func (polygonDataProv *polygonDataProvider) getIntervals(underlying string) float64 {
+// getIntervals returns the interval value for the specified underlying asset.
+// Currently, it returns a fixed value of 50.0. In the future, this function should be
+// updated to read and determine proper intervals based on the underlying asset.
+//
+// Parameters:
+//
+//	underlying - the symbol or identifier of the underlying asset.
+//
+// Returns:
+//
+//	float64 - the interval value for the given underlying asset.
+func (polygonDataProv *PolygonDataProvider) getIntervals(underlying string) float64 {
 	return 50.0 // TODO: implement proper intervals reading
 }

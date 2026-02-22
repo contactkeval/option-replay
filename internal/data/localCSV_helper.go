@@ -22,17 +22,13 @@ func parseFloat(s string) float64 {
 	return val
 }
 
-// parseInt64 safely converts a string to int64.
-func parseInt64(s string) int64 {
-	val, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	if err != nil {
-		logger.Tracef("failed to parse int64 '%s': %v", s, err)
-		return 0
-	}
-	return val
-}
-
-func (localFileDataProv *localFileDataProvider) fetchAndAppend(symbol string, startDate, endDate time.Time) error {
+// fetchAndAppend fetches bars for the specified symbol from the secondary provider for the
+// inclusive date range [startDate, endDate] and appends them to the provider's local CSV file
+// for that symbol. The file is created if it does not exist; if the file is empty a header row
+// ("date","open","high","low","close","volume") is written before appending. Each bar is written
+// as a CSV row using RFC3339 for the timestamp, prices formatted to two decimal places, and
+// volume formatted as an integer. Any error encountered while fetching or writing is returned.
+func (localFileDataProv *LocalFileDataProvider) fetchAndAppend(symbol string, startDate, endDate time.Time) error {
 	// 1. Fetch from secondary provider (e.g. massive)
 	newData, err := localFileDataProv.GetSecondary().GetBars(symbol, startDate, endDate, 1, "minute")
 	if err != nil {
@@ -40,7 +36,7 @@ func (localFileDataProv *localFileDataProvider) fetchAndAppend(symbol string, st
 	}
 
 	// 2. Open local file in Append mode
-	f, err := os.OpenFile(localFileDataProv.getSymbolPath(symbol), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(localFileDataProv.getSymbolPath(symbol), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -70,7 +66,7 @@ func (localFileDataProv *localFileDataProvider) fetchAndAppend(symbol string, st
 }
 
 // loadManifest reads the CSV tracking file and returns a map for fast lookup.
-func (localFileDataProv *localFileDataProvider) loadManifest() (map[string]DataRecord, error) {
+func (localFileDataProv *LocalFileDataProvider) loadManifest() (map[string]DataRecord, error) {
 	path := localFileDataProv.getManifestPath() // e.g., "data/manifest.csv"
 	records := make(map[string]DataRecord)
 
@@ -108,7 +104,7 @@ func (localFileDataProv *localFileDataProvider) loadManifest() (map[string]DataR
 }
 
 // saveManifest overwrites the manifest file with the updated data.
-func (localFileDataProv *localFileDataProvider) saveManifest(records map[string]DataRecord) error {
+func (localFileDataProv *LocalFileDataProvider) saveManifest(records map[string]DataRecord) error {
 	file, err := os.Create(localFileDataProv.getManifestPath())
 	if err != nil {
 		return err
@@ -132,13 +128,13 @@ func (localFileDataProv *localFileDataProvider) saveManifest(records map[string]
 }
 
 // getManifestPath returns the absolute path to the data catalog file.
-func (localFileDataProv *localFileDataProvider) getManifestPath() string {
+func (localFileDataProv *LocalFileDataProvider) getManifestPath() string {
 	// p.BaseDir is likely something like "./data" or "/var/lib/option-replay"
 	return filepath.Join(localFileDataProv.dir, "manifest.csv")
 }
 
 // getSymbolPath returns the path for a specific instrument's data file.
-func (localFileDataProv *localFileDataProvider) getSymbolPath(symbol string) string {
+func (localFileDataProv *LocalFileDataProvider) getSymbolPath(symbol string) string {
 	// Sanitize symbol for filenames (e.g., replacing ":" or "/" with "-")
 	safeSymbol := strings.ReplaceAll(symbol, ":", "-")
 	filename := fmt.Sprintf("%s.csv", strings.ToUpper(safeSymbol))

@@ -45,7 +45,7 @@ func main() {
 
 	if *rest {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/run", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/run", func(w http.ResponseWriter, _ *http.Request) {
 			// quick endpoint to run a backtest once with the loaded config
 			logger.Infof("received run request")
 			res, err := engine.Run()
@@ -56,7 +56,7 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(res)
 		})
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200); w.Write([]byte("ok")) })
+		mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200); w.Write([]byte("ok")) })
 		logger.Infof("starting REST server on %s", *port)
 		return
 	}
@@ -67,7 +67,7 @@ func main() {
 		logger.Errorf("backtest failed: %v", err)
 	}
 	// write outputs to cfg.OutputDir
-	if err := os.MkdirAll(cfg.ReportDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.ReportDir, 0750); err != nil {
 		logger.Warnf("could not create output dir %s: %v", cfg.ReportDir, err)
 	}
 	_ = report.WriteJSON(res, cfg.ReportDir)

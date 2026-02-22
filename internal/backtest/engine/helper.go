@@ -95,7 +95,7 @@ func createBarMap(bars []data.Bar) map[string]data.Bar {
 }
 
 // logTradeSummary provides formatted console output of trade results.
-func (e *Engine) logTradeSummary(t Trade) {
+func logTradeSummary(t Trade) {
 	pnl := t.ClosePremium - t.OpenPremium
 	pnlPct := 0.0
 	if t.OpenPremium != 0 {

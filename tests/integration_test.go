@@ -2,7 +2,6 @@ package tests
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -53,9 +52,9 @@ func TestIntegrationFullRun(t *testing.T) {
 	}
 	// write outputs
 	nos := cfg.ReportDir
-	os.MkdirAll(nos, 0755)
+	os.MkdirAll(nos, 0750)
 	b, _ := json.MarshalIndent(res, "", "  ")
-	ioutil.WriteFile(nos+"/trades.json", b, 0644)
+	os.WriteFile(nos+"/trades.json", b, 0644)
 	// cleanup
 	_ = os.RemoveAll(nos)
 }

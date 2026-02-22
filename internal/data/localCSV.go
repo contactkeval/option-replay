@@ -16,26 +16,26 @@ import (
 	"github.com/contactkeval/option-replay/internal/logger"
 )
 
-// localFileDataProvider implements Data Provider from local files.
-type localFileDataProvider struct {
+// LocalFileDataProvider implements Data Provider from local files.
+type LocalFileDataProvider struct {
 	dir       string
 	secondary Provider
 }
 
 // NewLocalFileDataProvider convenience constructor.
-func NewLocalFileDataProvider(dir string, secondary Provider) *localFileDataProvider {
-	return &localFileDataProvider{dir: dir, secondary: secondary}
+func NewLocalFileDataProvider(dir string, secondary Provider) *LocalFileDataProvider {
+	return &LocalFileDataProvider{dir: dir, secondary: secondary}
 }
 
-func (localFileDataProv *localFileDataProvider) GetSecondary() Provider {
+func (localFileDataProv *LocalFileDataProvider) GetSecondary() Provider {
 	return localFileDataProv.secondary
 }
 
-func (localFileDataProv *localFileDataProvider) SetSecondary(secondary Provider) {
+func (localFileDataProv *LocalFileDataProvider) SetSecondary(secondary Provider) {
 	localFileDataProv.secondary = secondary
 }
 
-func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+func (localFileDataProv *LocalFileDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
 	if localFileDataProv.secondary != nil {
 		return localFileDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	}
@@ -43,7 +43,7 @@ func (localFileDataProv *localFileDataProvider) GetATMOptionPrices(underlying st
 }
 
 // GetContracts scans the local data directory for files matching the underlying.
-func (localFileDataProv *localFileDataProvider) GetContracts(
+func (localFileDataProv *LocalFileDataProvider) GetContracts(
 	underlying string,
 	strike float64,
 	expiryDate, fromDate, toDate time.Time,
@@ -85,11 +85,11 @@ func (localFileDataProv *localFileDataProvider) GetContracts(
 
 // GetBars mimics Massive's GetBars by streaming from local CSVs.
 // It uses a high-performance scanner-like approach to avoid RAM bloat.
-func (localFileDataProv *localFileDataProvider) GetBars(
+func (localFileDataProv *LocalFileDataProvider) GetBars(
 	underlying string,
 	fromDate, toDate time.Time,
-	timespan int,
-	multiplier string,
+	_ int,
+	_ string,
 ) ([]Bar, error) {
 
 	// Ensure data exists locally before trying to read it
@@ -146,7 +146,7 @@ func (localFileDataProv *localFileDataProvider) GetBars(
 }
 
 // GetOptionPrice mimics Massive's lookup by searching a ±5m window in local files.
-func (localFileDataProv *localFileDataProvider) GetOptionPrice(
+func (localFileDataProv *LocalFileDataProvider) GetOptionPrice(
 	underlying string,
 	strike float64,
 	expiryDate time.Time,
@@ -171,7 +171,7 @@ func (localFileDataProv *localFileDataProvider) GetOptionPrice(
 }
 
 // GetRelevantExpiries mirrors the 5-step logic from Massive.go but pulls from local bars.
-func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(
+func (localFileDataProv *LocalFileDataProvider) GetRelevantExpiries(
 	underlying string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
@@ -222,16 +222,16 @@ func (localFileDataProv *localFileDataProvider) GetRelevantExpiries(
 	return expiries, nil
 }
 
-func (localFileDataProv *localFileDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+func (localFileDataProv *LocalFileDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
 	return localFileDataProv.GetSecondary().OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 }
 
-func (localFileDataProv *localFileDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+func (localFileDataProv *LocalFileDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
 	return localFileDataProv.GetSecondary().parseExpiryFromSymbol(symbol)
 }
 
 // getIntervals reads the CSV once and caches it
-func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) float64 {
+func (localFileDataProv *LocalFileDataProvider) getIntervals(underlying string) float64 {
 	intervals := make(map[string]float64)
 
 	f, err := os.Open(filepath.Join(localFileDataProv.dir, "intervals.csv"))
@@ -275,9 +275,12 @@ func (localFileDataProv *localFileDataProvider) getIntervals(underlying string) 
 }
 
 // RoundToNearestStrike rounds `price` using the interval for the underlying
-func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64 {
+func (localFileDataProv *LocalFileDataProvider) RoundToNearestStrike(
+	underlying string,
+	_, openDate time.Time,
+	asOfPrice float64,
+) float64 {
 	intervals := 0.0
-	strike := 0.0
 	var loadOnce sync.Once
 	loadOnce.Do(func() {
 		intervals = localFileDataProv.getIntervals(underlying)
@@ -289,9 +292,9 @@ func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying 
 	}
 
 	for {
-		strike = math.Round(asOfPrice/intervals) * intervals
+		strike := math.Round(asOfPrice/intervals) * intervals
 
-		bars, err := localFileDataProv.GetBars(underlying, openDate, openDate, 1, "day")
+		bars, err := localFileDataProv.GetBars(underlying, openDate, openDate, 1, "minute")
 		if err != nil {
 			return asOfPrice
 		}
@@ -300,9 +303,7 @@ func (localFileDataProv *localFileDataProvider) RoundToNearestStrike(underlying 
 			intervals += intervals // double interval and retry
 			continue
 		} else {
-			// success case
-			break
+			return strike
 		}
-	}
-	return strike
+	}	
 }

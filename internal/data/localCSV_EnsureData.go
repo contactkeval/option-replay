@@ -14,7 +14,7 @@ type DataRecord struct {
 	LastDate  time.Time `csv:"last_date"`
 }
 
-func (p *localFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
+func (p *LocalFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
 	records, err := p.loadManifest()
 	if err != nil {
 		return fmt.Errorf("ensure local: %w", err)
@@ -41,7 +41,7 @@ func (p *localFileDataProvider) EnsureLocalData(symbol string, startDate, endDat
 
 // --- Specialized Handlers ---
 
-func (p *localFileDataProvider) handleExistingRecord(symbol string, rec DataRecord, isOption bool, start, end, now time.Time) (DataRecord, error) {
+func (p *LocalFileDataProvider) handleExistingRecord(symbol string, rec DataRecord, isOption bool, start, end, now time.Time) (DataRecord, error) {
 	// Options: Only extend the end date to today if needed
 	if isOption {
 		if end.After(rec.LastDate) {
@@ -74,7 +74,7 @@ func (p *localFileDataProvider) handleExistingRecord(symbol string, rec DataReco
 	return rec, nil
 }
 
-func (p *localFileDataProvider) handleNewRecord(symbol string, isOption bool, start, end, now time.Time) (DataRecord, error) {
+func (p *LocalFileDataProvider) handleNewRecord(symbol string, isOption bool, start, end, now time.Time) (DataRecord, error) {
 	if isOption {
 		return p.initializeOptionRecord(symbol, start, now)
 	}
@@ -90,7 +90,7 @@ func (p *localFileDataProvider) handleNewRecord(symbol string, isOption bool, st
 	}, nil
 }
 
-func (p *localFileDataProvider) initializeOptionRecord(symbol string, requestedStart, now time.Time) (DataRecord, error) {
+func (p *LocalFileDataProvider) initializeOptionRecord(symbol string, requestedStart, now time.Time) (DataRecord, error) {
 	expiryDate := p.parseExpiryFromSymbol(symbol)
 	if expiryDate.IsZero() {
 		return DataRecord{}, fmt.Errorf("failed to parse expiry from %s", symbol)
@@ -113,7 +113,7 @@ func (p *localFileDataProvider) initializeOptionRecord(symbol string, requestedS
 	return newRec, nil
 }
 
-func (localFileDataProv *localFileDataProvider) RunMaintenancePipeline() error {
+func (localFileDataProv *LocalFileDataProvider) RunMaintenancePipeline() error {
 	records, err := localFileDataProv.loadManifest()
 	if err != nil {
 		return err

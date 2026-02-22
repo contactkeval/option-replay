@@ -15,7 +15,7 @@ func TestEnsureLocal(t *testing.T) {
 	var dataProv Provider
 	dataProv = NewLocalFileDataProvider("..\\..\\input\\data", dataProv)
 	dataProv.SetSecondary(NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))) // Massive data provider as secondary
-	localProv := dataProv.(*localFileDataProvider)
+	localProv := dataProv.(*LocalFileDataProvider)
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 	underlying := "O:SPY250117C00580000" // SPY call option expiring on Jan 17, 2025 with strike 580.0

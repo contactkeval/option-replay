@@ -30,8 +30,8 @@ import (
 	"github.com/contactkeval/option-replay/internal/logger"
 )
 
-// massiveDataProvider implements the Provider interface using Massive APIs.
-type massiveDataProvider struct {
+// MassiveDataProvider implements the Provider interface using Massive APIs.
+type MassiveDataProvider struct {
 	// APIKey used for authenticating requests with Massive.
 	APIKey string
 
@@ -88,10 +88,10 @@ const (
 //
 // Returns:
 //   - *massiveDataProvider: initialized provider instance
-func NewMassiveDataProvider(apiKey string) *massiveDataProvider {
+func NewMassiveDataProvider(apiKey string) *MassiveDataProvider {
 	logger.Infof("initializing Massive data provider")
 
-	return &massiveDataProvider{
+	return &MassiveDataProvider{
 		APIKey: apiKey,
 		Client: &http.Client{
 			Timeout: 60 * time.Second,
@@ -110,11 +110,11 @@ func NewMassiveDataProvider(apiKey string) *massiveDataProvider {
 }
 
 // GetSecondary returns the configured secondary Provider, if any.
-func (massiveDataProv *massiveDataProvider) GetSecondary() Provider {
+func (massiveDataProv *MassiveDataProvider) GetSecondary() Provider {
 	return massiveDataProv.secondary
 }
 
-func (massiveDataProv *massiveDataProvider) SetSecondary(secondary Provider) {
+func (massiveDataProv *MassiveDataProvider) SetSecondary(secondary Provider) {
 	massiveDataProv.secondary = secondary
 }
 
@@ -135,7 +135,7 @@ func (massiveDataProv *massiveDataProvider) SetSecondary(secondary Provider) {
 //   - callPrice: simulated call premium
 //   - putPrice: simulated put premium
 //   - err: error if retrieval fails
-func (massiveDataProv *massiveDataProvider) GetATMOptionPrices(
+func (massiveDataProv *MassiveDataProvider) GetATMOptionPrices(
 	underlying string,
 	expiryDate, openDate time.Time,
 	asOfPrice float64,
@@ -181,7 +181,7 @@ func (massiveDataProv *massiveDataProvider) GetATMOptionPrices(
 // Returns:
 //   - []OptionContract: matching contracts
 //   - error: if request or decoding fails
-func (massiveDataProv *massiveDataProvider) GetContracts(
+func (massiveDataProv *MassiveDataProvider) GetContracts(
 	underlying string,
 	strike float64,
 	expiryDate, fromDate, toDate time.Time,
@@ -193,8 +193,6 @@ func (massiveDataProv *massiveDataProvider) GetContracts(
 		strike,
 		expiryDate.Format("2006-01-02"),
 	)
-
-	out := []OptionContract{}
 
 	// Build base URL
 	url, err := url.Parse(massiveDataProv.BaseURL + "/v3/reference/options/contracts")
@@ -223,6 +221,8 @@ func (massiveDataProv *massiveDataProvider) GetContracts(
 
 	url.RawQuery = query.Encode()
 	reqURL := url.String()
+
+	var out []OptionContract
 
 	// Handle pagination
 	for reqURL != "" {
@@ -309,7 +309,7 @@ func (massiveDataProv *massiveDataProvider) GetContracts(
 // Returns:
 //   - []Bar: time-ordered bars
 //   - error: if retrieval or decoding fails
-func (massiveDataProv *massiveDataProvider) GetBars(
+func (massiveDataProv *MassiveDataProvider) GetBars(
 	underlying string,
 	fromDate, toDate time.Time,
 	timespan int,
@@ -429,7 +429,7 @@ func (massiveDataProv *massiveDataProvider) GetBars(
 //  6. Retrieves all available contracts for the rounded strike prices
 //  7. Extracts and deduplicates expiration dates
 //  8. Returns the sorted, unique expiration dates
-func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(
+func (massiveDataProv *MassiveDataProvider) GetRelevantExpiries(
 	ticker string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
@@ -538,7 +538,7 @@ func (massiveDataProv *massiveDataProvider) GetRelevantExpiries(
 // Returns:
 //   - float64: the option price
 //   - error: an error if the price cannot be determined
-func (massiveDataProv *massiveDataProvider) GetOptionPrice(
+func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 	underlying string,
 	strike float64,
 	expiryDate time.Time,
@@ -601,7 +601,7 @@ func (massiveDataProv *massiveDataProvider) GetOptionPrice(
 // Returns:
 //
 //	The strike price closest to asOfPrice, or asOfPrice if no contracts are available.
-func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(
+func (massiveDataProv *MassiveDataProvider) RoundToNearestStrike(
 	underlying string,
 	expiryDate, openDate time.Time,
 	asOfPrice float64,
@@ -641,7 +641,7 @@ func (massiveDataProv *massiveDataProvider) RoundToNearestStrike(
 //   - Sleeps until the next minute boundary
 //   - Returns immediately on success (<400)
 //   - Returns an error for other status codes
-func (massiveDataProv *massiveDataProvider) processGetRequest(
+func (massiveDataProv *MassiveDataProvider) processGetRequest(
 	req *http.Request,
 ) (*http.Response, error) {
 	logger.Infof("request: %s", req.URL.String())
@@ -679,15 +679,15 @@ func (massiveDataProv *massiveDataProvider) processGetRequest(
 	}
 }
 
-// getIntervals is a placeholder for future interval logic.
-func (massiveDataProv *massiveDataProvider) getIntervals(
+func (massiveDataProv *MassiveDataProvider) getIntervals(
 	underlying string,
 ) float64 {
+	// getIntervals is a placeholder for future interval logic (not yet implemented).
 	return 0.0
 }
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
-func (massiveDataProv *massiveDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+func (_ *MassiveDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
 	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
 	expDt := expiryDate.UTC().Format("060102")
 	optType := "C"
@@ -698,7 +698,7 @@ func (massiveDataProv *massiveDataProvider) OptionSymbolFromParts(underlying str
 	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strikeStr)
 }
 
-func (massiveDataProv *massiveDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+func (_ *MassiveDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
 	// Strip the "O:" prefix if present
 	cleanSym := strings.TrimPrefix(symbol, "O:")
 

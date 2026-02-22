@@ -35,13 +35,13 @@ func TestOptionSymbolFromParts(t *testing.T) {
 
 func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 	// fake server returning 500
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"message":"internal error"}`))
 	}))
 	defer srv.Close()
 
-	p := &massiveDataProvider{
+	p := &MassiveDataProvider{
 		APIKey:  "test",
 		Client:  srv.Client(),
 		BaseURL: srv.URL, // IMPORTANT
@@ -61,7 +61,7 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 	callCount := 0
 
 	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		callCount++
 
 		if callCount == 1 {
@@ -82,7 +82,7 @@ func TestMassiveProvider_Pagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	prov := &massiveDataProvider{
+	prov := &MassiveDataProvider{
 		APIKey:  "test",
 		Client:  srv.Client(),
 		BaseURL: srv.URL,

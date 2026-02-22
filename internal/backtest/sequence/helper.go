@@ -46,7 +46,7 @@ func CombineDateTime(
 
 func deduplicateDates(dates []time.Time) []time.Time {
 	seen := map[string]bool{}
-	final := []time.Time{}
+	var final []time.Time
 	for _, d := range dates {
 		k := d.Format("2006-01-02")
 		if !seen[k] {

@@ -165,7 +165,7 @@ func (e *Engine) executeBacktest(
 		simulatedCloseTrade(&trade, dailyBars, *e.cfg, e.prov)
 
 		trades = append(trades, trade)
-		e.logTradeSummary(trade)
+		logTradeSummary(trade)
 	}
 	return trades
 }
@@ -285,7 +285,7 @@ func exitByPriceChange(
 	// Profit/Stop Target checks
 	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
 		minuteData := fetchAndAlignLegData(trade, underlyingBars, closeByDateTime, prov, cfg)
-		if triggered := scanOptionExits(trade, minuteData, &closeByDateTime, cfg); triggered {
+		if scanOptionExits(trade, minuteData, &closeByDateTime, cfg) {
 			logger.Debugf("Trade #%d: Exit triggered by PnL Target at %s", trade.ID, closeByDateTime.Format("2006-01-02 15:04"))
 			trade.ClosedBy = CloseByPnL
 		}
@@ -325,7 +325,7 @@ func scanOptionExits(
 	validators := getValidators(cfg, trade.OpenPremium)
 
 	// Process the timeline in linear order (critical for path-dependent exits)
-	for _, row := range minuteData {
+	for i, row := range minuteData {
 		currentTotal := 0.0
 
 		for i := 0; i < legsCount; i++ {
@@ -344,7 +344,7 @@ func scanOptionExits(
 			if validator(currentTotal) {
 				// Record the exit event
 				*closeByDateTime = row.Timestamp
-				trade.CloseDateTime = &row.Timestamp
+				trade.CloseDateTime = &minuteData[i].Timestamp
 				trade.ClosePremium = currentTotal
 
 				// Underlying bar is stored at the last index (N)
