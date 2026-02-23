@@ -92,10 +92,10 @@ func (synthDataProv *synthDataProvider) GetContracts(
 //   - []Bar: a slice of synthetic bar data.
 //   - error: always nil in current implementation.
 func (synthDataProv *synthDataProvider) GetBars(
-	underlying string,
+	_ string,
 	fromDate, toDate time.Time,
-	timespan int,
-	multiplier string,
+	_ int,
+	_ string,
 ) ([]Bar, error) {
 	//TODO: support timespan and multiplier
 	cur := fromDate
@@ -180,7 +180,7 @@ func (synthDataProv *synthDataProvider) GetRelevantExpiries(
 //   - The nearest strike price rounded based on the interval for the underlying asset.
 func (synthDataProv *synthDataProvider) RoundToNearestStrike(
 	underlying string,
-	expiryDate, openDate time.Time,
+	_ time.Time, _ time.Time,
 	asOfPrice float64) float64 {
 	intervals := synthDataProv.getIntervals(underlying)
 	return math.Round(asOfPrice/intervals) * intervals
