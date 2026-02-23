@@ -71,7 +71,7 @@ func (polygonDataProv *PolygonDataProvider) Set(
 //	err          - Any error encountered during the process.
 func (polygonDataProv *PolygonDataProvider) GetATMOptionPrices(
 	underlying string,
-	_, openDate time.Time,
+	_, _ time.Time,
 	asOfPrice float64,
 ) (strike, callPrice, putPrice float64, err error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
@@ -144,9 +144,9 @@ func (polygonDataProv *PolygonDataProvider) GetATMOptionPrices(
 }
 
 func (polygonDataProv *PolygonDataProvider) GetContracts(
-	underlying string,
-	strike float64,
-	expiryDate, fromDate, toDate time.Time,
+	_ string,
+	_ float64,
+	_, _, _ time.Time,
 ) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
 	// This method is not implemented.
@@ -225,7 +225,7 @@ func (polygonDataProv *PolygonDataProvider) GetOptionPrice(
 	strike float64,
 	expiryDate time.Time,
 	optType string,
-	openDate time.Time,
+	_ time.Time,
 ) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
 	symbol := polygonDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
@@ -298,7 +298,7 @@ func (polygonDataProv *PolygonDataProvider) GetRelevantExpiries(
 //   - float64: the nearest strike price rounded based on the underlying's interval.
 func (polygonDataProv *PolygonDataProvider) RoundToNearestStrike(
 	underlying string,
-	expiryDate, openDate time.Time,
+	_ time.Time, _ time.Time,
 	asOfPrice float64,
 ) float64 {
 	intervals := polygonDataProv.getIntervals(underlying)
@@ -361,6 +361,6 @@ func (polygonDataProv *PolygonDataProvider) parseExpiryFromSymbol(symbol string)
 // Returns:
 //
 //	float64 - the interval value for the given underlying asset.
-func (polygonDataProv *PolygonDataProvider) getIntervals(underlying string) float64 {
+func (polygonDataProv *PolygonDataProvider) getIntervals(_ string) float64 {
 	return 50.0 // TODO: implement proper intervals reading
 }

@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestExecuteBacktest(t *testing.T) {
+func TestExecuteBacktest(_ *testing.T) {
 	// cfg := &Config{
 	// 	Underlying: "SPY",
 	// 	Entry:      EntryRule{Mode: "daily_time"},

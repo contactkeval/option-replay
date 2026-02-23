@@ -680,7 +680,7 @@ func (massiveDataProv *MassiveDataProvider) processGetRequest(
 }
 
 func (massiveDataProv *MassiveDataProvider) getIntervals(
-	underlying string,
+	_ string,
 ) float64 {
 	// getIntervals is a placeholder for future interval logic (not yet implemented).
 	return 0.0
