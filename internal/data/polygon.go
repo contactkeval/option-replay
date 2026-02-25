@@ -119,11 +119,12 @@ func (polygonDataProv *PolygonDataProvider) GetATMOptionPrices(
 		} `json:"put"`
 	}
 	minDiff := math.MaxFloat64
-	for _, s := range res.Options.Strikes {
-		diff := math.Abs(s.Strike - strike)
+	for _, strike := range res.Options.Strikes {
+		diff := math.Abs(strike.Strike - asOfPrice)
 		if diff < minDiff {
 			minDiff = diff
-			closestStrikeData = &s
+			strike := strike // capture range variable for pointer use in loop (Go ≤ 1.21 compatibility consideration - not strictly necessary in Go 1.21+ but good practice to avoid potential issues with closures and loop variables in older Go versions and to ensure clarity that we are taking the address of the current iteration's value not the loop variable itself which can lead to bugs if not done correctly - see)
+			closestStrikeData = &strike
 		}
 	}
 	if closestStrikeData == nil {

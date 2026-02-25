@@ -1,5 +1,11 @@
 {
     "cSpell.words": [
-        "Backtest"
+        "Backtest",
+        "Errorf",
+        "Warnf",
+        "Infof",
+        "Debugf",
+        "Tracef",
+        "contactkeval"
     ]
 }

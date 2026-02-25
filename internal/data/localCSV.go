@@ -305,5 +305,5 @@ func (localFileDataProv *LocalFileDataProvider) RoundToNearestStrike(
 		} else {
 			return strike
 		}
-	}	
+	}
 }
