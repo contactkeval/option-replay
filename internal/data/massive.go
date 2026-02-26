@@ -680,14 +680,14 @@ func (massiveDataProv *MassiveDataProvider) processGetRequest(
 }
 
 func (massiveDataProv *MassiveDataProvider) getIntervals(
-	_ string,
+	underlying string,
 ) float64 {
-	// getIntervals is a placeholder for future interval logic (not yet implemented).
-	return 0.0
+	// TODO: getIntervals is a placeholder for future interval logic (not yet implemented).
+	return massiveDataProv.GetSecondary().getIntervals(underlying)
 }
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
-func (_ *MassiveDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
+func (*MassiveDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
 	// OCC: <root><YYMMDD><C|P><strike*1000 padded to 8 digits>
 	expDt := expiryDate.UTC().Format("060102")
 	optType := "C"
@@ -698,7 +698,7 @@ func (_ *MassiveDataProvider) OptionSymbolFromParts(underlying string, expiryDat
 	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strikeStr)
 }
 
-func (_ *MassiveDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+func (*MassiveDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
 	// Strip the "O:" prefix if present
 	cleanSym := strings.TrimPrefix(symbol, "O:")
 

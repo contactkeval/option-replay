@@ -145,13 +145,13 @@ func (polygonDataProv *PolygonDataProvider) GetATMOptionPrices(
 }
 
 func (polygonDataProv *PolygonDataProvider) GetContracts(
-	_ string,
-	_ float64,
-	_, _, _ time.Time,
+	underlying string,
+	strike float64,
+	expiryDate, fromDate, toDate time.Time,
 ) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
-	// This method is not implemented.
-	return nil, fmt.Errorf("GetContracts not implemented for PolygonProvider")
+	// This method is not implemented. // TODO: implement using options snapshot or secondary provider if available.
+	return polygonDataProv.GetSecondary().GetContracts(underlying, strike, expiryDate, fromDate, toDate)
 }
 
 // GetBars retrieves historical bar data (OHLCV) for a specified underlying ticker symbol
@@ -307,7 +307,7 @@ func (polygonDataProv *PolygonDataProvider) RoundToNearestStrike(
 }
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
-func (polygonDataProv *PolygonDataProvider) OptionSymbolFromParts(
+func (*PolygonDataProvider) OptionSymbolFromParts(
 	underlying string,
 	expiryDate time.Time,
 	optionType string,
@@ -327,7 +327,7 @@ func (polygonDataProv *PolygonDataProvider) OptionSymbolFromParts(
 // It removes the "O:" prefix if present, validates the symbol length, and parses the
 // 6-digit expiry date (YYMMDD) from the symbol. Returns the parsed expiry as time.Time,
 // or zero time if parsing fails.
-func (polygonDataProv *PolygonDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
+func (*PolygonDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
 	// Strip the "O:" prefix if present
 	cleanSym := strings.TrimPrefix(symbol, "O:")
 
@@ -362,6 +362,6 @@ func (polygonDataProv *PolygonDataProvider) parseExpiryFromSymbol(symbol string)
 // Returns:
 //
 //	float64 - the interval value for the given underlying asset.
-func (polygonDataProv *PolygonDataProvider) getIntervals(_ string) float64 {
-	return 50.0 // TODO: implement proper intervals reading
+func (polygonDataProv *PolygonDataProvider) getIntervals(underlying string) float64 {
+	return polygonDataProv.GetSecondary().getIntervals(underlying) // TODO: implement proper intervals reading
 }

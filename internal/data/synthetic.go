@@ -92,28 +92,13 @@ func (synthDataProv *synthDataProvider) GetContracts(
 //   - []Bar: a slice of synthetic bar data.
 //   - error: always nil in current implementation.
 func (synthDataProv *synthDataProvider) GetBars(
-	_ string,
+	underlying string,
 	fromDate, toDate time.Time,
-	_ int,
-	_ string,
+	timespan int,
+	multiplier string,
 ) ([]Bar, error) {
 	//TODO: support timespan and multiplier
-	cur := fromDate
-	price := 100.0 + float64(rand.Intn(200))
-	var out []Bar
-	for !cur.After(toDate) {
-		if cur.Weekday() != time.Saturday && cur.Weekday() != time.Sunday {
-			delta := rand.NormFloat64() * 0.01 * price
-			open := price
-			close := price + delta
-			high := math.Max(open, close) + math.Abs(rand.NormFloat64()*0.3)
-			low := math.Min(open, close) - math.Abs(rand.NormFloat64()*0.3)
-			out = append(out, Bar{Date: cur, Open: open, High: high, Low: low, Close: close, Volume: float64(1000 + rand.Intn(5000))})
-			price = close
-		}
-		cur = cur.AddDate(0, 0, 1)
-	}
-	return out, nil
+	return synthDataProv.GetSecondary().GetBars(underlying, fromDate, toDate, timespan, multiplier) // delegate to secondary if available
 }
 
 // GetOptionPrice retrieves the price of an option contract for the specified underlying asset,

@@ -302,8 +302,7 @@ func (localFileDataProv *LocalFileDataProvider) RoundToNearestStrike(
 		if len(bars) == 0 {
 			intervals += intervals // double interval and retry
 			continue
-		} else {
-			return strike
 		}
+		return strike
 	}
 }
