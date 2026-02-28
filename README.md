@@ -10,7 +10,7 @@ A high-performance, modular options backtesting engine written in Go. `option-re
 
 ## ⚙️ Configuration Guide
 
-The engine is driven by a `.json` configuration file. This allows you to define complex strategies (like Iron Condors, Diagonals, or Covered Calls) without recompiling the code.
+The engine is driven by a configurable `.json` file. This allows you to define and backtest complex strategies (like Iron Condors, Diagonals, or Covered Calls) without recompiling the code.
 
 ### Example: Iron Condor
 ```json

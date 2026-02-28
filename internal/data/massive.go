@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
@@ -135,35 +134,77 @@ func (massiveDataProv *MassiveDataProvider) SetSecondary(secondary Provider) {
 //   - callPrice: simulated call premium
 //   - putPrice: simulated put premium
 //   - err: error if retrieval fails
+
 func (massiveDataProv *MassiveDataProvider) GetATMOptionPrices(
 	underlying string,
 	expiryDate, openDate time.Time,
 	asOfPrice float64,
 ) (strike, callPrice, putPrice float64, err error) {
 
-	logger.Debugf(
-		"ATM prices request: %s price=%.2f expiry=%s",
-		underlying,
-		asOfPrice,
+	// ------------------------------------------------------------
+	// STEP 1: Fetch option contracts for given expiry
+	// ------------------------------------------------------------
+	contractsURL := fmt.Sprintf(
+		massiveDataProv.BaseURL+"/v3/reference/options/contracts?underlying_ticker=%s&expiration_date=%s&limit=1000&apiKey=%s",
+		strings.ToUpper(underlying),
 		expiryDate.Format("2006-01-02"),
+		massiveDataProv.APIKey,
 	)
 
-	//TODO: implement real ATM option price fetching from Massive API
-	strike = math.Round(asOfPrice*100) / 100
-	callPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
-	putPrice = 1.0 + math.Abs(rand.NormFloat64()*0.5)
+	resp, err := massiveDataProv.Client.Get(contractsURL)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer resp.Body.Close()
 
-	logger.Tracef(
-		"ATM resolved strike=%.2f call=%.2f put=%.2f",
-		strike, callPrice, putPrice,
-	)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, 0, 0, fmt.Errorf("contracts fetch failed: %s", string(body))
+	}
 
-	// Delegate to secondary provider if present
-	if massiveDataProv.secondary != nil {
-		logger.Tracef("delegating ATM pricing to secondary provider")
-		return massiveDataProv.secondary.GetATMOptionPrices(
-			underlying, expiryDate, openDate, asOfPrice,
-		)
+	var contractsResp struct {
+		Results []struct {
+			Ticker       string  `json:"ticker"`
+			StrikePrice  float64 `json:"strike_price"`
+			ContractType string  `json:"contract_type"` // "call" or "put"
+		} `json:"results"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&contractsResp); err != nil {
+		return 0, 0, 0, err
+	}
+
+	if len(contractsResp.Results) == 0 {
+		return 0, 0, 0, fmt.Errorf("no contracts found")
+	}
+
+	// ------------------------------------------------------------
+	// STEP 2: Find nearest strike to asOfPrice
+	// ------------------------------------------------------------
+	minDiff := math.MaxFloat64
+	var atmStrike float64
+
+	for _, c := range contractsResp.Results {
+		diff := math.Abs(c.StrikePrice - asOfPrice)
+		if diff < minDiff {
+			minDiff = diff
+			atmStrike = c.StrikePrice
+		}
+	}
+
+	strike = atmStrike
+
+	// ------------------------------------------------------------
+	// STEP 3: Fetch prices (daily aggregate)
+	// ------------------------------------------------------------
+	callPrice, err = massiveDataProv.GetOptionPrice(underlying, atmStrike, expiryDate, "call", openDate)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	putPrice, err = massiveDataProv.GetOptionPrice(underlying, atmStrike, expiryDate, "put", openDate)
+	if err != nil {
+		return 0, 0, 0, err
 	}
 
 	return strike, callPrice, putPrice, nil
