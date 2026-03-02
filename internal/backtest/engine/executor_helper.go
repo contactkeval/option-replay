@@ -42,17 +42,17 @@ func (e *Engine) initConfiguration() {
 	}
 
 	// Parse and combine entry date/time into time.Time objects
-	t, err := time.Parse("2006-01-02", e.cfg.Entry.StDt)
+	day, err := time.Parse("2006-01-02", e.cfg.Entry.StDt)
 	if err != nil {
 		logger.Errorf("invalid start date format (YYYY-MM-DD): %v", err)
 	}
-	e.cfg.Entry.StartDate, _ = sch.CombineDateTime(t, e.cfg.Entry.TimeOfDay, e.cfg.Entry.Timezone)
-	t, err = time.Parse("2006-01-02", e.cfg.Entry.EnDt)
+	e.cfg.Entry.StartDate, _ = sch.CombineDateTime(day, e.cfg.Entry.TimeOfDay, e.cfg.Entry.Timezone)
+	day, err = time.Parse("2006-01-02", e.cfg.Entry.EnDt)
 	if err != nil {
 		logger.Errorf("invalid end date format (YYYY-MM-DD): %v", err)
 	}
-	t = t.Add(time.Duration(24*time.Hour) - time.Minute)
-	e.cfg.Entry.EndDate, _ = sch.CombineDateTime(t, t.Format("15:04"), e.cfg.Entry.Timezone)
+	day = day.Add(time.Duration(24*time.Hour) - time.Minute)
+	e.cfg.Entry.EndDate, _ = sch.CombineDateTime(day, day.Format("15:04"), e.cfg.Entry.Timezone)
 }
 
 // fetchDailyData retrieves daily underlying price bars for the duration of the backtest.
@@ -69,7 +69,7 @@ func (e *Engine) getOpeningPrice(
 	leg st.TradeLeg,
 	dt time.Time,
 	underlyingPrice float64,
-	hv float64,
+	histVol float64,
 ) float64 {
 	p, err := e.prov.GetOptionPrice(e.cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, dt)
 
@@ -79,7 +79,7 @@ func (e *Engine) getOpeningPrice(
 		yearsToMaturity := leg.Expiration.Sub(dt).Hours() / (24 * 365)
 		isCall := strings.ToLower(leg.Spec.OptionType) == "call"
 
-		p = pricing.BlackScholesPrice(underlyingPrice, leg.Strike, yearsToMaturity, 0.02, hv, isCall)
+		p = pricing.BlackScholesPrice(underlyingPrice, leg.Strike, yearsToMaturity, 0.02, histVol, isCall)
 	}
 
 	return p
@@ -107,8 +107,7 @@ func logTradeSummary(t Trade) {
 		status = "🟢"
 	}
 
-	logger.Infof("%s Trade #%d Closed | Exit: %-20s | PnL: %8.2f (%6.2f%%)",
-		status, t.ID, t.ClosedBy, pnl, pnlPct)
+	logger.Infof("%s Trade #%d Closed | Exit: %-20s | PnL: %8.2f (%6.2f%%)", status, t.ID, t.ClosedBy, pnl, pnlPct)
 }
 
 // checkUnderlyingMove scans minute bars to find the exact timestamp of a price breach.

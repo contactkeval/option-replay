@@ -98,7 +98,7 @@ func ImpliedVolATM(
 
 	const (
 		maxIter = 100
-		tol     = 1e-6
+		tol     = 1.0e-6
 	)
 
 	for i := 0; i < maxIter; i++ {
@@ -110,7 +110,7 @@ func ImpliedVolATM(
 		}
 
 		vega := BlackScholesVega(S, K, T, r, sigma)
-		if vega < 1e-8 {
+		if vega < 1.0e-8 {
 			break
 		}
 
@@ -118,7 +118,7 @@ func ImpliedVolATM(
 
 		// Guardrails
 		if sigma <= 0 {
-			sigma = 1e-4
+			sigma = 1.0e-4
 		}
 		if sigma > 5 {
 			sigma = 5

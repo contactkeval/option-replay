@@ -135,20 +135,20 @@ func (synthDataProv *synthDataProvider) GetOptionPrice(
 //
 // Parameters:
 //
-//	ticker   - the symbol for which to retrieve expiry dates
-//	fromDate - the start of the date range
-//	toDate   - the end of the date range
+//	underlying - the underlying for which to retrieve expiry dates
+//	fromDate   - the start of the date range
+//	toDate     - the end of the date range
 //
 // Returns:
 //
 //	[]time.Time - slice of relevant expiry dates
 //	error       - error if expiries cannot be retrieved
 func (synthDataProv *synthDataProvider) GetRelevantExpiries(
-	ticker string,
+	underlying string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
+		return synthDataProv.secondary.GetRelevantExpiries(underlying, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for SyntheticProvider")
 }
@@ -203,10 +203,10 @@ func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 
 }
 
 // extractCloses transforms a slice of data bars into a simple slice of close prices.
-func ExtractCloses(bars []Bar) []float64 {
+func ExtractCloses(dailyBars []Bar) []float64 {
 	var closes []float64
-	for _, b := range bars {
-		closes = append(closes, b.Close)
+	for _, bar := range dailyBars {
+		closes = append(closes, bar.Close)
 	}
 	return closes
 }

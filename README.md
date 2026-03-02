@@ -1,12 +1,13 @@
 # Option-Replay
-### High-performance strategy testing, made simpler.
 **Define. Replay. Refine.**
+
+### High-performance strategy testing, simplified.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/contactkeval/option-replay)](https://goreportcard.com/report/github.com/contactkeval/option-replay)
 [![DeepSource](https://app.deepsource.com/gh/contactkeval/option-replay.svg/?label=resolved+issues&show_all=true&token=YOUR_TOKEN_HERE)](https://app.deepsource.com/gh/contactkeval/option-replay/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance, modular options backtesting engine written in Go. `option-replay` is designed to simulate complex options strategies using historical minute-level data, featuring an intelligent local data caching system to minimize API latency and costs.
+A modular options backtesting engine written in Go. `option-replay` is designed to simulate complex options strategies using historical minute-level data, featuring an intelligent local data caching system to minimize API latency and costs.
 
 ## ⚙️ Configuration Guide
 
@@ -48,7 +49,7 @@ The engine is driven by a configurable `.json` file. This allows you to define a
 }
 ```
 
-## ?? Key Features
+## Key Features
 
 * **Symmetric Architecture**: Clean separation between the **Sequencer** (time management), **Planner** (strategy logic), and **Executor** (trade execution).
 * **Intelligent Data Hydration**: Automatically manages local CSV storage. If data is missing, it fetches from a secondary provider and appends it to local storage.
@@ -58,7 +59,7 @@ The engine is driven by a configurable `.json` file. This allows you to define a
 
 ---
 
-## ?? System Architecture
+## System Architecture
 
 The project follows a "Sequence ? Plan ? Execute" flow to ensure chronological integrity during backtests:
 
@@ -70,7 +71,7 @@ The project follows a "Sequence ? Plan ? Execute" flow to ensure chronological i
 
 ---
 
-## ?? Data Management
+## Data Management
 
 The engine uses a `LocalCSVProvider` to store market data locally. A `manifest.csv` acts as a catalog to track the date ranges available for each symbol.
 
@@ -80,18 +81,18 @@ The engine uses a `LocalCSVProvider` to store market data locally. A `manifest.c
 
 ---
 
-## ?? Installation & Usage
+## Installation & Usage
 
 ### Prerequisites
 - Go 1.21 or higher
 - API Key for a secondary data provider (e.g., Polygon.io)
 
 ### Setup
-```bash
 # Clone the repository
 git clone [https://github.com/contactkeval/option-replay.git](https://github.com/contactkeval/option-replay.git)
 
 # Install dependencies
+```bash
 cd option-replay
 go mod tidy
 ```

@@ -103,8 +103,9 @@ func NewEngine(cfg *Config, prov data.Provider) *Engine {
 // volatility calculation, trade scheduling, and execution loop.
 func (e *Engine) Run() (*Result, error) {
 	e.initConfiguration()
-	logger.Infof("Starting backtest for %s | Range: %s to %s",
-		e.cfg.Underlying, e.cfg.Entry.StartDate.Format("2006-01-02"), e.cfg.Entry.EndDate.Format("2006-01-02"))
+	logger.Infof("Starting backtest for %s | Range: %s to %s", e.cfg.Underlying,
+		e.cfg.Entry.StartDate.Format("2006-01-02"), e.cfg.Entry.EndDate.Format("2006-01-02"),
+	)
 
 	dailyBars, err := e.fetchDailyData()
 	if err != nil {
@@ -355,8 +356,7 @@ func scanOptionExits(
 					trade.Legs[i].ClosePremium = lastPrices[i]
 				}
 
-				logger.Infof("Exit triggered | time=%s | premium=%.2f",
-					row.Timestamp.Format("2006-01-02 15:04"), currentTotal)
+				logger.Infof("Exit triggered | time=%s | premium=%.2f", row.Timestamp.Format("2006-01-02 15:04"), currentTotal)
 
 				return true
 			}
@@ -381,7 +381,8 @@ func calculateFinalClosePremium(
 			logger.Debugf("fallback to Black-Scholes for %s %s at %s", cfg.Underlying, leg.Spec.OptionType, closeByDateTime)
 			premium = pricing.BlackScholesPrice(trade.UnderlyingAtClose, leg.Strike,
 				(leg.Expiration.Sub(closeByDateTime).Hours() / (24 * 365)), 0.02, 0.2,
-				strings.ToLower(leg.Spec.OptionType) == "call")
+				strings.ToLower(leg.Spec.OptionType) == "call",
+			)
 		}
 		trade.Legs[i].ClosePremium = premium
 

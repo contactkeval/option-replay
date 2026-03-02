@@ -16,7 +16,7 @@ type Provider interface {
 	GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)
 	GetContracts(underlying string, strike float64, expiryDate, fromDate, toDate time.Time) ([]OptionContract, error)
 	GetBars(underlying string, fromDate, toDate time.Time, multiplier int, timespan string) ([]Bar, error)
-	GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optType string, openDate time.Time) (float64, error)
+	GetOptionPrice(underlying string, strike float64, expiryDate time.Time, optionType string, openDate time.Time) (float64, error)
 	GetRelevantExpiries(underlying string, fromDate, toDate time.Time) ([]time.Time, error)
 	RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64
 	OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string
@@ -63,7 +63,7 @@ func GetMassiveDataProvider() Provider {
 // Helper functions
 // --------------------------------------------------------------------------------------------
 
-func MatchBarDate(d time.Time, dates []time.Time, mode DateMatchType) time.Time {
+func MatchBarDate(candidate time.Time, barDates []time.Time, mode DateMatchType) time.Time {
 
 	// Search useful info
 	var (
@@ -80,17 +80,17 @@ func MatchBarDate(d time.Time, dates []time.Time, mode DateMatchType) time.Time 
 		mode = MatchNearest
 	}
 
-	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+	sort.Slice(barDates, func(i, j int) bool { return barDates[i].Before(barDates[j]) })
 
-	for _, dt := range dates {
-		if dt.Equal(d) {
-			exact = dt
+	for _, barDate := range barDates {
+		if barDate.Equal(candidate) {
+			exact = barDate
 		}
-		if dt.Before(d) {
-			lower = dt // will keep last ≤ d
+		if barDate.Before(candidate) {
+			lower = barDate // will keep last ≤ d
 		}
-		if dt.After(d) && higher.IsZero() {
-			higher = dt
+		if barDate.After(candidate) && higher.IsZero() {
+			higher = barDate
 		}
 	}
 
@@ -112,7 +112,7 @@ func MatchBarDate(d time.Time, dates []time.Time, mode DateMatchType) time.Time 
 		// choose whichever is closer
 		switch {
 		case !lower.IsZero() && !higher.IsZero():
-			if d.Sub(lower) <= higher.Sub(d) {
+			if candidate.Sub(lower) <= higher.Sub(candidate) {
 				return lower
 			}
 			return higher

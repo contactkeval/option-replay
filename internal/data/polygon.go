@@ -175,7 +175,8 @@ func (polygonDataProv *PolygonDataProvider) GetBars(
 ) ([]Bar, error) {
 	base := "https://api.polygon.io"
 	url := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/%d/%s/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
-		base, underlying, timespan, multiplier, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey)
+		base, underlying, timespan, multiplier, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"), polygonDataProv.apiKey,
+	)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
 	if err != nil {
@@ -225,11 +226,11 @@ func (polygonDataProv *PolygonDataProvider) GetOptionPrice(
 	underlying string,
 	strike float64,
 	expiryDate time.Time,
-	optType string,
+	optionType string,
 	_ time.Time,
 ) (float64, error) {
 	// Try snapshot v3; this requires that your plan supports option snapshot access.
-	symbol := polygonDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+	symbol := polygonDataProv.OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 	url := fmt.Sprintf("https://api.polygon.io/v3/snapshot/options/%s?apiKey=%s", symbol, polygonDataProv.apiKey)
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := polygonDataProv.client.Do(req)
@@ -267,7 +268,7 @@ func (polygonDataProv *PolygonDataProvider) GetOptionPrice(
 // not implemented for PolygonProvider.
 //
 // Parameters:
-//   - ticker: The symbol for which to fetch expiry dates.
+//   - underlying: The underlying for which to fetch expiry dates.
 //   - fromDate: The start of the date range.
 //   - toDate: The end of the date range.
 //
@@ -275,11 +276,11 @@ func (polygonDataProv *PolygonDataProvider) GetOptionPrice(
 //   - A slice of time.Time representing the relevant expiry dates.
 //   - An error if the operation is not supported or fails.
 func (polygonDataProv *PolygonDataProvider) GetRelevantExpiries(
-	ticker string,
+	underlying string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
 	if polygonDataProv.secondary != nil {
-		return polygonDataProv.secondary.GetRelevantExpiries(ticker, fromDate, toDate)
+		return polygonDataProv.secondary.GetRelevantExpiries(underlying, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetRelevantExpiries not implemented for PolygonProvider")
 }

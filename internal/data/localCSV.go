@@ -43,6 +43,7 @@ func (localFileDataProv *LocalFileDataProvider) GetATMOptionPrices(underlying st
 }
 
 // GetContracts scans the local data directory for files matching the underlying.
+// TODO: take a closer look at the method
 func (localFileDataProv *LocalFileDataProvider) GetContracts(
 	underlying string,
 	strike float64,
@@ -63,10 +64,10 @@ func (localFileDataProv *LocalFileDataProvider) GetContracts(
 		}
 
 		// Use the helper to extract the date
-		sym := strings.TrimSuffix(f.Name(), ".csv")
-		sym = strings.ReplaceAll(sym, "-", ":") // Convert back to O: format for parser
+		symbol := strings.TrimSuffix(f.Name(), ".csv")
+		symbol = strings.ReplaceAll(symbol, "-", ":") // Convert back to O: format for parser
 
-		expiry := localFileDataProv.parseExpiryFromSymbol(sym)
+		expiry := localFileDataProv.parseExpiryFromSymbol(symbol)
 
 		if !expiryDate.IsZero() && !expiry.Equal(expiryDate) {
 			continue
@@ -150,20 +151,20 @@ func (localFileDataProv *LocalFileDataProvider) GetOptionPrice(
 	underlying string,
 	strike float64,
 	expiryDate time.Time,
-	optType string,
+	optionType string,
 	openDate time.Time,
 ) (float64, error) {
-	symbol := localFileDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+	symbol := localFileDataProv.OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 
 	// Search back-window (Massive logic)
 	bars, err := localFileDataProv.GetBars(symbol, openDate.Add(-5*time.Minute), openDate, 1, "minute")
-	if err == nil && len(bars) > 0 {
+	if err == nil && len(bars) != 0 {
 		return bars[len(bars)-1].Close, nil
 	}
 
 	// Search forward-window (Massive logic)
 	bars, err = localFileDataProv.GetBars(symbol, openDate, openDate.Add(5*time.Minute), 1, "minute")
-	if err == nil && len(bars) > 0 {
+	if err == nil && len(bars) != 0 {
 		return bars[0].Open, nil
 	}
 
@@ -203,7 +204,7 @@ func (localFileDataProv *LocalFileDataProvider) GetRelevantExpiries(
 	levels := []float64{low + step, low + 3*step}
 
 	// Step 7: Fetch local contracts
-	expiryMap := map[string]time.Time{}
+	expiryMap := make(map[string]time.Time)
 	for _, l := range levels {
 		strike := math.Round(l/multiplier) * multiplier
 		contracts, _ := localFileDataProv.GetContracts(underlying, strike, time.Time{}, fromDate, toDate)

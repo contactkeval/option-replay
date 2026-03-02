@@ -101,15 +101,15 @@ func resolveATMOffset(offset string, asOfPrice float64) (float64, error) {
 // Returns:
 //   - float64: Evaluated numeric result
 //   - error: If expression is invalid or cannot be evaluated
-func evaluateLegExpression(expr string, legs []TradeLeg) (float64, error) {
+func evaluateLegExpression(strikeExpr string, legs []TradeLeg) (float64, error) {
 
 	re := regexp.MustCompile(`\{LEG(\d)\.(STRIKE|PREMIUM)\}`)
-	matches := re.FindAllStringSubmatch(expr, -1)
+	matches := re.FindAllStringSubmatch(strikeExpr, -1)
 	if matches == nil {
 		return 0, ErrInvalidStrikeExpression
 	}
 
-	evalStr := expr
+	evalStr := strikeExpr
 
 	for _, match := range matches {
 		idx, _ := strconv.Atoi(match[1])

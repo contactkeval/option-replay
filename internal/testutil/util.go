@@ -61,7 +61,6 @@ func CompareWithGolden(t *testing.T, name string, v any) {
 	expected := loadGolden(t, name)
 
 	if !bytes.Equal(expected, actual) {
-		t.Fatalf("golden mismatch for %s\nexpected:\n%s\nactual:\n%s",
-			name, string(expected), string(actual))
+		t.Fatalf("golden mismatch for %s\nexpected:\n%s\nactual:\n%s", name, string(expected), string(actual))
 	}
 }

@@ -104,11 +104,12 @@ func PlanStrategy(
 	underlying string,
 	openPrice float64,
 	expiryList []time.Time,
-	prov data.Provider,
+	dataProv data.Provider,
 ) ([]TradeLeg, error) {
 
 	logger.Infof("event=plan_strategy underlying=%s open_time=%s price=%.2f",
-		underlying, openDateTime.Format(time.RFC3339), openPrice)
+		underlying, openDateTime.Format(time.RFC3339), openPrice,
+	)
 
 	legs := make([]TradeLeg, 0, len(strategy.Legs))
 
@@ -129,19 +130,20 @@ func PlanStrategy(
 		}
 		logger.Tracef("event=expiry_resolved leg=%d expiry=%s", i+1, expiryDate.Format("2006-01-02"))
 
-		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, prov)
+		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, dataProv)
 		if err != nil {
 			return nil, fmt.Errorf("leg %d strike resolution failed: %w", legNum, err)
 		}
 
 		// Fetch option premium
-		openPremium, err := prov.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
+		openPremium, err := dataProv.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
 		if err != nil {
 			return nil, fmt.Errorf("leg %d premium fetch failed: %w", legNum, err)
 		}
 
 		logger.Debugf("event=leg_resolved leg=%d side=%s type=%s strike=%.2f premium=%.2f",
-			i+1, legSpec.Side, legSpec.OptionType, strike, openPremium)
+			i+1, legSpec.Side, legSpec.OptionType, strike, openPremium,
+		)
 
 		// Append resolved leg
 		legs = append(legs, TradeLeg{
@@ -172,13 +174,13 @@ func PlanStrategy(
 // Returns:
 //   - time.Time: Selected expiration date (may be zero if no match)
 func ResolveExpiration(
-	openDate time.Time,
+	openDateTime time.Time,
 	offset int,
-	expiries []time.Time,
+	expiryList []time.Time,
 	dateMatchType data.DateMatchType,
 ) time.Time {
-	candidate := openDate.AddDate(0, 0, offset)
-	return data.MatchBarDate(candidate, expiries, dateMatchType)
+	candidate := openDateTime.AddDate(0, 0, offset)
+	return data.MatchBarDate(candidate, expiryList, dateMatchType)
 }
 
 //
@@ -214,14 +216,14 @@ func ResolveStrike(
 	openDate time.Time,
 	expiryDate time.Time,
 	legs []TradeLeg,
-	prov data.Provider,
+	dataProv data.Provider,
 ) (float64, error) {
 
 	strikeExpr = strings.TrimSpace(strings.ToUpper(strikeExpr))
 	logger.Debugf("event=resolve_strike expr=%s", strikeExpr)
 
 	if strikeExpr == "ATM" {
-		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice), nil
+		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice), nil
 	}
 
 	if strings.HasPrefix(strikeExpr, "ATM:") {
@@ -229,7 +231,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, err
 		}
-		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
+		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
 	if strings.HasPrefix(strikeExpr, "DELTA:") {
@@ -240,13 +242,13 @@ func ResolveStrike(
 			logger.Errorf("parse float failed for DELTA expression:%s, %v", deltaStr, err)
 			return 0, fmt.Errorf("invalid DELTA value: %w", err)
 		}
-		target, err := resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, prov)
+		target, err := resolveDeltaStrike(underlying, expiryDate, openDate, asOfPrice, targetDelta, dataProv)
 		if err != nil {
 			logger.Errorf("resolve strike failed for DELTA expression:%s, %v", deltaStr, err)
 			return 0, err
 		}
 
-		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
+		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
 	// Expression using previous legs
@@ -255,7 +257,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, err
 		}
-		return prov.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
+		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
 	}
 
 	return 0, fmt.Errorf("%w: %s", ErrInvalidStrikeExpression, strikeExpr)

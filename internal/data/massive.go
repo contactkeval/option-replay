@@ -55,8 +55,8 @@ type massiveContract struct {
 	PrimaryExchange   string  `json:"primary_exchange"`
 	SharesPerContract int     `json:"shares_per_contract"`
 	StrikePrice       float64 `json:"strike_price"`
-	Ticker            string  `json:"ticker"`
-	UnderlyingTicker  string  `json:"underlying_ticker"`
+	Symbol            string  `json:"ticker"`
+	Underlying        string  `json:"underlying_ticker"`
 }
 
 // massiveContractsResp models the paginated response
@@ -164,7 +164,7 @@ func (massiveDataProv *MassiveDataProvider) GetATMOptionPrices(
 
 	var contractsResp struct {
 		Results []struct {
-			Ticker       string  `json:"ticker"`
+			Symbol       string  `json:"ticker"`
 			StrikePrice  float64 `json:"strike_price"`
 			ContractType string  `json:"contract_type"` // "call" or "put"
 		} `json:"results"`
@@ -353,8 +353,8 @@ func (massiveDataProv *MassiveDataProvider) GetContracts(
 func (massiveDataProv *MassiveDataProvider) GetBars(
 	underlying string,
 	fromDate, toDate time.Time,
-	timespan int,
-	multiplier string,
+	multiplier int,
+	timespan string,
 ) ([]Bar, error) {
 
 	maxLimit := 50000
@@ -364,16 +364,16 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 		underlying,
 		fromDate.Format("2006-01-02"),
 		toDate.Format("2006-01-02"),
-		timespan,
 		multiplier,
+		timespan,
 	)
 
 	url := fmt.Sprintf(
 		"%s/v2/aggs/ticker/%s/range/%d/%s/%s/%s?adjusted=true&sort=asc&limit=%d&apiKey=%s",
 		massiveDataProv.BaseURL,
 		underlying,
-		timespan,
 		multiplier,
+		timespan,
 		fromDate.Format("2006-01-02"),
 		toDate.Format("2006-01-02"),
 		maxLimit,
@@ -406,7 +406,7 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 
 	// Massive/POLYGON style response model
 	var body struct {
-		Ticker   string `json:"ticker"`
+		Symbol   string `json:"ticker"`
 		Adjusted bool   `json:"adjusted"`
 		Results  []struct {
 			Open  float64 `json:"o"`
@@ -471,19 +471,19 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 //  7. Extracts and deduplicates expiration dates
 //  8. Returns the sorted, unique expiration dates
 func (massiveDataProv *MassiveDataProvider) GetRelevantExpiries(
-	ticker string,
+	symbol string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
 
 	logger.Infof(
 		"resolving relevant expiries for %s [%s → %s]",
-		ticker,
+		symbol,
 		fromDate.Format("2006-01-02"),
 		toDate.Format("2006-01-02"),
 	)
 
 	// Step 1: Load spot bars
-	bars, err := massiveDataProv.GetBars(ticker, fromDate, toDate, multiplierOne, timespanDay)
+	bars, err := massiveDataProv.GetBars(symbol, fromDate, toDate, multiplierOne, timespanDay)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
 	}
@@ -532,12 +532,12 @@ func (massiveDataProv *MassiveDataProvider) GetRelevantExpiries(
 	}
 
 	// Step 7: Fetch contracts for each strike
-	expiryMap := map[string]time.Time{}
+	expiryMap := make(map[string]time.Time)
 
 	for _, strike := range roundedStrikes {
 		logger.Tracef("fetching contracts for strike %.2f", strike)
 		contracts, err := massiveDataProv.GetContracts(
-			ticker, strike, time.Time{}, fromDate, toDate,
+			symbol, strike, time.Time{}, fromDate, toDate,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("fetch contracts strike %.2f: %w", strike, err)
@@ -583,7 +583,7 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 	underlying string,
 	strike float64,
 	expiryDate time.Time,
-	optType string,
+	optionType string,
 	tradeDateTime time.Time,
 ) (float64, error) {
 
@@ -595,11 +595,10 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 		tradeDateTime.Format(time.RFC3339),
 	)
 
-	symbol := massiveDataProv.OptionSymbolFromParts(underlying, expiryDate, optType, strike)
+	symbol := massiveDataProv.OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 	price := 0.0
 
-	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime,
-		multiplierOne, timespanMinute)
+	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime, multiplierOne, timespanMinute)
 	if err != nil {
 		return 0, fmt.Errorf("fetch option bars: %w", err)
 	}
@@ -609,8 +608,7 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 	} else {
 		logger.Tracef("no bars before trade time, trying forward window")
 
-		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute),
-			multiplierOne, timespanMinute)
+		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute), multiplierOne, timespanMinute)
 		if err != nil {
 			logger.Errorf("no option bars found for %s", symbol)
 			return 0, fmt.Errorf("fetch option bars: %w", err)
