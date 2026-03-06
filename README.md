@@ -85,7 +85,7 @@ The engine uses a `LocalCSVProvider` to store market data locally. A `manifest.c
 
 ### Prerequisites
 - Go 1.21 or higher
-- API Key for a secondary data provider (e.g., Polygon.io)
+- API Key for a secondary data provider (e.g., massive.com)
 
 ### Setup
 # Clone the repository

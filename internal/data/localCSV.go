@@ -35,7 +35,11 @@ func (localFileDataProv *LocalFileDataProvider) SetSecondary(secondary Provider)
 	localFileDataProv.secondary = secondary
 }
 
-func (localFileDataProv *LocalFileDataProvider) GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error) {
+func (localFileDataProv *LocalFileDataProvider) GetATMOptionPrices(
+	underlying string,
+	expiryDate, openDate time.Time,
+	asOfPrice float64,
+) (strike, callPrice, putPrice float64, err error) {
 	if localFileDataProv.secondary != nil {
 		return localFileDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	}

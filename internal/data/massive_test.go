@@ -130,5 +130,5 @@ func TestGetBars(t *testing.T) {
 		t.Fatal("expected non-empty bars")
 	}
 
-	tests.CompareWithGolden(t, "get_bars", bars)
+	tests.CompareWithGolden(t, "massiveBars", bars)
 }

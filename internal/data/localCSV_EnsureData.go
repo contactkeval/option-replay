@@ -49,7 +49,7 @@ func (p *LocalFileDataProvider) handleExistingRecord(
 ) (DataRecord, error) {
 	// Options: Only extend the end date to today if needed
 	if isOption {
-		if endDate.After(record.LastDate) {
+		if !endDate.IsZero() && endDate.After(record.LastDate) {
 			logger.Infof("Option %s: Extending data to today", symbol)
 			if err := p.fetchAndAppend(symbol, record.LastDate, asOfTime); err != nil {
 				return record, err

@@ -4,13 +4,15 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	tests "github.com/contactkeval/option-replay/internal/testutil"
 )
 
 var (
 	provLocal = NewLocalFileDataProvider("..\\..\\input\\data", nil) // Use a test directory for local CSV files
 	symbol    = "O:SPY250213C00580000"                               // SPY call option expiring on Jan 17, 2025 with strike 580.0
-	startDate = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	endDate   = time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	startDate = time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	endDate   = time.Date(2025, 2, 13, 0, 0, 0, 0, time.UTC)
 )
 
 func init() {
@@ -22,9 +24,15 @@ func init() {
 func TestLocalGetBars(t *testing.T) {
 	// This test will check if the local CSV provider can fetch bars for a given underlying and date range.
 	// It will also check if the bars are correctly stored in the local CSV file.
-	provLocal.GetBars(symbol, startDate, endDate, 1, "day")
+	bars, err := provLocal.GetBars(symbol, startDate, endDate, 1, "day")
+	if err != nil {
+		t.Fatalf("Error fetching bars: %v", err)
+	}
+
 	// After fetching, we can check if the local CSV file exists and has the expected data.
-	if _, err := os.Stat("..\\..\\input\\data\\" + symbol + ".csv"); os.IsNotExist(err) {
+	if _, err = os.Stat("..\\..\\input\\data\\" + symbol + ".csv"); os.IsNotExist(err) {
 		t.Fatalf("Expected local CSV file not found: %s.csv", symbol)
 	}
+
+	tests.CompareWithGolden(t, "localBars", bars)
 }
