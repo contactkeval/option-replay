@@ -2,6 +2,7 @@ package data
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ func TestLocalGetBars(t *testing.T) {
 	}
 
 	// After fetching, we can check if the local CSV file exists and has the expected data.
+	symbol = strings.ReplaceAll(symbol, ":", "-")
 	if _, err = os.Stat("..\\..\\input\\data\\" + symbol + ".csv"); os.IsNotExist(err) {
 		t.Fatalf("Expected local CSV file not found: %s.csv", symbol)
 	}

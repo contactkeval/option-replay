@@ -14,21 +14,21 @@ type DataRecord struct {
 	LastDate  time.Time `csv:"last_date"`
 }
 
-func (p *LocalFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
-	records, err := p.loadManifest()
+func (localFileDataProv *LocalFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
+	records, err := localFileDataProv.loadManifest()
 	if err != nil {
 		return fmt.Errorf("ensure local: %w", err)
 	}
 
 	record, exists := records[symbol]
 	isOption := strings.HasPrefix(symbol, "O:")
-	now := time.Now()
+	asOfTime := time.Now()
 
 	var updatedRecord DataRecord
 	if exists {
-		updatedRecord, err = p.handleExistingRecord(symbol, record, isOption, startDate, endDate, now)
+		updatedRecord, err = localFileDataProv.handleExistingRecord(symbol, record, isOption, startDate, endDate, asOfTime)
 	} else {
-		updatedRecord, err = p.handleNewRecord(symbol, isOption, startDate, endDate, now)
+		updatedRecord, err = localFileDataProv.handleNewRecord(symbol, isOption, startDate, endDate, asOfTime)
 	}
 
 	if err != nil {
@@ -36,12 +36,12 @@ func (p *LocalFileDataProvider) EnsureLocalData(symbol string, startDate, endDat
 	}
 
 	records[symbol] = updatedRecord
-	return p.saveManifest(records)
+	return localFileDataProv.saveManifest(records)
 }
 
 // --- Specialized Handlers ---
 
-func (p *LocalFileDataProvider) handleExistingRecord(
+func (localFileDataProv *LocalFileDataProvider) handleExistingRecord(
 	symbol string,
 	record DataRecord,
 	isOption bool,
@@ -49,12 +49,20 @@ func (p *LocalFileDataProvider) handleExistingRecord(
 ) (DataRecord, error) {
 	// Options: Only extend the end date to today if needed
 	if isOption {
-		if !endDate.IsZero() && endDate.After(record.LastDate) {
-			logger.Infof("Option %s: Extending data to today", symbol)
-			if err := p.fetchAndAppend(symbol, record.LastDate, asOfTime); err != nil {
+		if !record.LastDate.IsZero() && endDate.After(record.LastDate) {
+			// Fetch until today or expiry, whichever is earlier
+			fetchUntil := localFileDataProv.parseExpiryFromSymbol(symbol)
+			if asOfTime.Before(fetchUntil) {
+				fetchUntil = asOfTime
+				record.LastDate = fetchUntil
+			} else {
+				record.LastDate = time.Time{} // Clear last date if expiry is in the past
+			}
+
+			logger.Infof("Option %s: Extending data to till %s", symbol, fetchUntil.Format("2006-01-02"))
+			if err := localFileDataProv.fetchAndAppend(symbol, record.LastDate, fetchUntil); err != nil {
 				return record, err
 			}
-			record.LastDate = asOfTime
 		}
 		return record, nil
 	}
@@ -62,7 +70,7 @@ func (p *LocalFileDataProvider) handleExistingRecord(
 	// Stocks/Indices: Check both historical and recent gaps
 	if startDate.Before(record.FirstDate) {
 		logger.Infof("Symbol %s: Fetching historical gap", symbol)
-		if err := p.fetchAndAppend(symbol, startDate, record.FirstDate); err != nil {
+		if err := localFileDataProv.fetchAndAppend(symbol, startDate, record.FirstDate); err != nil {
 			return record, err
 		}
 		record.FirstDate = startDate
@@ -70,7 +78,7 @@ func (p *LocalFileDataProvider) handleExistingRecord(
 
 	if endDate.After(record.LastDate) {
 		logger.Infof("Symbol %s: Fetching recent gap", symbol)
-		if err := p.fetchAndAppend(symbol, record.LastDate, asOfTime); err != nil {
+		if err := localFileDataProv.fetchAndAppend(symbol, record.LastDate, asOfTime); err != nil {
 			return record, err
 		}
 		record.LastDate = asOfTime
@@ -79,16 +87,16 @@ func (p *LocalFileDataProvider) handleExistingRecord(
 	return record, nil
 }
 
-func (p *LocalFileDataProvider) handleNewRecord(
+func (localFileDataProv *LocalFileDataProvider) handleNewRecord(
 	symbol string,
 	isOption bool,
 	startDate, endDate, asOfTime time.Time) (DataRecord, error) {
 	if isOption {
-		return p.initializeOptionRecord(symbol, startDate, asOfTime)
+		return localFileDataProv.initializeOptionRecord(symbol, startDate, asOfTime)
 	}
 
 	// Standard Stock/Index initialization
-	if err := p.fetchAndAppend(symbol, startDate, endDate); err != nil {
+	if err := localFileDataProv.fetchAndAppend(symbol, startDate, endDate); err != nil {
 		return DataRecord{}, err
 	}
 	return DataRecord{
@@ -98,14 +106,14 @@ func (p *LocalFileDataProvider) handleNewRecord(
 	}, nil
 }
 
-func (p *LocalFileDataProvider) initializeOptionRecord(symbol string, requestedStart, asOfTime time.Time) (DataRecord, error) {
-	expiryDate := p.parseExpiryFromSymbol(symbol)
+func (localFileDataProv *LocalFileDataProvider) initializeOptionRecord(symbol string, requestedStart, asOfTime time.Time) (DataRecord, error) {
+	expiryDate := localFileDataProv.parseExpiryFromSymbol(symbol)
 	if expiryDate.IsZero() {
 		return DataRecord{}, fmt.Errorf("failed to parse expiry from %s", symbol)
 	}
 
 	fetchStart := expiryDate.AddDate(-2, 0, 0)
-	if err := p.fetchAndAppend(symbol, fetchStart, asOfTime); err != nil {
+	if err := localFileDataProv.fetchAndAppend(symbol, fetchStart, asOfTime); err != nil {
 		return DataRecord{}, err
 	}
 
