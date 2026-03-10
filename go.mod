@@ -15,6 +15,7 @@ require (
 	github.com/go-playground/validator/v10 v10.23.0 // indirect
 	github.com/go-resty/resty/v2 v2.13.1 // indirect
 	github.com/go-toolsmith/pkgload v1.2.2 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/quasilyte/go-namecheck v0.0.0-20190530083159-81b081ff1afc // indirect
 	golang.org/x/crypto v0.48.0 // indirect
