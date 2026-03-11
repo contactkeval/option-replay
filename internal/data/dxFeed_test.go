@@ -2,29 +2,36 @@ package data
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
 
 func TestDxFeed_FetchSpecificWindow(t *testing.T) {
-	// 1. Setup provider
-	// In production/local testing, use Environment Variables for security
-	// LIVE
-	// wsURL := "wss://tasty-openapi-ws.dxfeed.com/realtime"
-	// ttBaseURL := "https://api.tastyworks.com"
-	// DEMO
-	wsURL := "wss://tasty-demo-ws.dxfeed.com/delayed" // For testing, we can use the delayed feed which doesn't require a paid subscription
+	// 1. Setup provider with the new OAuth-capable signature
+	// It is highly recommended to use Environment Variables for these!
+
 	ttBaseURL := "https://api.cert.tastyworks.com"
 
-	// Get your Tastytrade Session/OAuth token from environment
-	// ttAuthToken := os.Getenv("DXFEED_AUTH_TOKEN") // TODO
-	ttAuthToken := "dGFzdHksZGVtbywsMTc3MzIyNTYzNiwxNzczMTM5MjM2LFUyN2M5NzA3ZS00ZWQ2LTQ4ZDQtYWU3Ny03MWMxNmY0NzBhNDE.k_n7DVedHqU_faN1HJPv9AMhUWDQwFbZ6JGwFXoigzk"
-	if ttAuthToken == "" {
-		t.Skip("Skipping test: DXFEED_AUTH_TOKEN not set in environment")
+	// These should be your Sandbox/Certification credentials
+	refreshToken := os.Getenv("TT_REFRESH_TOKEN")
+	clientID := os.Getenv("TT_CLIENT_ID")
+	clientSecret := os.Getenv("TT_CLIENT_SECRET")
+
+	// Fallback for quick manual testing (Optional - use with caution)
+	// if refreshToken == "" {
+	// 	refreshToken = "YOUR_PERMANENT_REFRESH_TOKEN_HERE"
+	// 	clientID = "YOUR_CLIENT_ID_HERE"
+	// 	clientSecret = "YOUR_CLIENT_SECRET_HERE"
+	// }
+
+	if refreshToken == "YOUR_PERMANENT_REFRESH_TOKEN_HERE" {
+		t.Skip("Skipping test: Credentials not set. Please update environment variables or placeholders.")
 	}
 
-	// Note the new signature: wsURL, ttBaseURL, ttAuthToken
-	dxFeedDataProv := NewDxFeedProvider(wsURL, ttBaseURL, ttAuthToken)
+	// Initialize the provider. Note: WsURL will be discovered automatically
+	// by the provider during the first refresh call.
+	dxFeedDataProv := NewDxFeedProvider(ttBaseURL, refreshToken, clientID, clientSecret)
 
 	// 2. Define the EST Timezone
 	est, err := time.LoadLocation("America/New_York")
@@ -32,18 +39,22 @@ func TestDxFeed_FetchSpecificWindow(t *testing.T) {
 		t.Fatal("Could not load EST location:", err)
 	}
 
-	// 3. Create the start/end times in EST (Jan 02, 2025 was a Thursday)
-	startEST := time.Date(2025, time.January, 2, 15, 0, 0, 0, est)
-	endEST := time.Date(2025, time.January, 2, 16, 0, 0, 0, est)
+	// 3. Create the start/end times in EST
+	// Note: January 5th, 2026 was a Thursday. Market was open.
+	startEST := time.Date(2026, time.January, 5, 10, 0, 0, 0, est) // 10:00 AM EST
+	endEST := time.Date(2026, time.January, 5, 11, 0, 0, 0, est)   // 11:00 AM EST
 
-	// 4. Convert to UTC
+	// 4. Convert to UTC (API expects UTC)
 	startUTC := startEST.UTC()
 	endUTC := endEST.UTC()
 
 	t.Logf("Fetching AAPL from %s to %s (UTC)", startUTC, endUTC)
 
 	// 5. Execute fetch
-	// This will trigger refreshTokenIfNeeded() internally if dxFeedDataProv.SessionToken is empty
+	// This will now:
+	// a) Exchange Refresh Token for Access Token
+	// b) Use Access Token to get dxLink Quote Token and WsURL
+	// c) Connect to WebSocket and pull bars
 	bars, err := dxFeedDataProv.GetHistoricalData("AAPL", startUTC, endUTC, "1m")
 	if err != nil {
 		t.Fatalf("Fetch failed: %v", err)
@@ -51,14 +62,15 @@ func TestDxFeed_FetchSpecificWindow(t *testing.T) {
 
 	// 6. Assertions
 	if len(bars) == 0 {
-		t.Errorf("No bars returned for AAPL on %s. Ensure market was open and token has permissions.", startEST.Format("2006-01-02"))
+		t.Errorf("No bars returned for AAPL. Ensure sandbox has an active account and market data permissions.")
 	}
 
-	// 7. Verify the data is within the requested range
+	// 7. Output results
 	fmt.Printf("Successfully retrieved %d bars.\n", len(bars))
 	for i, bar := range bars {
-		if i < 3 || i >= len(bars)-2 { // Print first 3 and last 2
-			fmt.Printf("[%d] Time: %s | Close: %.2f\n", i, bar.Date.In(est), bar.Close)
+		// Print first 2 and last 2 for brevity
+		if i < 2 || i >= len(bars)-2 {
+			fmt.Printf("[%d] Time: %s | Close: %.2f\n", i, bar.Date.In(est).Format("15:04:05"), bar.Close)
 		}
 	}
 }

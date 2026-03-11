@@ -4,51 +4,111 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/gorilla/websocket"
 )
 
 type DxFeedDataProvider struct {
-	WsURL        string
-	SessionToken string    // The dxLink Quote Token
-	ExpiresAt    time.Time // When the Quote Token expires
-
-	// Credentials to fetch a new token
-	ttBaseURL   string
-	ttAuthToken string // Your Tastytrade Session/OAuth Token
-
 	mu sync.Mutex
+
+	// 1. OAuth Tokens (Tastytrade API)
+	ttBaseURL    string
+	refreshToken string    // The permanent JWT from Developer Portal
+	ttAuthToken  string    // The 15-minute Access Token
+	ttAuthExpiry time.Time // When the 15-minute token dies
+
+	// 2. dxLink Tokens (Market Data)
+	WsURL        string
+	SessionToken string    // The 24-hour dxLink Quote Token
+	dxLinkExpiry time.Time // When the Quote Token expires
+
+	// Client Config
+	clientID     string
+	clientSecret string
 }
 
-func NewDxFeedProvider(wsURL, ttBaseURL, ttAuthToken string) *DxFeedDataProvider {
+func NewDxFeedProvider(baseURL, refresh, cID, cSecret string) *DxFeedDataProvider {
 	return &DxFeedDataProvider{
-		WsURL:       wsURL,
-		ttBaseURL:   ttBaseURL,
-		ttAuthToken: ttAuthToken,
+		ttBaseURL:    baseURL,
+		refreshToken: refresh,
+		clientID:     cID,
+		clientSecret: cSecret,
 	}
 }
 
-// refreshTokenIfNeeded checks if the token is missing or expiring soon (within 5 mins)
-func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
-	// If token exists and has > 5 minutes of life, do nothing
-	if dxFeedDataProv.SessionToken != "" && time.Now().Add(5*time.Minute).Before(dxFeedDataProv.ExpiresAt) {
+// ensureValidAccessToken handles the 15-minute Tastytrade OAuth lifecycle
+func (dxFeedDataProv *DxFeedDataProvider) ensureValidAccessToken() error {
+	// If token is valid for more than 2 minutes, we are good
+	if dxFeedDataProv.ttAuthToken != "" && time.Now().Add(2*time.Minute).Before(dxFeedDataProv.ttAuthExpiry) {
 		return nil
 	}
 
-	fmt.Println("Token expired or missing. Fetching new dxLink token...")
+	logger.Infof("Access Token expired. Exchanging Refresh Token for new Access Token...")
 
-	req, _ := http.NewRequest("GET", dxFeedDataProv.ttBaseURL+"/api-quote-tokens", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", dxFeedDataProv.ttAuthToken))
+	// This is the POST request you were doing in Postman
+	url := fmt.Sprintf("%s/oauth/token", dxFeedDataProv.ttBaseURL)
+
+	// Prepare the body for x-www-form-urlencoded
+	payload := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s&client_secret=%s",
+		dxFeedDataProv.refreshToken, dxFeedDataProv.clientSecret)
+	if dxFeedDataProv.clientID != "" {
+		payload += fmt.Sprintf("&client_id=%s", dxFeedDataProv.clientID)
+	}
+
+	req, _ := http.NewRequest("POST", url, strings.NewReader(payload))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("User-Agent", "option-replay/1.0")
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Accept", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to call api-quote-tokens: %w", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("oauth refresh failed: status %d", resp.StatusCode)
+	}
+
+	var res struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"` // Usually 900
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return err
+	}
+
+	dxFeedDataProv.ttAuthToken = res.AccessToken
+	dxFeedDataProv.ttAuthExpiry = time.Now().Add(time.Duration(res.ExpiresIn) * time.Second)
+	return nil
+}
+
+// refreshTokenIfNeeded handles the 24-hour dxLink lifecycle
+func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
+	// 1. First, make sure our 15-minute Tastytrade token is valid
+	if err := dxFeedDataProv.ensureValidAccessToken(); err != nil {
+		return fmt.Errorf("failed to ensure oauth access: %w", err)
+	}
+
+	// 2. Now check if the 24-hour dxLink token is still valid
+	if dxFeedDataProv.SessionToken != "" && time.Now().Add(10*time.Minute).Before(dxFeedDataProv.dxLinkExpiry) {
+		return nil
+	}
+
+	logger.Infof("dxLink token expired or missing. Fetching new one...")
+
+	req, _ := http.NewRequest("GET", dxFeedDataProv.ttBaseURL+"/api-quote-tokens", nil)
+	req.Header.Add("Authorization", "Bearer "+dxFeedDataProv.ttAuthToken) // Uses the fresh token from step 1
+	req.Header.Add("User-Agent", "option-replay/1.0")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -58,18 +118,18 @@ func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
 
 	var result struct {
 		Data struct {
-			Token string `json:"token"`
+			Token     string `json:"token"`
+			DxLinkURL string `json:"dxlink-url"`
 		} `json:"data"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode quote token: %w", err)
+		return err
 	}
 
-	// Update the provider state
 	dxFeedDataProv.SessionToken = result.Data.Token
-	// dxLink tokens are usually valid for 24h
-	dxFeedDataProv.ExpiresAt = time.Now().Add(24 * time.Hour)
+	dxFeedDataProv.WsURL = result.Data.DxLinkURL
+	dxFeedDataProv.dxLinkExpiry = time.Now().Add(24 * time.Hour) // dxLink tokens are robust
 
 	return nil
 }
@@ -140,17 +200,21 @@ func (dxFeedDataProv *DxFeedDataProvider) GetHistoricalData(
 
 	// 5. Data Collection Loop (Unchanged logic)
 	var bars []Bar
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(45 * time.Second)
 
 	for {
 		select {
 		case <-timeout:
 			return bars, fmt.Errorf("timeout waiting for dxfeed data")
 		default:
-			_, message, err := conn.ReadMessage()
+			messageType, message, err := conn.ReadMessage()
 			if err != nil {
 				return bars, nil
 			}
+
+			// DEBUG: Print the raw message to see what is actually coming over the wire
+			// This will show us if it's FEED_DATA, ERROR, or a KEEPALIVE
+			logger.Infof("RAW WS MSG [%d]: %s", messageType, string(message))
 
 			var msg map[string]interface{}
 			if err := json.Unmarshal(message, &msg); err != nil {
@@ -183,8 +247,12 @@ func (dxFeedDataProv *DxFeedDataProvider) handshake(conn *websocket.Conn) error 
 	conn.WriteJSON(map[string]interface{}{"type": "AUTH", "channel": 0, "token": dxFeedDataProv.SessionToken})
 	// CHANNEL
 	conn.WriteJSON(map[string]interface{}{
-		"type": "CHANNEL_REQUEST", "channel": 1, "service": "FEED",
-		"parameters": map[string]interface{}{"contract": "AUTO", "subFormat": "LIST"},
+		"type":    "CHANNEL_REQUEST",
+		"channel": 1,
+		"service": "FEED",
+		"parameters": map[string]interface{}{
+			"contract":  "AUTO",
+			"subFormat": "LIST"},
 	})
 
 	// Give the server a moment to process the channel request
