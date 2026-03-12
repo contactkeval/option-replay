@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,10 @@ type DxFeedDataProvider struct {
 	// Client Config
 	clientID     string
 	clientSecret string
+
+	// dxFeed data parsing helpers
+	fieldMap  map[string]int
+	recordLen int
 }
 
 func NewDxFeedProvider(baseURL, refresh, cID, cSecret string) *DxFeedDataProvider {
@@ -63,7 +68,7 @@ func (dxFeedDataProv *DxFeedDataProvider) ensureValidAccessToken() error {
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("User-Agent", "option-replay/1.0")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -134,101 +139,207 @@ func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
 	return nil
 }
 
-// GetHistoricalData retrieves historical OHLC bar data from the dxFeed API for a specified symbol and time range.
-//
-// It performs the following steps:
-// 1. Validates and refreshes the authentication token if needed
-// 2. Establishes a WebSocket connection to the dxFeed API
-// 3. Performs the WebSocket handshake using the validated token
-// 4. Subscribes to Candle data for the specified symbol and timeframe
-// 5. Collects bar data from the feed until the end time is reached or timeout occurs
+// GetHistoricalData retrieves historical OHLC bar data for a given symbol within a specified time range.
+// It establishes an authenticated connection to the dxFeed service, subscribes to candle data for the
+// specified symbol and timeframe, and collects the bars until the end time is reached.
 //
 // Parameters:
-//   - symbol: The trading symbol (e.g., "AAPL", "GOOGL")
-//   - start: The start time for the historical data range
-//   - end: The end time for the historical data range
+//   - symbol: The trading symbol to fetch data for (e.g., "AAPL")
+//   - start: The beginning of the time range for historical data
+//   - end: The end of the time range for historical data
 //   - timeframe: The candle timeframe (e.g., "1m", "5m", "1h", "1d")
 //
 // Returns:
-//   - []Bar: A slice of Bar objects containing the historical OHLC data
-//   - error: An error if authentication, connection, subscription, or data retrieval fails;
-//     returns a timeout error if no data is received within 30 seconds
-//
-// Note: This method is protected by a mutex lock to ensure thread-safe access.
+//   - []Bar: A slice of Bar objects containing OHLC data points
+//   - error: An error if the connection, subscription, or data collection fails
 func (dxFeedDataProv *DxFeedDataProvider) GetHistoricalData(
 	symbol string,
 	start, end time.Time,
 	timeframe string,
 ) ([]Bar, error) {
-	dxFeedDataProv.mu.Lock()
-	defer dxFeedDataProv.mu.Unlock()
-
-	// 1. Validate / Refresh Token
-	if err := dxFeedDataProv.refreshTokenIfNeeded(); err != nil {
-		return nil, fmt.Errorf("auth error: %w", err)
-	}
-
-	// 2. Connect
-	conn, _, err := websocket.DefaultDialer.Dial(dxFeedDataProv.WsURL, nil)
+	// 1. Establish the authenticated connection
+	conn, err := dxFeedDataProv.connectAndHandshake()
 	if err != nil {
-		return nil, fmt.Errorf("dxfeed connection failed: %w", err)
+		return nil, err
 	}
 	defer conn.Close()
 
-	// 3. Handshake (Uses the fresh/validated SessionToken)
-	if err := dxFeedDataProv.handshake(conn); err != nil {
+	// 2. Send the subscription request
+	if err := dxFeedDataProv.subscribeCandles(conn, symbol, timeframe, start, end); err != nil {
 		return nil, err
 	}
 
-	// 4. Subscribe to Candles
+	// 3. Collect the bars
+	return dxFeedDataProv.collectHistoricalBars(conn, end)
+}
+
+// connectAndHandshake establishes a WebSocket connection to the dxFeed service and performs
+// the necessary handshake authentication. It first refreshes the authentication token if needed,
+// then dials the WebSocket URL with a 10-second timeout. If the connection is successful,
+// it performs the handshake protocol. Returns the established WebSocket connection or an error
+// if any step fails (token refresh, dial, or handshake).
+func (dxFeedDataProv *DxFeedDataProvider) connectAndHandshake() (*websocket.Conn, error) {
+	dxFeedDataProv.mu.Lock()
+	if err := dxFeedDataProv.refreshTokenIfNeeded(); err != nil {
+		dxFeedDataProv.mu.Unlock()
+		return nil, fmt.Errorf("auth error: %w", err)
+	}
+	wsURL := dxFeedDataProv.WsURL
+	dxFeedDataProv.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("dial failed: %w", err)
+	}
+
+	if err := dxFeedDataProv.handshake(conn); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("handshake failed: %w", err)
+	}
+
+	return conn, nil
+}
+
+// subscribeCandles subscribes to candle data for a given symbol and timeframe within a specified time range.
+// It constructs a FEED_SUBSCRIPTION message with the formatted symbol (including timeframe specification),
+// candle type, and start/end timestamps in milliseconds, then sends the subscription request via WebSocket.
+// Parameters:
+//   - conn: the WebSocket connection to send the subscription to
+//   - symbol: the trading symbol (e.g., "AAPL")
+//   - timeframe: the candle timeframe (e.g., "1m", "5m", "1h")
+//   - start: the start time for the candle data range
+//   - end: the end time for the candle data range
+//
+// Returns an error if the WebSocket message cannot be written.
+func (dxFeedDataProv *DxFeedDataProvider) subscribeCandles(conn *websocket.Conn, symbol, timeframe string, start, end time.Time) error {
 	dxSymbol := fmt.Sprintf("%s{=%s}", symbol, timeframe)
 	subMsg := map[string]interface{}{
 		"type":    "FEED_SUBSCRIPTION",
 		"channel": 1,
-		"add": []map[string]string{
+		"add": []map[string]interface{}{
 			{
-				"symbol": dxSymbol,
-				"type":   "Candle",
-				"from":   start.Format("2006-01-02T15:04:05Z"),
-				"to":     end.Format("2006-01-02T15:04:05Z"),
+				"symbol":   dxSymbol,
+				"type":     "Candle",
+				"fromTime": start.UnixMilli(),
+				"toTime":   end.UnixMilli(),
 			},
 		},
 	}
-	if err := conn.WriteJSON(subMsg); err != nil {
-		return nil, err
-	}
+	return conn.WriteJSON(subMsg)
+}
 
-	// 5. Data Collection Loop (Unchanged logic)
+// collectHistoricalBars retrieves historical candlestick data from the dxFeed WebSocket connection
+// until the specified end time is reached or a timeout occurs.
+//
+// The function establishes a read loop on the WebSocket connection and processes incoming messages
+// in the following sequence:
+//   - FEED_CONFIG: Updates the internal field mapping for parsing Candle events
+//   - FEED_DATA: Parses candlestick bars and appends them to the result slice, resetting the
+//     activity timeout on each successful parse
+//   - ERROR: Returns any dxFeed API errors encountered
+//
+// The function terminates when:
+//   - A bar with a timestamp at or after the end time is received
+//   - A timeout of 30 seconds occurs after the last FEED_DATA message (60 seconds initially)
+//   - An error is encountered reading from the connection
+//
+// Parameters:
+//   - conn: The WebSocket connection to the dxFeed API
+//   - end: The target end time for historical data collection
+//
+// Returns:
+//   - A slice of Bar structs containing the collected candlestick data
+//   - An error if the connection fails, times out, or the server returns an error
+//   - If bars were collected before an error occurs, returns the bars with nil error
+func (dxFeedDataProv *DxFeedDataProvider) collectHistoricalBars(conn *websocket.Conn, end time.Time) ([]Bar, error) {
 	var bars []Bar
-	timeout := time.After(45 * time.Second)
+	timeout := time.NewTimer(60 * time.Second)
+	defer timeout.Stop()
+
+	// Ensure mapping is fresh for this specific session
+	dxFeedDataProv.mu.Lock()
+	dxFeedDataProv.recordLen = 0
+	dxFeedDataProv.mu.Unlock()
 
 	for {
-		select {
-		case <-timeout:
-			return bars, fmt.Errorf("timeout waiting for dxfeed data")
-		default:
-			messageType, message, err := conn.ReadMessage()
-			if err != nil {
+		// Set a read deadline so ReadMessage doesn't block forever if the server hangs
+		conn.SetReadDeadline(time.Now().Add(65 * time.Second))
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if len(bars) > 0 {
 				return bars, nil
 			}
+			return nil, fmt.Errorf("read error: %w", err)
+		}
 
-			// DEBUG: Print the raw message to see what is actually coming over the wire
-			// This will show us if it's FEED_DATA, ERROR, or a KEEPALIVE
-			logger.Infof("RAW WS MSG [%d]: %s", messageType, string(message))
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(message, &raw); err != nil {
+			continue
+		}
 
-			var msg map[string]interface{}
-			if err := json.Unmarshal(message, &msg); err != nil {
+		var msgType string
+		_ = json.Unmarshal(raw["type"], &msgType)
+
+		switch msgType {
+		case "FEED_CONFIG":
+			var config struct {
+				EventFields map[string][]interface{} `json:"eventFields"`
+			}
+			if err := json.Unmarshal(message, &config); err == nil {
+				if fields, ok := config.EventFields["Candle"]; ok {
+					dxFeedDataProv.mu.Lock()
+					dxFeedDataProv.updateMapping(fields)
+					dxFeedDataProv.mu.Unlock()
+				}
+			}
+
+		case "FEED_DATA":
+			dxFeedDataProv.mu.Lock()
+			hasMapping := dxFeedDataProv.recordLen > 0
+			dxFeedDataProv.mu.Unlock()
+
+			if !hasMapping {
 				continue
 			}
 
-			if msg["type"] == "FEED_DATA" {
-				newBars := parseDxBars(msg["data"])
-				bars = append(bars, newBars...)
+			// Activity detected: Reset the safety timeout
+			if !timeout.Stop() {
+				select {
+				case <-timeout.C:
+				default:
+				}
+			}
+			timeout.Reset(30 * time.Second)
 
-				if len(newBars) > 0 && !newBars[len(newBars)-1].Date.Before(end) {
+			newBars := dxFeedDataProv.parseDxBars(raw["data"])
+			bars = append(bars, newBars...)
+
+			// Exit condition: Have we reached the requested end time?
+			if len(newBars) > 0 {
+				if !newBars[len(newBars)-1].Date.Before(end) {
 					return bars, nil
 				}
 			}
+
+		case "ERROR":
+			var errMsg struct {
+				Err string `json:"error"`
+			}
+			_ = json.Unmarshal(message, &errMsg)
+			return bars, fmt.Errorf("dxfeed error: %s", errMsg.Err)
+		}
+
+		// Check the timer
+		select {
+		case <-timeout.C:
+			if len(bars) > 0 {
+				return bars, nil
+			}
+			return nil, fmt.Errorf("collection timed out")
+		default:
 		}
 	}
 }
@@ -260,29 +371,62 @@ func (dxFeedDataProv *DxFeedDataProvider) handshake(conn *websocket.Conn) error 
 	return nil
 }
 
-// parseDxBars converts the raw dxFeed Candle event array into your internal Bar struct
-func parseDxBars(rawData interface{}) []Bar {
+// parseDxBars converts raw dxFeed data into a slice of Bar structs.
+// It expects rawData to be a nested slice where the second element contains
+// a flat array of bar records. Each record is parsed according to the fieldMap
+// to extract OHLCV (Open, High, Low, Close, Volume) data and timestamp information.
+// Returns an empty slice if rawData is malformed, has insufficient elements,
+// or recordLen is not set. Timestamps are expected in milliseconds and are
+// converted to UTC time.
+func (dxFeedDataProv *DxFeedDataProvider) parseDxBars(rawData interface{}) []Bar {
 	var bars []Bar
-	data, ok := rawData.([]interface{})
+	topLevel, ok := rawData.([]interface{})
+	if !ok || len(topLevel) < 2 || dxFeedDataProv.recordLen == 0 {
+		return bars
+	}
+
+	flatData, ok := topLevel[1].([]interface{})
 	if !ok {
 		return bars
 	}
 
-	for _, item := range data {
-		entry := item.([]interface{})
-		// dxFeed Candle index typically: 0:symbol, 1:type, 2:time, 3:open, 4:high, 5:low, 6:close, etc.
-		if len(entry) < 7 {
-			continue
+	for i := 0; i+dxFeedDataProv.recordLen <= len(flatData); i += dxFeedDataProv.recordLen {
+		record := flatData[i : i+dxFeedDataProv.recordLen]
+
+		// Helper to get float safely by field name
+		getF64 := func(fieldName string) float64 {
+			idx, exists := dxFeedDataProv.fieldMap[fieldName]
+			if !exists || idx >= len(record) {
+				return 0
+			}
+			val, _ := record[idx].(float64)
+			return val
 		}
 
-		ts := int64(entry[2].(float64))
+		tsMillis := getF64("time")
+
 		bars = append(bars, Bar{
-			Date:  time.Unix(ts/1000, 0).UTC(),
-			Open:  entry[3].(float64),
-			High:  entry[4].(float64),
-			Low:   entry[5].(float64),
-			Close: entry[6].(float64),
+			Date:   time.UnixMilli(int64(tsMillis)).UTC(),
+			Open:   getF64("open"),
+			High:   getF64("high"),
+			Low:    getF64("low"),
+			Close:  getF64("close"),
+			Volume: getF64("volume"),
 		})
 	}
 	return bars
+}
+
+// updateMapping initializes the field mapping and record length based on the provided event fields.
+// It creates a map that associates field names (strings) with their corresponding indices,
+// enabling efficient field lookup by name. The record length is set to the total number of fields.
+// If a field is not a string, it is skipped during the mapping process.
+func (dxFeedDataProv *DxFeedDataProvider) updateMapping(eventFields []interface{}) {
+	dxFeedDataProv.fieldMap = make(map[string]int)
+	dxFeedDataProv.recordLen = len(eventFields)
+	for i, field := range eventFields {
+		if name, ok := field.(string); ok {
+			dxFeedDataProv.fieldMap[name] = i
+		}
+	}
 }

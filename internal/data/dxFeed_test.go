@@ -44,18 +44,13 @@ func TestDxFeed_FetchSpecificWindow(t *testing.T) {
 	startEST := time.Date(2026, time.January, 5, 10, 0, 0, 0, est) // 10:00 AM EST
 	endEST := time.Date(2026, time.January, 5, 11, 0, 0, 0, est)   // 11:00 AM EST
 
-	// 4. Convert to UTC (API expects UTC)
-	startUTC := startEST.UTC()
-	endUTC := endEST.UTC()
-
-	t.Logf("Fetching AAPL from %s to %s (UTC)", startUTC, endUTC)
-
 	// 5. Execute fetch
 	// This will now:
 	// a) Exchange Refresh Token for Access Token
 	// b) Use Access Token to get dxLink Quote Token and WsURL
 	// c) Connect to WebSocket and pull bars
-	bars, err := dxFeedDataProv.GetHistoricalData("AAPL", startUTC, endUTC, "1m")
+	t.Logf("Fetching AAPL from %s to %s (EST)", startEST, endEST)
+	bars, err := dxFeedDataProv.GetHistoricalData("AAPL", startEST.UTC(), endEST.UTC(), "1m")
 	if err != nil {
 		t.Fatalf("Fetch failed: %v", err)
 	}
