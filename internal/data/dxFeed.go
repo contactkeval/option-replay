@@ -71,7 +71,7 @@ func (dxFeedDataProv *DxFeedDataProvider) ensureValidAccessToken() error {
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("oauth network error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -84,7 +84,7 @@ func (dxFeedDataProv *DxFeedDataProvider) ensureValidAccessToken() error {
 		ExpiresIn   int    `json:"expires_in"` // Usually 900
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return err
+		return fmt.Errorf("failed to decode oauth response: %w", err)
 	}
 
 	dxFeedDataProv.ttAuthToken = res.AccessToken
@@ -113,7 +113,7 @@ func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("quote token network error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -129,7 +129,7 @@ func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
+		return fmt.Errorf("failed to decode quote token response: %w", err)
 	}
 
 	dxFeedDataProv.SessionToken = result.Data.Token
@@ -160,13 +160,13 @@ func (dxFeedDataProv *DxFeedDataProvider) GetHistoricalData(
 	// 1. Establish the authenticated connection
 	conn, err := dxFeedDataProv.connectAndHandshake()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connection/handshake failed: %w", err)
 	}
 	defer conn.Close()
 
 	// 2. Send the subscription request
 	if err := dxFeedDataProv.subscribeCandles(conn, symbol, timeframe, start, end); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("candle subscription failed: %w", err)
 	}
 
 	// 3. Collect the bars
@@ -182,7 +182,7 @@ func (dxFeedDataProv *DxFeedDataProvider) connectAndHandshake() (*websocket.Conn
 	dxFeedDataProv.mu.Lock()
 	if err := dxFeedDataProv.refreshTokenIfNeeded(); err != nil {
 		dxFeedDataProv.mu.Unlock()
-		return nil, fmt.Errorf("auth error: %w", err)
+		return nil, fmt.Errorf("token refresh error: %w", err)
 	}
 	wsURL := dxFeedDataProv.WsURL
 	dxFeedDataProv.mu.Unlock()
@@ -192,7 +192,7 @@ func (dxFeedDataProv *DxFeedDataProvider) connectAndHandshake() (*websocket.Conn
 
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("dial failed: %w", err)
+		return nil, fmt.Errorf("websocket dial failed to %s: %w", wsURL, err)
 	}
 
 	if err := dxFeedDataProv.handshake(conn); err != nil {
@@ -228,7 +228,10 @@ func (dxFeedDataProv *DxFeedDataProvider) subscribeCandles(conn *websocket.Conn,
 			},
 		},
 	}
-	return conn.WriteJSON(subMsg)
+	if err := conn.WriteJSON(subMsg); err != nil {
+		return fmt.Errorf("failed to send subscription JSON for %s: %w", symbol, err)
+	}
+	return nil
 }
 
 // collectHistoricalBars retrieves historical candlestick data from the dxFeed WebSocket connection
@@ -266,13 +269,15 @@ func (dxFeedDataProv *DxFeedDataProvider) collectHistoricalBars(conn *websocket.
 
 	for {
 		// Set a read deadline so ReadMessage doesn't block forever if the server hangs
-		conn.SetReadDeadline(time.Now().Add(65 * time.Second))
+		if err := conn.SetReadDeadline(time.Now().Add(65 * time.Second)); err != nil {
+			return bars, fmt.Errorf("failed to set read deadline: %w", err)
+		}
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			if len(bars) > 0 {
 				return bars, nil
 			}
-			return nil, fmt.Errorf("read error: %w", err)
+			return nil, fmt.Errorf("websocket read error: %w", err)
 		}
 
 		var raw map[string]json.RawMessage
@@ -357,7 +362,7 @@ func (dxFeedDataProv *DxFeedDataProvider) handshake(conn *websocket.Conn) error 
 	// AUTH
 	conn.WriteJSON(map[string]interface{}{"type": "AUTH", "channel": 0, "token": dxFeedDataProv.SessionToken})
 	// CHANNEL
-	conn.WriteJSON(map[string]interface{}{
+	err := conn.WriteJSON(map[string]interface{}{
 		"type":    "CHANNEL_REQUEST",
 		"channel": 1,
 		"service": "FEED",
@@ -365,6 +370,9 @@ func (dxFeedDataProv *DxFeedDataProvider) handshake(conn *websocket.Conn) error 
 			"contract":  "AUTO",
 			"subFormat": "LIST"},
 	})
+	if err != nil {
+		return fmt.Errorf("failed channel request: %w", err)
+	}
 
 	// Give the server a moment to process the channel request
 	time.Sleep(200 * time.Millisecond)

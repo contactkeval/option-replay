@@ -5,12 +5,8 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/contactkeval/option-replay)](https://goreportcard.com/report/github.com/contactkeval/option-replay)
 [![DeepSource](https://app.deepsource.com/gh/contactkeval/option-replay.svg/?label=resolved+issues&show_all=true&token=YOUR_TOKEN_HERE)](https://app.deepsource.com/gh/contactkeval/option-replay/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-[![Go Reference](https://pkg.go.dev/badge/github.com/contactkeval/option-replay.svg)](https://pkg.go.dev/github.com/contactkeval/option-replay)
-![GitHub stars](https://img.shields.io/github/stars/contactkeval/option-replay)
-![GitHub forks](https://img.shields.io/github/forks/contactkeval/option-replay)
 ![Go Version](https://img.shields.io/github/go-mod/go-version/contactkeval/option-replay)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A modular options backtesting engine written in Go. `option-replay` is designed to simulate complex options strategies using historical minute-level data, featuring an intelligent local data caching system to minimize API latency and costs.
 

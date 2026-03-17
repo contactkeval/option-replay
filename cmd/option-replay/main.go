@@ -56,7 +56,10 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(res)
 		})
-		mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200); w.Write([]byte("ok")) })
+		mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(200)
+			w.Write([]byte("ok"))
+		})
 		logger.Infof("starting REST server on %s", *port)
 		return
 	}
