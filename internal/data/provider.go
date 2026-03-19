@@ -11,6 +11,7 @@ type DateMatchType string
 
 // Provider supplies market data
 type Provider interface {
+	GetName() string
 	GetSecondary() Provider
 	SetSecondary(secondary Provider)
 	GetATMOptionPrices(underlying string, expiryDate, openDate time.Time, asOfPrice float64) (strike, callPrice, putPrice float64, err error)

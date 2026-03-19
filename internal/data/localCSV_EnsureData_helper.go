@@ -130,7 +130,7 @@ func (localFileDataProv *LocalFileDataProvider) saveManifest(records map[string]
 // getManifestPath returns the absolute path to the data catalog file.
 func (localFileDataProv *LocalFileDataProvider) getManifestPath() string {
 	// p.BaseDir is likely something like "./data" or "/var/lib/option-replay"
-	return filepath.Join(localFileDataProv.dir, "manifest.csv")
+	return filepath.Join(localFileDataProv.dir, localFileDataProv.GetSecondary().GetName(), "manifest.csv")
 }
 
 // getSymbolPath returns the path for a specific instrument's data file.
@@ -139,5 +139,5 @@ func (localFileDataProv *LocalFileDataProvider) getSymbolPath(symbol string) str
 	safeSymbol := strings.ReplaceAll(symbol, ":", "-")
 	filename := fmt.Sprintf("%s.csv", strings.ToUpper(safeSymbol))
 
-	return filepath.Join(localFileDataProv.dir, filename)
+	return filepath.Join(localFileDataProv.dir, localFileDataProv.GetSecondary().GetName(), filename)
 }

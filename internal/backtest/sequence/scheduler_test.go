@@ -284,3 +284,27 @@ func TestDailySchedule(t *testing.T) {
 
 	tests.CompareWithGolden(t, "daily_schedule", dates)
 }
+
+func TestDailySchedule_NDX(t *testing.T) {
+	entryRule := NewEntryRule(EntryRule{Mode: "", // daily_time is default mode
+		Underlying: "I:NDX",
+		TimeOfDay:  "15:40",
+		Timezone:   "", // America/New_York is default timezone
+		StartDate:  time.Date(2026, 3, 1, 0, 0, 0, 0, locNY),
+		EndDate:    time.Date(2026, 3, 15, 0, 0, 0, 0, locNY),
+	})
+
+	dataProv = data.NewLocalFileDataProvider("..\\..\\..\\input\\data", data.GetMassiveDataProvider())
+
+	bars, err := dataProv.GetBars(entryRule.Underlying, entryRule.StartDate, entryRule.EndDate, multiplier, timespan)
+	if err != nil {
+		t.Fatalf("failed to get daily bars: %v", err)
+	}
+
+	dates, err := ScheduleDates(*entryRule, bars, nil)
+	if err != nil {
+		t.Fatalf("failed to schedule dates: %v", err)
+	}
+
+	tests.CompareWithGolden(t, "daily_schedule2", dates)
+}

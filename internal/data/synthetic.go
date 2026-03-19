@@ -14,6 +14,11 @@ type synthDataProvider struct {
 
 func NewSyntheticProvider() Provider { return &synthDataProvider{} }
 
+// GetName returns the name of the provider.
+func (*synthDataProvider) GetName() string {
+	return "synthetic"
+}
+
 // GetSecondary returns the secondary data provider associated with the synthDataProvider.
 // It implements the Provider interface.
 func (synthDataProv *synthDataProvider) GetSecondary() Provider {

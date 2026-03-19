@@ -25,6 +25,11 @@ func NewPolygonDataProvider(apiKey string) Provider {
 	return &PolygonDataProvider{apiKey: apiKey, client: &http.Client{Timeout: 30 * time.Second}}
 }
 
+// GetName returns the name of the provider.
+func (*PolygonDataProvider) GetName() string {
+	return "polygon"
+}
+
 // GetSecondary returns the secondary data provider associated with the PolygonDataProvider.
 // This can be used to access backup or alternative data sources.
 func (polygonDataProv *PolygonDataProvider) GetSecondary() Provider {

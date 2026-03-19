@@ -108,6 +108,11 @@ func NewMassiveDataProvider(apiKey string) *MassiveDataProvider {
 	}
 }
 
+// GetName returns the name of the provider.
+func (*MassiveDataProvider) GetName() string {
+	return "massive"
+}
+
 // GetSecondary returns the configured secondary Provider, if any.
 func (massiveDataProv *MassiveDataProvider) GetSecondary() Provider {
 	return massiveDataProv.secondary

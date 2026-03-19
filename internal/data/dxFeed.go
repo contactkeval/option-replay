@@ -45,6 +45,11 @@ func NewDxFeedProvider(baseURL, refresh, cID, cSecret string) *DxFeedDataProvide
 	}
 }
 
+// GetName returns the name of the provider.
+func (*DxFeedDataProvider) GetName() string {
+	return "dxFeed"
+}
+
 // ensureValidAccessToken handles the 15-minute Tastytrade OAuth lifecycle
 func (dxFeedDataProv *DxFeedDataProvider) ensureValidAccessToken() error {
 	// If token is valid for more than 2 minutes, we are good

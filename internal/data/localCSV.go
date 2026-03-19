@@ -27,6 +27,11 @@ func NewLocalFileDataProvider(dir string, secondary Provider) *LocalFileDataProv
 	return &LocalFileDataProvider{dir: dir, secondary: secondary}
 }
 
+// GetName returns the name of the provider.
+func (*LocalFileDataProvider) GetName() string {
+	return "localCSV"
+}
+
 func (localFileDataProv *LocalFileDataProvider) GetSecondary() Provider {
 	return localFileDataProv.secondary
 }
@@ -54,7 +59,7 @@ func (localFileDataProv *LocalFileDataProvider) GetContracts(
 	expiryDate, fromDate, toDate time.Time,
 ) ([]OptionContract, error) {
 
-	files, err := os.ReadDir(localFileDataProv.dir)
+	files, err := os.ReadDir(filepath.Join(localFileDataProv.dir, localFileDataProv.GetSecondary().GetName()))
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +110,12 @@ func (localFileDataProv *LocalFileDataProvider) GetBars(
 	filePath := localFileDataProv.getSymbolPath(underlying)
 	file, err := os.Open(filePath)
 	if err != nil {
+		dir, err := os.Getwd()
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil, fmt.Errorf("local file not found: %w", err)
+		}
+		logger.Infof("Current directory: %s", dir)
 		return nil, fmt.Errorf("local file not found: %w", err)
 	}
 	defer file.Close()
