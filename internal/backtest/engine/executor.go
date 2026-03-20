@@ -17,8 +17,8 @@ import (
 // Engine orchestrates the backtest execution.
 // It acts as the central coordinator between the data provider and strategy logic.
 type Engine struct {
-	cfg  *Config
-	prov data.Provider
+	cfg      *Config
+	dataProv data.Provider
 }
 
 // Config defines the operational parameters for a single backtest run.
@@ -95,8 +95,8 @@ const (
 )
 
 // NewEngine initializes a new backtester with the provided configuration and data source.
-func NewEngine(cfg *Config, prov data.Provider) *Engine {
-	return &Engine{cfg: cfg, prov: prov}
+func NewEngine(cfg *Config, dataProv data.Provider) *Engine {
+	return &Engine{cfg: cfg, dataProv: dataProv}
 }
 
 // Run is the main entry point for the backtest. It performs data fetching,
@@ -116,7 +116,7 @@ func (e *Engine) Run() (*Result, error) {
 	histVol := data.AnnualizedVolatility(data.ExtractCloses(dailyBars))
 	logger.Infof("Calculated Historical Volatility: %.2f%%", histVol*100)
 
-	expiryList, err := e.prov.GetRelevantExpiries(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate)
+	expiryList, err := e.dataProv.GetRelevantExpiries(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expiries: %w", err)
 	}
@@ -153,7 +153,7 @@ func (e *Engine) executeBacktest(
 		}
 
 		// Plan Strategy Legs
-		legs, err := st.PlanStrategy(e.cfg.Strategy, entryDate, e.cfg.Underlying, bar.Close, expiryList, e.prov)
+		legs, err := st.PlanStrategy(e.cfg.Strategy, entryDate, e.cfg.Underlying, bar.Close, expiryList, e.dataProv)
 		if err != nil {
 			logger.Warnf("[%s] Entry Failed: Could not plan strategy legs: %v", entryDateStr, err)
 			continue
@@ -163,7 +163,7 @@ func (e *Engine) executeBacktest(
 		logger.Infof("[%s] OPEN Trade #%d | Spot: %.2f | Net Prem: %.2f", entryDateStr, trade.ID, bar.Close, trade.OpenPremium)
 
 		// Simulate Lifecycle (Exit logic)
-		simulatedCloseTrade(&trade, dailyBars, *e.cfg, e.prov)
+		simulatedCloseTrade(&trade, dailyBars, *e.cfg, e.dataProv)
 
 		trades = append(trades, trade)
 		logTradeSummary(trade)
@@ -208,7 +208,7 @@ func simulatedCloseTrade(
 	trade *Trade,
 	dailyBars []data.Bar,
 	cfg Config,
-	prov data.Provider,
+	dataProv data.Provider,
 ) {
 	closeByDateTime := trade.Legs[0].Expiration // Default to expiration
 	logger.Debugf("Trade #%d: Initial exit target set to Expiration: %s", trade.ID, closeByDateTime.Format("2006-01-02"))
@@ -235,7 +235,7 @@ func simulatedCloseTrade(
 	}
 
 	// Check intraday price action (Fine minute filter)
-	exitByPriceChange(trade, closeByDateTime, cfg, prov)
+	exitByPriceChange(trade, closeByDateTime, cfg, dataProv)
 }
 
 // exitByUnderlyingMove scans daily bars to find if the asset moved past a dollar threshold.
@@ -267,9 +267,9 @@ func exitByPriceChange(
 	trade *Trade,
 	closeByDateTime time.Time,
 	cfg Config,
-	prov data.Provider,
+	dataProv data.Provider,
 ) {
-	underlyingBars, err := prov.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
+	underlyingBars, err := dataProv.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
 	if err != nil {
 		logger.Errorf("Trade #%d: Data error fetching minute bars: %v", trade.ID, err)
 	}
@@ -285,7 +285,7 @@ func exitByPriceChange(
 
 	// Profit/Stop Target checks
 	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
-		minuteData := fetchAndAlignLegData(trade, underlyingBars, closeByDateTime, prov, cfg)
+		minuteData := fetchAndAlignLegData(trade, underlyingBars, closeByDateTime, dataProv, cfg)
 		if scanOptionExits(trade, minuteData, &closeByDateTime, cfg) {
 			logger.Debugf("Trade #%d: Exit triggered by PnL Target at %s", trade.ID, closeByDateTime.Format("2006-01-02 15:04"))
 			trade.ClosedBy = CloseByPnL
@@ -295,7 +295,7 @@ func exitByPriceChange(
 	// If scanOptionExits didn't set a close premium, calculate final value at closeByDateTime
 	if trade.ClosePremium == 0.0 {
 		trade.CloseDateTime = &closeByDateTime
-		trade.ClosePremium = calculateFinalClosePremium(trade, closeByDateTime, cfg, prov)
+		trade.ClosePremium = calculateFinalClosePremium(trade, closeByDateTime, cfg, dataProv)
 		if trade.UnderlyingAtClose == 0 {
 			trade.UnderlyingAtClose = underlyingBars[len(underlyingBars)-1].Close // fallback to last known price
 		}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/backtest/engine"
@@ -15,33 +16,48 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", filepath.Join("..", "..", "input", "strategies", "covered_call.json"), "path to JSON config")
+	defaultConfig := os.Getenv("STRATEGY_CONFIG")
+
+	strategyConfig := flag.String(
+		"config",
+		defaultConfig,
+		"strategy config file name (looked up in input/strategies/) or full path",
+	)
+
 	rest := flag.Bool("rest", false, "run as REST server (accept backtest jobs)")
 	port := flag.String("port", ":8080", "REST server listen address")
 	flag.Parse()
 
-	cfgData, err := os.ReadFile(*configPath)
-	if err != nil {
-		logger.Errorf("reading config: %v", err)
+	if *strategyConfig == "" {
+		logger.Errorf("config path required via -config flag or STRATEGY_CONFIG env")
+		os.Exit(1)
 	}
 
+	// 👇 Resolve path
+	configPath := resolveConfigPath(*strategyConfig)
+
+	cfgData, err := os.ReadFile(configPath)
+	if err != nil {
+		logger.Errorf("reading config (%s): %v", configPath, err)
+		os.Exit(1)
+	}
 	var cfg engine.Config
 	if err := json.Unmarshal(cfgData, &cfg); err != nil {
 		logger.Errorf("parsing config: %v", err)
 	}
 
 	// choose provider
-	var prov data.Provider
+	var dataProv data.Provider
 	apiKey := os.Getenv("MASSIVE_API_KEY")
 	if apiKey != "" {
-		prov = data.NewMassiveDataProvider(apiKey)
+		dataProv = data.NewMassiveDataProvider(apiKey)
 		logger.Infof("massive provider enabled")
 	} else {
-		prov = data.NewSyntheticProvider()
+		dataProv = data.NewSyntheticProvider()
 		logger.Infof("synthetic provider enabled")
 	}
 
-	engine := engine.NewEngine(&cfg, prov)
+	engine := engine.NewEngine(&cfg, dataProv)
 
 	if *rest {
 		mux := http.NewServeMux()
@@ -76,6 +92,25 @@ func main() {
 	_ = report.WriteJSON(res, cfg.ReportDir)
 	_ = report.WriteCSV(res.Trades, cfg.ReportDir)
 	logger.Infof("backtest completed in %v, results written to %s", time.Since(start), cfg.ReportDir)
+}
+
+// resolveConfigPath resolves a config file path by handling both absolute paths
+// and filenames. If the input is an absolute path or contains directory separators,
+// it is returned as-is. Otherwise, the input is treated as a filename and is
+// joined with the default directory path "input/strategies/".
+func resolveConfigPath(input string) string {
+	// Auto-append .json if missing from input filename
+	if !strings.HasSuffix(input, ".json") {
+		input += ".json"
+	}
+
+	// If absolute or contains directory, use as-is
+	if filepath.IsAbs(input) || strings.Contains(input, string(os.PathSeparator)) {
+		return input
+	}
+
+	// Otherwise assume it's just a filename
+	return filepath.Join("input", "strategies", input)
 }
 
 // TODO: add REST endpoint to accept dynamic configs

@@ -1,7 +1,12 @@
 package engine
 
 import (
+	"os"
 	"testing"
+	"time"
+
+	"github.com/contactkeval/option-replay/internal/data"
+	tests "github.com/contactkeval/option-replay/internal/testutil"
 )
 
 func TestExecuteBacktest(_ *testing.T) {
@@ -17,4 +22,21 @@ func TestExecuteBacktest(_ *testing.T) {
 	// if err != nil {
 	// 	t.Fatalf("engine run failed: %v", err)
 	// }
+}
+
+func TestGetRelevantExpiries(t *testing.T) {
+	dataProv := data.NewLocalFileDataProvider(
+		"../../../input/data",
+		data.NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY")))
+	startDate := time.Date(2026, 3, 1, 9, 45, 0, 0, time.UTC)
+	endDate := time.Date(2026, 3, 15, 15, 40, 0, 0, time.UTC)
+	expiries, err := dataProv.GetRelevantExpiries("I:NDX", startDate, endDate)
+	if err != nil {
+		t.Fatalf("getRelevantExpiries failed: %v", err)
+	}
+	if len(expiries) == 0 {
+		t.Fatal("expected at least one expiry but got none")
+	}
+
+	tests.CompareWithGolden(t, "RelevantExpiries", expiries)
 }

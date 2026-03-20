@@ -9,7 +9,7 @@
       "program": "${workspaceFolder}/cmd/option-replay",
       "args": [
         "-config",
-        "${workspaceFolder}/input/strategies/covered_call.json"
+        "${workspaceFolder}/input/strategies/custom.json"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"

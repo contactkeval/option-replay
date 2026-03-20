@@ -57,7 +57,7 @@ func (e *Engine) initConfiguration() {
 
 // fetchDailyData retrieves daily underlying price bars for the duration of the backtest.
 func (e *Engine) fetchDailyData() ([]data.Bar, error) {
-	bars, err := e.prov.GetBars(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate, multiplierOne, timespanDay)
+	bars, err := e.dataProv.GetBars(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate, multiplierOne, timespanDay)
 	if err != nil || len(bars) == 0 {
 		return nil, fmt.Errorf("underlying data unavailable: %w", err)
 	}
@@ -71,7 +71,7 @@ func (e *Engine) getOpeningPrice(
 	underlyingPrice float64,
 	histVol float64,
 ) float64 {
-	p, err := e.prov.GetOptionPrice(e.cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, dt)
+	p, err := e.dataProv.GetOptionPrice(e.cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, dt)
 
 	if err != nil {
 		logger.Debugf("price fallback BS: %s %s K=%.2f", e.cfg.Underlying, leg.Spec.OptionType, leg.Strike)
@@ -130,7 +130,7 @@ func fetchAndAlignLegData(
 	trade *Trade,
 	underlyingBars []data.Bar,
 	closeByDateTime time.Time,
-	prov data.Provider,
+	dataProv data.Provider,
 	cfg Config,
 ) []MinuteRow {
 	legsCount := len(trade.Legs)
@@ -152,10 +152,10 @@ func fetchAndAlignLegData(
 
 	// 2. Overlay Leg data into the alignment map
 	for i, leg := range trade.Legs {
-		symbol := prov.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
+		symbol := dataProv.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
 
 		// Note: We ignore errors here assuming gaps result in zero-value bars
-		bars, _ := prov.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
+		bars, _ := dataProv.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
 
 		for _, bar := range bars {
 			if row, exists := alignmentMap[bar.Date]; exists {
