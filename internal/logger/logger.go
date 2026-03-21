@@ -37,7 +37,7 @@ const (
 
 // current holds the active verbosity level.
 // Only messages with level <= current are logged.
-var current Level = Info
+var current Level = Debug
 
 // init configures the global logger used by this package.
 //

@@ -123,6 +123,7 @@ func TestPlanStrategyStrangle(t *testing.T) {
 
 func TestPlanStrategyCustom(t *testing.T) {
 	//"2025-01-02T10:00:00-05:00",
+	underlying := "I:NDX"
 	expiryList := []time.Time{
 		openDate, openDate.AddDate(0, 0, 1), openDate.AddDate(0, 0, 2), openDate.AddDate(0, 0, 3),
 	}

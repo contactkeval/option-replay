@@ -246,10 +246,12 @@ func (massiveDataProv *MassiveDataProvider) GetContracts(
 		return nil, err
 	}
 
+	// Extract ticker after ":" for query parameter (e.g., "I:NDX" -> "NDX")
+	underlyingParts := strings.SplitN(underlying, ":", 2)
+
 	// Query parameters
 	query := url.Query()
-	query.Set("underlying_ticker", underlying)
-
+	query.Set("underlying_ticker", underlyingParts[len(underlyingParts)-1])
 	if strike > 0.0 {
 		query.Set("strike_price", fmt.Sprintf("%.8g", strike))
 	}
@@ -711,7 +713,7 @@ func (massiveDataProv *MassiveDataProvider) processGetRequest(
 				now.Truncate(time.Minute).Add(time.Minute),
 			)
 
-			logger.Infof("rate limit hit, sleeping for %s", sleepDuration)
+			logger.Infof("rate limit hit, sleeping for %2.0f seconds", sleepDuration.Seconds())
 			time.Sleep(sleepDuration)
 			continue
 		}
@@ -739,6 +741,20 @@ func (*MassiveDataProvider) OptionSymbolFromParts(underlying string, expiryDate 
 		optType = "P"
 	}
 	strikeStr := fmt.Sprintf("%08d", int(math.Round(strike*1000)))
+
+	// Extract ticker after ":" for query parameter (e.g., "I:NDX" -> "NDX")
+	underlyingParts := strings.SplitN(underlying, ":", 2)
+	underlying = underlyingParts[len(underlyingParts)-1]
+	switch {
+	case underlying == "SPX":
+		underlying = "SPXW"
+	case underlying == "NDX":
+		underlying = "NDXP"
+	case underlying == "RUT":
+		underlying = "RUTW"
+	case underlying == "VIX":
+		underlying = "VIXW"
+	}
 	return fmt.Sprintf("O:%s%s%s%s", strings.ToUpper(underlying), expDt, optType, strikeStr)
 }
 

@@ -19,15 +19,14 @@ var (
 )
 
 func TestOptionSymbolFromParts(t *testing.T) {
-	expDt := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
-	symbol := prov.OptionSymbolFromParts("SPY", expDt, "put", 500.0)
-	expected := "O:SPY250113P00500000"
+	symbol := prov.OptionSymbolFromParts("SPY", expiryDate, "put", 500.0)
+	expected := "O:SPY250117P00500000"
 	if symbol != expected {
 		t.Fatalf("expected %s, got %s", expected, symbol)
 	}
 
-	symbol = prov.OptionSymbolFromParts("SPXW", expDt, "c", 5000.0)
-	expected = "O:SPXW250113C05000000"
+	symbol = prov.OptionSymbolFromParts("SPXW", expiryDate, "c", 5000.0)
+	expected = "O:SPXW250117C05000000"
 	if symbol != expected {
 		t.Fatalf("expected %s, got %s", expected, symbol)
 	}
@@ -131,4 +130,18 @@ func TestGetBars(t *testing.T) {
 	}
 
 	tests.CompareWithGolden(t, "massiveBars", bars)
+}
+
+func TestGetRelevantExpiries(t *testing.T) {
+	underlying := "I:NDX"
+	toDate := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	expiries, err := prov.GetRelevantExpiries(underlying, tradeDateTime, toDate)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(expiries) == 0 {
+		t.Fatal("expected non-empty expiries")
+	}
+
+	tests.CompareWithGolden(t, "massiveExpiries", expiries)
 }

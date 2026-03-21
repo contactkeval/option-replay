@@ -1,4 +1,5 @@
 {
+  "verbosity": 2,
   "underlying": "I:NDX",
   "entry": {
     "start": "2026-03-01",

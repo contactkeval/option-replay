@@ -73,6 +73,9 @@ func MatchBarDate(candidate time.Time, barDates []time.Time, mode DateMatchType)
 		higher time.Time
 	)
 
+	// Normalize candidate to date-only (strip time) for matching
+	candidate = time.Date(candidate.Year(), candidate.Month(), candidate.Day(), 0, 0, 0, 0, time.UTC)
+
 	// default to MatchNearest
 	switch mode {
 	case MatchExact, MatchHigher, MatchLower, MatchNearest:
@@ -95,6 +98,11 @@ func MatchBarDate(candidate time.Time, barDates []time.Time, mode DateMatchType)
 		}
 	}
 
+	// if exact is found, return it immediately regardless of mode
+	if !exact.IsZero() {
+		return exact
+	}
+
 	switch mode {
 
 	case MatchExact:
@@ -107,9 +115,6 @@ func MatchBarDate(candidate time.Time, barDates []time.Time, mode DateMatchType)
 		return higher // first date after d
 
 	case MatchNearest:
-		if !exact.IsZero() {
-			return exact
-		}
 		// choose whichever is closer
 		switch {
 		case !lower.IsZero() && !higher.IsZero():

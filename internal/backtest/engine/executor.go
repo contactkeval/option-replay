@@ -145,7 +145,7 @@ func (e *Engine) executeBacktest(
 	barMap := createBarMap(dailyBars)
 
 	for i, entryDate := range entryDates {
-		entryDateStr := entryDate.Format("2006-01-02T15:04")
+		entryDateStr := entryDate.Format("2006-01-02")
 		bar, ok := barMap[entryDateStr]
 		if !ok {
 			logger.Debugf("[%s] Skipping: No underlying bar data available", entryDateStr)
