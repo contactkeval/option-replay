@@ -75,6 +75,14 @@ func logf(l Level, prefix, format string, args ...any) {
 	}
 }
 
+// Fatalf logs a formatted error message and then exits the program with status code 1.
+// It calls Errorf to log the message before terminating the application.
+// format is a format string and args are the arguments to format according to the format specifiers.
+func Fatalf(format string, args ...interface{}) {
+	Errorf(format, args...)
+	os.Exit(1)
+}
+
 // Errorf logs an error-level message.
 // Use this for failures that require attention.
 func Errorf(format string, args ...any) {

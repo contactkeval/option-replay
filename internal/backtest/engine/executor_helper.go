@@ -95,11 +95,11 @@ func createBarMap(bars []data.Bar) map[string]data.Bar {
 }
 
 // logTradeSummary provides formatted console output of trade results.
-func logTradeSummary(t Trade) {
-	pnl := t.ClosePremium - t.OpenPremium
+func logTradeSummary(trade Trade) {
+	pnl := trade.ClosePremium - trade.OpenPremium
 	pnlPct := 0.0
-	if t.OpenPremium != 0 {
-		pnlPct = (pnl / math.Abs(t.OpenPremium)) * 100
+	if trade.OpenPremium != 0 {
+		pnlPct = (pnl / math.Abs(trade.OpenPremium)) * 100
 	}
 
 	status := "🔴"
@@ -107,7 +107,7 @@ func logTradeSummary(t Trade) {
 		status = "🟢"
 	}
 
-	logger.Infof("%s Trade #%d Closed | Exit: %-20s | PnL: %8.2f (%6.2f%%)", status, t.ID, t.ClosedBy, pnl, pnlPct)
+	logger.Infof("%s Trade #%d Closed | Exit: %-20s | PnL: %8.2f (%6.2f%%)", status, trade.ID, trade.ClosedBy, pnl, pnlPct)
 }
 
 // checkUnderlyingMove scans minute bars to find the exact timestamp of a price breach.

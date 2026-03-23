@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,80 +19,103 @@ import (
 func main() {
 	defaultConfig := os.Getenv("STRATEGY_CONFIG")
 
-	strategyConfig := flag.String(
-		"config",
-		defaultConfig,
-		"strategy config file name (looked up in input/strategies/) or full path",
-	)
+	configFlag := flag.String("config", defaultConfig,
+		"strategy config file name (input/strategies/) or full path")
 
-	rest := flag.Bool("rest", false, "run as REST server (accept backtest jobs)")
+	rest := flag.Bool("rest", false, "run as REST server")
 	port := flag.String("port", ":8080", "REST server listen address")
 	flag.Parse()
 
-	if *strategyConfig == "" {
-		logger.Errorf("config path required via -config flag or STRATEGY_CONFIG env")
-		os.Exit(1)
+	if *configFlag == "" {
+		logger.Fatalf("config required via -config or STRATEGY_CONFIG")
 	}
 
-	// 👇 Resolve path
-	configPath := resolveConfigPath(*strategyConfig)
-
-	cfgData, err := os.ReadFile(configPath)
+	cfg, err := loadConfig(*configFlag)
 	if err != nil {
-		logger.Errorf("reading config (%s): %v", configPath, err)
-		os.Exit(1)
-	}
-	var cfg engine.Config
-	if err := json.Unmarshal(cfgData, &cfg); err != nil {
-		logger.Errorf("parsing config: %v", err)
+		logger.Fatalf("config error: %v", err)
 	}
 
-	// choose provider
-	var dataProv data.Provider
-	apiKey := os.Getenv("MASSIVE_API_KEY")
-	if apiKey != "" {
-		dataProv = data.NewMassiveDataProvider(apiKey)
-		logger.Infof("massive provider enabled")
-	} else {
-		dataProv = data.NewSyntheticProvider()
-		logger.Infof("synthetic provider enabled")
-	}
-
-	engine := engine.NewEngine(&cfg, dataProv)
+	prov := buildProvider()
+	eng := engine.NewEngine(cfg, prov)
 
 	if *rest {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/run", func(w http.ResponseWriter, _ *http.Request) {
-			// quick endpoint to run a backtest once with the loaded config
-			logger.Infof("received run request")
-			res, err := engine.Run()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(res)
-		})
-		mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(200)
-			w.Write([]byte("ok"))
-		})
-		logger.Infof("starting REST server on %s", *port)
+		startServer(*port, eng)
 		return
 	}
 
+	runBacktest(eng, cfg)
+}
+
+func runBacktest(eng *engine.Engine, cfg *engine.Config) {
 	start := time.Now()
-	res, err := engine.Run()
+
+	res, err := eng.Run()
 	if err != nil {
 		logger.Errorf("backtest failed: %v", err)
+		return
 	}
-	// write outputs to cfg.OutputDir
+
 	if err := os.MkdirAll(cfg.ReportDir, 0750); err != nil {
 		logger.Warnf("could not create output dir %s: %v", cfg.ReportDir, err)
 	}
+
 	_ = report.WriteJSON(res, cfg.ReportDir)
 	_ = report.WriteCSV(res.Trades, cfg.ReportDir)
-	logger.Infof("backtest completed in %v, results written to %s", time.Since(start), cfg.ReportDir)
+
+	logger.Infof("backtest completed in %v, results written to %s",
+		time.Since(start), cfg.ReportDir)
+}
+
+func buildProvider() data.Provider {
+	if apiKey := os.Getenv("MASSIVE_API_KEY"); apiKey != "" {
+		logger.Infof("massive provider enabled")
+		return data.NewMassiveDataProvider(apiKey)
+	}
+	logger.Infof("synthetic provider enabled")
+	return data.NewSyntheticProvider()
+}
+
+func loadConfig(path string) (*engine.Config, error) {
+	configPath := resolveConfigPath(path)
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading config (%s): %w", configPath, err)
+	}
+
+	var cfg engine.Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+func startServer(port string, eng *engine.Engine) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/run", func(w http.ResponseWriter, _ *http.Request) {
+		logger.Infof("received run request")
+
+		res, err := eng.Run()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(res)
+	})
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	logger.Infof("starting REST server on %s", port)
+	if err := http.ListenAndServe(port, mux); err != nil {
+		logger.Fatalf("server failed: %v", err)
+	}
 }
 
 // resolveConfigPath resolves a config file path by handling both absolute paths
