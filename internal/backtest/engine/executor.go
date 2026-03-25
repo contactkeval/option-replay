@@ -202,7 +202,7 @@ func (e *Engine) openTrade(
 	}
 }
 
-// simulatedCloseTrade determines the exit date and final trade value.
+// simulatedCloseTrade determines the exit date time and final trade value.
 // It prioritizes time-based exits, then price-movement exits, and finally intraday PnL.
 func simulatedCloseTrade(
 	trade *Trade,

@@ -16,6 +16,22 @@ import (
 	"github.com/contactkeval/option-replay/internal/report"
 )
 
+// main initializes and runs the option replay application.
+// It supports two modes of operation: backtesting and REST server.
+//
+// Configuration is loaded from the file path specified via the -config flag
+// or the STRATEGY_CONFIG environment variable. The -config flag takes precedence
+// if both are provided.
+//
+// Flags:
+//   - config: strategy config file name (input/strategies/) or full path
+//   - rest: run as REST server (default: false)
+//   - port: REST server listen address (default: ":8080")
+//
+// If the -rest flag is set, the application starts a REST server on the specified port.
+// Otherwise, it runs a backtest using the loaded configuration and data provider.
+//
+// The function will fatally exit if the config file is not provided or cannot be loaded.
 func main() {
 	defaultConfig := os.Getenv("STRATEGY_CONFIG")
 
@@ -35,21 +51,26 @@ func main() {
 		logger.Fatalf("config error: %v", err)
 	}
 
-	prov := buildProvider()
-	eng := engine.NewEngine(cfg, prov)
+	dataProv := buildProvider()
+	engine := engine.NewEngine(cfg, dataProv)
 
 	if *rest {
-		startServer(*port, eng)
+		startServer(*port, engine)
 		return
 	}
 
-	runBacktest(eng, cfg)
+	runBacktest(engine, cfg)
 }
 
-func runBacktest(eng *engine.Engine, cfg *engine.Config) {
+// runBacktest executes a backtest using the provided engine and configuration.
+// It runs the backtest, creates the output directory if needed, and writes
+// the results to JSON and CSV files in the configured report directory.
+// Errors during directory creation or file writing are logged as warnings
+// but do not stop execution. The total execution time is logged upon completion.
+func runBacktest(engine *engine.Engine, cfg *engine.Config) {
 	start := time.Now()
 
-	res, err := eng.Run()
+	res, err := engine.Run()
 	if err != nil {
 		logger.Errorf("backtest failed: %v", err)
 		return
@@ -66,6 +87,9 @@ func runBacktest(eng *engine.Engine, cfg *engine.Config) {
 		time.Since(start), cfg.ReportDir)
 }
 
+// buildProvider creates and returns a data provider based on environment configuration.
+// It checks for the MASSIVE_API_KEY environment variable and returns a MassiveDataProvider
+// if the key is available, otherwise it returns a SyntheticProvider as a fallback.
 func buildProvider() data.Provider {
 	if apiKey := os.Getenv("MASSIVE_API_KEY"); apiKey != "" {
 		logger.Infof("massive provider enabled")
@@ -75,6 +99,10 @@ func buildProvider() data.Provider {
 	return data.NewSyntheticProvider()
 }
 
+// loadConfig reads and parses a configuration file from the specified path.
+// It resolves the config path, reads the file, and unmarshals the JSON data
+// into an engine.Config struct. Returns a pointer to the Config or an error
+// if the file cannot be read or parsed.
 func loadConfig(path string) (*engine.Config, error) {
 	configPath := resolveConfigPath(path)
 
@@ -91,13 +119,24 @@ func loadConfig(path string) (*engine.Config, error) {
 	return &cfg, nil
 }
 
-func startServer(port string, eng *engine.Engine) {
+// startServer starts an HTTP server listening on the given port with the specified engine.
+// It registers two endpoints:
+//   - POST /run: executes engine.Run() and returns the result as JSON
+//   - GET /health: returns a simple "ok" status check
+//
+// The function blocks indefinitely while the server is running.
+// If the server fails to start or encounters a fatal error, it logs and exits.
+//
+// Parameters:
+//   - port: the network address to listen on (e.g., ":8080")
+//   - engine: the Engine instance used to process run requests
+func startServer(port string, engine *engine.Engine) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/run", func(w http.ResponseWriter, _ *http.Request) {
 		logger.Infof("received run request")
 
-		res, err := eng.Run()
+		res, err := engine.Run()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
