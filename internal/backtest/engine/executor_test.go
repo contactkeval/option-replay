@@ -2,7 +2,6 @@ package engine
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,9 +15,9 @@ import (
 )
 
 var (
-	dataProv data.Provider
+	dataProv *data.Provider
 	engine   *Engine
-	cfg      Config
+	cfg      *Config
 )
 
 func TestExecuteBacktest(_ *testing.T) {
@@ -43,22 +42,17 @@ func init() {
 
 	defaultConfig := os.Getenv("STRATEGY_CONFIG")
 
-	configFlag := flag.String("config", defaultConfig,
-		"strategy config file name (input/strategies/) or full path")
-
-	flag.Parse()
-
-	if *configFlag == "" {
+	if defaultConfig == "" {
 		logger.Fatalf("config required via -config or STRATEGY_CONFIG")
 	}
 
-	cfg, err := loadConfig(*configFlag)
+	cfg, err := loadConfig(defaultConfig)
 	if err != nil {
 		logger.Fatalf("config error: %v", err)
 	}
 
 	engine = NewEngine(cfg, dataProv)
-
+	engine.initConfiguration()
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -92,20 +86,25 @@ func resolveConfigPath(input string) string {
 	return filepath.Join("input", "strategies", input)
 }
 
-func TestsimulatedCloseTrade(t *testing.T) {
+func TestSimulatedCloseTrade(t *testing.T) {
 
 	// 1. Read file
-	dataBytes, err := os.ReadFile("./out/trades.json")
+	dataBytes, err := os.ReadFile("../../.././out/trades.json")
 	if err != nil {
+		dir, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Error: %v", err)
+		}
+		logger.Infof("Current directory: %s", dir)
 		t.Fatalf("read file: %v", err)
 	}
 
 	// 2. Unmarshal
-	var tf struct {
+	var trades struct {
 		Trades []Trade `json:"trades"`
 	}
 
-	if err := json.Unmarshal(dataBytes, &tf); err != nil {
+	if err := json.Unmarshal(dataBytes, &trades); err != nil {
 		t.Fatalf("unmarshal trades: %v", err)
 	}
 
@@ -115,17 +114,19 @@ func TestsimulatedCloseTrade(t *testing.T) {
 	}
 
 	// 3. Process each trade
-	for i := range tf.Trades {
-		trade := &tf.Trades[i] // IMPORTANT: pointer
+	for i := range trades.Trades {
+		trade := &trades.Trades[i] // IMPORTANT: pointer
 
-		simulatedCloseTrade(trade, dailyBars, cfg, dataProv)
+		simulatedCloseTrade(trade, dailyBars, *engine.cfg, engine.dataProv)
 	}
 }
 
 func TestGetRelevantExpiries(t *testing.T) {
+	var prov data.Provider
+	prov = *dataProv
 	startDate := time.Date(2026, 3, 1, 9, 45, 0, 0, time.UTC)
 	endDate := time.Date(2026, 3, 15, 15, 40, 0, 0, time.UTC)
-	expiries, err := dataProv.GetRelevantExpiries("I:NDX", startDate, endDate)
+	expiries, err := prov.GetRelevantExpiries("I:NDX", startDate, endDate)
 	if err != nil {
 		t.Fatalf("getRelevantExpiries failed: %v", err)
 	}

@@ -63,6 +63,7 @@ func init() {
 // Typically called once during application startup
 // (e.g. after parsing CLI flags).
 func SetVerbosity(v int) {
+	Infof("logging set to: %d", v)
 	current = Level(v)
 }
 
