@@ -51,6 +51,7 @@
     ],
     "date_match_type": "higher"
   },
+  "option_expiry_time": "16:00",
   "data_provider": {
     "provider": "massive"
   }

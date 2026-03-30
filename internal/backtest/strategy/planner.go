@@ -128,6 +128,17 @@ func PlanStrategy(
 		if expiryDate.IsZero() {
 			return nil, fmt.Errorf("leg %d: %w (offset %d)", legNum, ErrExpiryNotFound, offset)
 		}
+		expiryDate = time.Date(
+			expiryDate.Year(),
+			expiryDate.Month(),
+			expiryDate.Day(),
+			expiryList[0].Hour(),
+			expiryList[0].Minute(),
+			expiryList[0].Second(),
+			expiryList[0].Nanosecond(),
+			openDateTime.Location(),
+		)
+
 		logger.Tracef("event=expiry_resolved leg=%d expiry=%s", i+1, expiryDate.Format("2006-01-02"))
 
 		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, dataProv)

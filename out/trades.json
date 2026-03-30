@@ -3,7 +3,7 @@
     {
       "ID": 1,
       "OpenDateTime": "2026-03-02T15:40:00-05:00",
-      "CloseDateTime": "2026-03-02T00:00:00Z",
+      "CloseDateTime": "2026-03-02T16:00:00-05:00",
       "UnderlyingAtOpen": 24992.6005810948,
       "UnderlyingAtClose": 24992.6005810948,
       "Legs": [
@@ -15,7 +15,7 @@
             "qty": 1
           },
           "Strike": 24990,
-          "Expiration": "2026-03-02T00:00:00Z",
+          "Expiration": "2026-03-02T16:00:00-05:00",
           "OpenPremium": 3,
           "ClosePremium": 3
         },
@@ -27,7 +27,7 @@
             "qty": 1
           },
           "Strike": 24990,
-          "Expiration": "2026-03-02T00:00:00Z",
+          "Expiration": "2026-03-02T16:00:00-05:00",
           "OpenPremium": 3.3,
           "ClosePremium": 3.3
         },
@@ -40,7 +40,7 @@
             "expiration": 1
           },
           "Strike": 24990,
-          "Expiration": "2026-03-03T00:00:00Z",
+          "Expiration": "2026-03-03T16:00:00-05:00",
           "OpenPremium": 95.6,
           "ClosePremium": 95.6
         },
@@ -53,7 +53,7 @@
             "expiration": 1
           },
           "Strike": 24990,
-          "Expiration": "2026-03-03T00:00:00Z",
+          "Expiration": "2026-03-03T16:00:00-05:00",
           "OpenPremium": 130.8,
           "ClosePremium": 130.8
         }
@@ -67,7 +67,7 @@
     {
       "ID": 2,
       "OpenDateTime": "2026-03-03T15:40:00-05:00",
-      "CloseDateTime": "2026-03-03T00:00:00Z",
+      "CloseDateTime": "2026-03-03T16:00:00-05:00",
       "UnderlyingAtOpen": 24720.08434554171,
       "UnderlyingAtClose": 24720.08434554171,
       "Legs": [
@@ -79,7 +79,7 @@
             "qty": 1
           },
           "Strike": 24720,
-          "Expiration": "2026-03-03T00:00:00Z",
+          "Expiration": "2026-03-03T16:00:00-05:00",
           "OpenPremium": 2,
           "ClosePremium": 2
         },
@@ -91,7 +91,7 @@
             "qty": 1
           },
           "Strike": 24720,
-          "Expiration": "2026-03-03T00:00:00Z",
+          "Expiration": "2026-03-03T16:00:00-05:00",
           "OpenPremium": 5.9,
           "ClosePremium": 5.9
         },
@@ -104,7 +104,7 @@
             "expiration": 1
           },
           "Strike": 24720,
-          "Expiration": "2026-03-04T00:00:00Z",
+          "Expiration": "2026-03-04T16:00:00-05:00",
           "OpenPremium": 131.1,
           "ClosePremium": 131.1
         },
@@ -117,7 +117,7 @@
             "expiration": 1
           },
           "Strike": 24720,
-          "Expiration": "2026-03-04T00:00:00Z",
+          "Expiration": "2026-03-04T16:00:00-05:00",
           "OpenPremium": 150.45,
           "ClosePremium": 150.45
         }
@@ -131,7 +131,7 @@
     {
       "ID": 3,
       "OpenDateTime": "2026-03-04T15:40:00-05:00",
-      "CloseDateTime": "2026-03-04T00:00:00Z",
+      "CloseDateTime": "2026-03-04T16:00:00-05:00",
       "UnderlyingAtOpen": 25093.67707306143,
       "UnderlyingAtClose": 25093.67707306143,
       "Legs": [
@@ -143,7 +143,7 @@
             "qty": 1
           },
           "Strike": 25090,
-          "Expiration": "2026-03-04T00:00:00Z",
+          "Expiration": "2026-03-04T16:00:00-05:00",
           "OpenPremium": 5.1,
           "ClosePremium": 5.1
         },
@@ -155,7 +155,7 @@
             "qty": 1
           },
           "Strike": 25090,
-          "Expiration": "2026-03-04T00:00:00Z",
+          "Expiration": "2026-03-04T16:00:00-05:00",
           "OpenPremium": 1.3,
           "ClosePremium": 1.3
         },
@@ -168,7 +168,7 @@
             "expiration": 1
           },
           "Strike": 25090,
-          "Expiration": "2026-03-05T00:00:00Z",
+          "Expiration": "2026-03-05T16:00:00-05:00",
           "OpenPremium": 133.67,
           "ClosePremium": 133.67
         },
@@ -181,7 +181,7 @@
             "expiration": 1
           },
           "Strike": 25090,
-          "Expiration": "2026-03-05T00:00:00Z",
+          "Expiration": "2026-03-05T16:00:00-05:00",
           "OpenPremium": 113.19,
           "ClosePremium": 113.19
         }
@@ -195,7 +195,7 @@
     {
       "ID": 4,
       "OpenDateTime": "2026-03-05T15:40:00-05:00",
-      "CloseDateTime": "2026-03-05T00:00:00Z",
+      "CloseDateTime": "2026-03-05T16:00:00-05:00",
       "UnderlyingAtOpen": 25020.4139601464,
       "UnderlyingAtClose": 25020.4139601464,
       "Legs": [
@@ -207,7 +207,7 @@
             "qty": 1
           },
           "Strike": 25020,
-          "Expiration": "2026-03-05T00:00:00Z",
+          "Expiration": "2026-03-05T16:00:00-05:00",
           "OpenPremium": 2.6,
           "ClosePremium": 2.6
         },
@@ -219,7 +219,7 @@
             "qty": 1
           },
           "Strike": 25020,
-          "Expiration": "2026-03-05T00:00:00Z",
+          "Expiration": "2026-03-05T16:00:00-05:00",
           "OpenPremium": 6,
           "ClosePremium": 6
         },
@@ -232,7 +232,7 @@
             "expiration": 1
           },
           "Strike": 25020,
-          "Expiration": "2026-03-06T00:00:00Z",
+          "Expiration": "2026-03-06T16:00:00-05:00",
           "OpenPremium": 128.65,
           "ClosePremium": 128.65
         },
@@ -245,7 +245,7 @@
             "expiration": 1
           },
           "Strike": 25020,
-          "Expiration": "2026-03-06T00:00:00Z",
+          "Expiration": "2026-03-06T16:00:00-05:00",
           "OpenPremium": 151.65,
           "ClosePremium": 151.65
         }
@@ -259,7 +259,7 @@
     {
       "ID": 5,
       "OpenDateTime": "2026-03-06T15:40:00-05:00",
-      "CloseDateTime": "2026-03-06T00:00:00Z",
+      "CloseDateTime": "2026-03-06T16:00:00-05:00",
       "UnderlyingAtOpen": 24643.01491698293,
       "UnderlyingAtClose": 24643.01491698293,
       "Legs": [
@@ -271,7 +271,7 @@
             "qty": 1
           },
           "Strike": 24640,
-          "Expiration": "2026-03-06T00:00:00Z",
+          "Expiration": "2026-03-06T16:00:00-05:00",
           "OpenPremium": 3,
           "ClosePremium": 3
         },
@@ -283,7 +283,7 @@
             "qty": 1
           },
           "Strike": 24640,
-          "Expiration": "2026-03-06T00:00:00Z",
+          "Expiration": "2026-03-06T16:00:00-05:00",
           "OpenPremium": 4,
           "ClosePremium": 4
         },
@@ -296,7 +296,7 @@
             "expiration": 1
           },
           "Strike": 24640,
-          "Expiration": "2026-03-09T00:00:00Z",
+          "Expiration": "2026-03-09T16:00:00-04:00",
           "OpenPremium": 204.3,
           "ClosePremium": 204.3
         },
@@ -309,7 +309,7 @@
             "expiration": 1
           },
           "Strike": 24640,
-          "Expiration": "2026-03-09T00:00:00Z",
+          "Expiration": "2026-03-09T16:00:00-04:00",
           "OpenPremium": 210.4,
           "ClosePremium": 210.4
         }
@@ -323,7 +323,7 @@
     {
       "ID": 6,
       "OpenDateTime": "2026-03-09T15:40:00-04:00",
-      "CloseDateTime": "2026-03-09T00:00:00Z",
+      "CloseDateTime": "2026-03-09T16:00:00-04:00",
       "UnderlyingAtOpen": 24967.24762460309,
       "UnderlyingAtClose": 24967.24762460309,
       "Legs": [
@@ -335,7 +335,7 @@
             "qty": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-09T00:00:00Z",
+          "Expiration": "2026-03-09T16:00:00-04:00",
           "OpenPremium": 1.22,
           "ClosePremium": 1.22
         },
@@ -347,7 +347,7 @@
             "qty": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-09T00:00:00Z",
+          "Expiration": "2026-03-09T16:00:00-04:00",
           "OpenPremium": 8.3,
           "ClosePremium": 8.3
         },
@@ -360,7 +360,7 @@
             "expiration": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-10T00:00:00Z",
+          "Expiration": "2026-03-10T16:00:00-04:00",
           "OpenPremium": 142.53,
           "ClosePremium": 142.53
         },
@@ -373,7 +373,7 @@
             "expiration": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-10T00:00:00Z",
+          "Expiration": "2026-03-10T16:00:00-04:00",
           "OpenPremium": 149.71,
           "ClosePremium": 149.71
         }
@@ -387,7 +387,7 @@
     {
       "ID": 7,
       "OpenDateTime": "2026-03-10T15:40:00-04:00",
-      "CloseDateTime": "2026-03-10T00:00:00Z",
+      "CloseDateTime": "2026-03-10T16:00:00-04:00",
       "UnderlyingAtOpen": 24956.47113374935,
       "UnderlyingAtClose": 24956.47113374935,
       "Legs": [
@@ -399,7 +399,7 @@
             "qty": 1
           },
           "Strike": 24960,
-          "Expiration": "2026-03-10T00:00:00Z",
+          "Expiration": "2026-03-10T16:00:00-04:00",
           "OpenPremium": 4.3,
           "ClosePremium": 4.3
         },
@@ -411,7 +411,7 @@
             "qty": 1
           },
           "Strike": 24960,
-          "Expiration": "2026-03-10T00:00:00Z",
+          "Expiration": "2026-03-10T16:00:00-04:00",
           "OpenPremium": 15,
           "ClosePremium": 15
         },
@@ -424,7 +424,7 @@
             "expiration": 1
           },
           "Strike": 24960,
-          "Expiration": "2026-03-11T00:00:00Z",
+          "Expiration": "2026-03-11T16:00:00-04:00",
           "OpenPremium": 163.17,
           "ClosePremium": 163.17
         },
@@ -437,7 +437,7 @@
             "expiration": 1
           },
           "Strike": 24960,
-          "Expiration": "2026-03-11T00:00:00Z",
+          "Expiration": "2026-03-11T16:00:00-04:00",
           "OpenPremium": 140,
           "ClosePremium": 140
         }
@@ -451,7 +451,7 @@
     {
       "ID": 8,
       "OpenDateTime": "2026-03-11T15:40:00-04:00",
-      "CloseDateTime": "2026-03-11T00:00:00Z",
+      "CloseDateTime": "2026-03-11T16:00:00-04:00",
       "UnderlyingAtOpen": 24965.00623769088,
       "UnderlyingAtClose": 24965.00623769088,
       "Legs": [
@@ -463,7 +463,7 @@
             "qty": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-11T00:00:00Z",
+          "Expiration": "2026-03-11T16:00:00-04:00",
           "OpenPremium": 0.7,
           "ClosePremium": 0.7
         },
@@ -475,7 +475,7 @@
             "qty": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-11T00:00:00Z",
+          "Expiration": "2026-03-11T16:00:00-04:00",
           "OpenPremium": 13.65,
           "ClosePremium": 13.65
         },
@@ -488,7 +488,7 @@
             "expiration": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-12T00:00:00Z",
+          "Expiration": "2026-03-12T16:00:00-04:00",
           "OpenPremium": 111.85,
           "ClosePremium": 111.85
         },
@@ -501,7 +501,7 @@
             "expiration": 1
           },
           "Strike": 24970,
-          "Expiration": "2026-03-12T00:00:00Z",
+          "Expiration": "2026-03-12T16:00:00-04:00",
           "OpenPremium": 142.16,
           "ClosePremium": 142.16
         }
@@ -515,7 +515,7 @@
     {
       "ID": 9,
       "OpenDateTime": "2026-03-12T15:40:00-04:00",
-      "CloseDateTime": "2026-03-12T00:00:00Z",
+      "CloseDateTime": "2026-03-12T16:00:00-04:00",
       "UnderlyingAtOpen": 24533.5829749516,
       "UnderlyingAtClose": 24533.5829749516,
       "Legs": [
@@ -527,7 +527,7 @@
             "qty": 1
           },
           "Strike": 24530,
-          "Expiration": "2026-03-12T00:00:00Z",
+          "Expiration": "2026-03-12T16:00:00-04:00",
           "OpenPremium": 10,
           "ClosePremium": 10
         },
@@ -539,7 +539,7 @@
             "qty": 1
           },
           "Strike": 24530,
-          "Expiration": "2026-03-12T00:00:00Z",
+          "Expiration": "2026-03-12T16:00:00-04:00",
           "OpenPremium": 0.7,
           "ClosePremium": 0.7
         },
@@ -552,7 +552,7 @@
             "expiration": 1
           },
           "Strike": 24530,
-          "Expiration": "2026-03-13T00:00:00Z",
+          "Expiration": "2026-03-13T16:00:00-04:00",
           "OpenPremium": 152.4,
           "ClosePremium": 152.4
         },
@@ -565,7 +565,7 @@
             "expiration": 1
           },
           "Strike": 24530,
-          "Expiration": "2026-03-13T00:00:00Z",
+          "Expiration": "2026-03-13T16:00:00-04:00",
           "OpenPremium": 168.4,
           "ClosePremium": 168.4
         }

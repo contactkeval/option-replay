@@ -30,6 +30,7 @@ type Config struct {
 	ReportDir  string          `json:"report_dir,omitempty"`
 	MaxTrades  int             `json:"max_trades,omitempty"`
 	Seed       int64           `json:"seed,omitempty"`
+	ExpiryTime string          `json:"option_expiry_time,omitempty"` // e.g., "16:00" for 4 PM market close, default: "16:00"
 	Verbosity  int             `json:"verbosity,omitempty"`
 }
 
@@ -120,6 +121,13 @@ func (e *Engine) Run() (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expiries: %w", err)
 	}
+
+	expiryTime, err := time.Parse("15:04", e.cfg.ExpiryTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse expiry time: %w", err)
+	}
+	// Ensure expiry times are set to the configured time (e.g., 16:00) on their respective dates
+	expiryList = append([]time.Time{expiryTime}, expiryList...)
 
 	// Scheduling
 	entryDates, err := sch.ScheduleDates(e.cfg.Entry, dailyBars, expiryList)

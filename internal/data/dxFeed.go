@@ -115,7 +115,7 @@ func (dxFeedDataProv *DxFeedDataProvider) refreshTokenIfNeeded() error {
 	req.Header.Add("Authorization", "Bearer "+dxFeedDataProv.ttAuthToken) // Uses the fresh token from step 1
 	req.Header.Add("User-Agent", "option-replay/1.0")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("quote token network error: %w", err)

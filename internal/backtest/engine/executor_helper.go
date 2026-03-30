@@ -37,6 +37,9 @@ func (e *Engine) initConfiguration() {
 	if e.cfg.Entry.TimeOfDay == "" {
 		e.cfg.Entry.TimeOfDay = "9:45"
 	}
+	if e.cfg.ExpiryTime == "" {
+		e.cfg.ExpiryTime = "16:00"
+	}
 	if e.cfg.Entry.Timezone == "" {
 		e.cfg.Entry.Timezone = "America/New_York"
 	}

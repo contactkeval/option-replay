@@ -93,10 +93,10 @@ func NewMassiveDataProvider(apiKey string) *MassiveDataProvider {
 	return &MassiveDataProvider{
 		APIKey: apiKey,
 		Client: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
 				TLSHandshakeTimeout:   10 * time.Second,
-				ResponseHeaderTimeout: 30 * time.Second,
+				ResponseHeaderTimeout: 120 * time.Second,
 				ExpectContinueTimeout: 1 * time.Second,
 				DisableCompression:    false, // must be false to enable gzip auto-decompression
 				ForceAttemptHTTP2:     true,
@@ -662,7 +662,7 @@ func (massiveDataProv *MassiveDataProvider) RoundToNearestStrike(
 	}
 
 	for i := range optionContracts {
-		if optionContracts[i].ExpiryDate.Equal(expiryDate) {
+		if sameDate(optionContracts[i].ExpiryDate, expiryDate) {
 			strikeList = append(strikeList, optionContracts[i].Strike)
 		}
 	}
@@ -678,6 +678,13 @@ func (massiveDataProv *MassiveDataProvider) RoundToNearestStrike(
 		openDate,
 		asOfPrice,
 	)
+}
+
+// Ignores: time, timezone, location differences
+func sameDate(a, b time.Time) bool {
+	return a.Year() == b.Year() &&
+		a.Month() == b.Month() &&
+		a.Day() == b.Day()
 }
 
 // processGetRequest executes an HTTP GET request with rate-limit handling.
