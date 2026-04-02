@@ -93,7 +93,10 @@ func runBacktest(engine *engine.Engine, cfg *engine.Config) {
 func buildProvider() data.Provider {
 	if apiKey := os.Getenv("MASSIVE_API_KEY"); apiKey != "" {
 		logger.Infof("massive provider enabled")
-		return data.NewMassiveDataProvider(apiKey)
+		// return data.NewMassiveDataProvider(apiKey)
+		return data.NewLocalFileDataProvider(
+			"input/data",
+			data.NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY")))
 	}
 	logger.Infof("synthetic provider enabled")
 	return data.NewSyntheticProvider()

@@ -4,13 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"math"
 	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/logger"
@@ -46,7 +40,7 @@ func (localFileDataProv *LocalFileDataProvider) GetATMOptionPrices(
 	asOfPrice float64,
 ) (strike, callPrice, putPrice float64, err error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
+		return localFileDataProv.GetSecondary().GetATMOptionPrices(underlying, expiryDate, openDate, asOfPrice)
 	}
 	return 0, 0, 0, fmt.Errorf("GetATMOptionPrices not implemented for localFileDataProvider")
 }
@@ -58,39 +52,10 @@ func (localFileDataProv *LocalFileDataProvider) GetContracts(
 	strike float64,
 	expiryDate, fromDate, toDate time.Time,
 ) ([]OptionContract, error) {
-
-	files, err := os.ReadDir(filepath.Join(localFileDataProv.dir, localFileDataProv.GetSecondary().GetName()))
-	if err != nil {
-		return nil, err
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.GetSecondary().GetContracts(underlying, strike, expiryDate, fromDate, toDate)
 	}
-
-	var out []OptionContract
-	prefix := fmt.Sprintf("O-%s", strings.ToUpper(underlying)) // Note the "-" from getSymbolPath sanitize
-
-	for _, f := range files {
-		if !strings.HasPrefix(f.Name(), prefix) {
-			continue
-		}
-
-		// Use the helper to extract the date
-		symbol := strings.TrimSuffix(f.Name(), ".csv")
-		symbol = strings.ReplaceAll(symbol, "-", ":") // Convert back to O: format for parser
-
-		expiry := localFileDataProv.parseExpiryFromSymbol(symbol)
-
-		if !expiryDate.IsZero() && !expiry.Equal(expiryDate) {
-			continue
-		}
-		if expiry.Before(fromDate) || expiry.After(toDate) {
-			continue
-		}
-
-		out = append(out, OptionContract{
-			ExpiryDate: expiry,
-			Strike:     strike, // In a full impl, parse this from the symbol string
-		})
-	}
-	return out, nil
+	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }
 
 // GetBars mimics Massive's GetBars by streaming from local CSVs.
@@ -191,51 +156,10 @@ func (localFileDataProv *LocalFileDataProvider) GetRelevantExpiries(
 	underlying string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
-	logger.Infof("locally resolving expiries for %s", underlying)
-
-	// Step 1: Load spot bars from local disk
-	bars, err := localFileDataProv.GetBars(underlying, fromDate, toDate, 1, "day")
-	if err != nil || len(bars) == 0 {
-		return nil, fmt.Errorf("failed to fetch local spot data: %w", err)
+	if localFileDataProv.secondary != nil {
+		return localFileDataProv.GetSecondary().GetRelevantExpiries(underlying, fromDate, toDate)
 	}
-
-	// Step 2-6: Range calculations (Exactly as in massive.go)
-	low, high := bars[0].Low, bars[0].High
-	for _, b := range bars {
-		if b.Low < low {
-			low = b.Low
-		}
-		if b.High > high {
-			high = b.High
-		}
-	}
-
-	multiplier := 1.0
-	if low >= 100 {
-		multiplier = 10
-	} // simplified multiplier logic
-
-	step := (high - low) / 5
-	levels := []float64{low + step, low + 3*step}
-
-	// Step 7: Fetch local contracts
-	expiryMap := make(map[string]time.Time)
-	for _, l := range levels {
-		strike := math.Round(l/multiplier) * multiplier
-		contracts, _ := localFileDataProv.GetContracts(underlying, strike, time.Time{}, fromDate, toDate)
-		for _, c := range contracts {
-			expiryMap[c.ExpiryDate.Format("2006-01-02")] = c.ExpiryDate
-		}
-	}
-
-	// Step 8: Sort and return
-	expiries := make([]time.Time, 0, len(expiryMap))
-	for _, dt := range expiryMap {
-		expiries = append(expiries, dt)
-	}
-	sort.Slice(expiries, func(i, j int) bool { return expiries[i].Before(expiries[j]) })
-
-	return expiries, nil
+	return nil, fmt.Errorf("GetRelevantExpiries not implemented for localFileDataProvider")
 }
 
 func (localFileDataProv *LocalFileDataProvider) OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string {
@@ -248,77 +172,14 @@ func (localFileDataProv *LocalFileDataProvider) parseExpiryFromSymbol(symbol str
 
 // getIntervals reads the CSV once and caches it
 func (localFileDataProv *LocalFileDataProvider) getIntervals(underlying string) float64 {
-	intervals := make(map[string]float64)
-
-	f, err := os.Open(filepath.Join(localFileDataProv.dir, "intervals.csv"))
-	if err != nil {
-		logger.Infof("open intervals file: %v", err)
-		return 0
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	records, err := r.ReadAll()
-	if err != nil {
-		logger.Infof("read csv: %v", err)
-		return 0
-	}
-
-	for _, row := range records {
-		if len(row) < 2 {
-			continue
-		}
-
-		underlying := strings.ToUpper(strings.TrimSpace(row[0]))
-		interval, err := strconv.ParseFloat(strings.TrimSpace(row[1]), 64)
-		if err != nil {
-			continue
-		}
-
-		intervals[underlying] = interval
-	}
-
-	if val, ok := intervals[strings.ToUpper(underlying)]; ok {
-		return float64(val)
-	}
-
-	if localFileDataProv.secondary != nil {
-		return localFileDataProv.secondary.getIntervals(underlying)
-		//TODO: consider logging missing underlying
-	}
-
-	return 0
+	return localFileDataProv.GetSecondary().getIntervals(underlying)
 }
 
 // RoundToNearestStrike rounds `price` using the interval for the underlying
 func (localFileDataProv *LocalFileDataProvider) RoundToNearestStrike(
 	underlying string,
-	_, openDate time.Time,
+	expiryDate, openDate time.Time,
 	asOfPrice float64,
 ) float64 {
-	intervals := 0.0
-	var loadOnce sync.Once
-	loadOnce.Do(func() {
-		intervals = localFileDataProv.getIntervals(underlying)
-	})
-
-	if intervals == 0.0 {
-		// fail safe: no rounding
-		return asOfPrice
-	}
-
-	for {
-		strike := math.Round(asOfPrice/intervals) * intervals
-
-		bars, err := localFileDataProv.GetBars(underlying, openDate, openDate, 1, "minute")
-		if err != nil {
-			return asOfPrice
-		}
-
-		if len(bars) == 0 {
-			intervals += intervals // double interval and retry
-			continue
-		}
-		return strike
-	}
+	return localFileDataProv.GetSecondary().RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice)
 }

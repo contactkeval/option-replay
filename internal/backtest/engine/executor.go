@@ -221,7 +221,7 @@ func simulatedCloseTrade(
 	closeByDateTime := trade.Legs[0].Expiration // Default to expiration
 	logger.Debugf("Trade #%d: Initial exit target set to Expiration: %s", trade.ID, closeByDateTime.Format("2006-01-02"))
 
-	// Apply hard time limits
+	// Apply hard limits, if any
 	if cfg.Exit.ExitByDaysToExpiry != nil && *cfg.Exit.ExitByDaysToExpiry > 0 {
 		closeByDateTime = trade.Legs[0].Expiration.AddDate(0, 0, -*cfg.Exit.ExitByDaysToExpiry)
 		trade.ClosedBy = CloseByDTE
@@ -379,12 +379,12 @@ func calculateFinalClosePremium(
 	trade *Trade,
 	closeByDateTime time.Time,
 	cfg Config,
-	prov data.Provider,
+	dataProv data.Provider,
 ) float64 {
 	totalPremium := 0.0
 
 	for i, leg := range trade.Legs {
-		premium, err := prov.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, closeByDateTime)
+		premium, err := dataProv.GetOptionPrice(cfg.Underlying, leg.Strike, leg.Expiration, leg.Spec.OptionType, closeByDateTime)
 		if err != nil {
 			logger.Debugf("fallback to Black-Scholes for %s %s at %s", cfg.Underlying, leg.Spec.OptionType, closeByDateTime)
 			premium = pricing.BlackScholesPrice(trade.UnderlyingAtClose, leg.Strike,

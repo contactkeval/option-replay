@@ -126,7 +126,7 @@ func PlanStrategy(
 		// Resolve expiration date
 		expiryDate := ResolveExpiration(openDateTime, offset, expiryList, strategy.DateMatchType)
 		if expiryDate.IsZero() {
-			return nil, fmt.Errorf("leg %d: %w (offset %d)", legNum, ErrExpiryNotFound, offset)
+			return nil, fmt.Errorf("leg %d: %w (%s offset %d)", legNum, ErrExpiryNotFound, openDateTime.Format("2006-01-02"), offset)
 		}
 		expiryDate = time.Date(
 			expiryDate.Year(),
