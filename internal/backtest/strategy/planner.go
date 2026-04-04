@@ -16,6 +16,7 @@ package strategy
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,12 @@ type StrategySpec struct {
 	DaysToExpiry  int                `json:"dte,omitempty"`             // Default DTE
 	DateMatchType data.DateMatchType `json:"date_match_type,omitempty"` // Expiry matching rule
 	Legs          []LegSpec          `json:"legs"`                      // Strategy legs
+	Hints         Hints              `json:"hints,omitempty"`
+}
+
+type Hints struct {
+	StrikeIntervals []float64 `json:"strike_intervals,omitempty"` // Average distance between strikes for the underlying (used for strike resolution)
+	// Future fields for optimization hints (e.g., expected number of trades, data caching strategies, etc.)
 }
 
 //
@@ -113,6 +120,11 @@ func PlanStrategy(
 
 	legs := make([]TradeLeg, 0, len(strategy.Legs))
 
+	strikeIntervals := strategy.Hints.StrikeIntervals
+	if len(strategy.Hints.StrikeIntervals) == 0 {
+		strategy.Hints.StrikeIntervals = dataProv.GetStrikeIntervals(underlying, expiryList[1]) // Get intervals for the first expiry as a fallback
+	}
+
 	for i, legSpec := range strategy.Legs {
 		legNum := i + 1
 		logger.Debugf("event=resolve_leg index=%d spec=%+v", i+1, legSpec)
@@ -141,15 +153,22 @@ func PlanStrategy(
 
 		logger.Tracef("event=expiry_resolved leg=%d expiry=%s", i+1, expiryDate.Format("2006-01-02"))
 
-		strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, openDateTime, expiryDate, legs, dataProv)
-		if err != nil {
-			return nil, fmt.Errorf("leg %d strike resolution failed: %w", legNum, err)
-		}
+		openPremium, strike := 0.0, 0.0
+		// Retry loop for strike resolution and premium fetching
+		for i := 0; i < len(strikeIntervals); i++ {
+			strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, strikeIntervals[i], openDateTime, expiryDate, legs, dataProv)
+			if err != nil {
+				return nil, fmt.Errorf("leg %d strike resolution failed: %w", legNum, err)
+			}
 
-		// Fetch option premium
-		openPremium, err := dataProv.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
-		if err != nil {
-			return nil, fmt.Errorf("leg %d premium fetch failed: %w", legNum, err)
+			// Fetch option premium
+			openPremium, err = dataProv.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
+			if err != nil {
+				return nil, fmt.Errorf("leg %d premium fetch failed: %w", legNum, err)
+			}
+			if openPremium != 0 {
+				break
+			}
 		}
 
 		logger.Debugf("event=leg_resolved leg=%d side=%s type=%s strike=%.2f premium=%.2f",
@@ -224,6 +243,7 @@ func ResolveStrike(
 	strikeExpr string,
 	underlying string,
 	asOfPrice float64,
+	strikeIntervals float64,
 	openDate time.Time,
 	expiryDate time.Time,
 	legs []TradeLeg,
@@ -234,7 +254,7 @@ func ResolveStrike(
 	logger.Debugf("event=resolve_strike expr=%s", strikeExpr)
 
 	if strikeExpr == "ATM" {
-		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, asOfPrice), nil
+		return math.Round(asOfPrice/strikeIntervals) * strikeIntervals, nil
 	}
 
 	if strings.HasPrefix(strikeExpr, "ATM:") {
@@ -242,7 +262,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, err
 		}
-		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
+		return math.Round(target/strikeIntervals) * strikeIntervals, nil
 	}
 
 	if strings.HasPrefix(strikeExpr, "DELTA:") {
@@ -259,7 +279,7 @@ func ResolveStrike(
 			return 0, err
 		}
 
-		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
+		return math.Round(target/strikeIntervals) * strikeIntervals, nil
 	}
 
 	// Expression using previous legs
@@ -268,7 +288,7 @@ func ResolveStrike(
 		if err != nil {
 			return 0, err
 		}
-		return dataProv.RoundToNearestStrike(underlying, expiryDate, openDate, target), nil
+		return math.Round(target/strikeIntervals) * strikeIntervals, nil
 	}
 
 	return 0, fmt.Errorf("%w: %s", ErrInvalidStrikeExpression, strikeExpr)

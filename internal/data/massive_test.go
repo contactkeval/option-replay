@@ -145,3 +145,18 @@ func TestGetRelevantExpiries(t *testing.T) {
 
 	tests.CompareWithGolden(t, "massiveExpiries", expiries)
 }
+
+func TestGetStrikeIntervals(t *testing.T) {
+	underlying := "I:NDX"
+	expiryDate := time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC)
+	intervals := prov.GetStrikeIntervals(underlying, expiryDate)
+	if len(intervals) == 0 {
+		t.Fatal("expected non-empty intervals")
+	}
+	expected := []float64{5.0} // Assuming NDX has 5 point intervals
+	for i, interval := range intervals {
+		if interval != expected[i] {
+			t.Fatalf("expected interval %f, got %f", expected[i], interval)
+		}
+	}
+}

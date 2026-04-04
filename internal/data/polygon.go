@@ -308,8 +308,8 @@ func (polygonDataProv *PolygonDataProvider) RoundToNearestStrike(
 	_ time.Time, _ time.Time,
 	asOfPrice float64,
 ) float64 {
-	intervals := polygonDataProv.getIntervals(underlying)
-	return math.Round(asOfPrice/intervals) * intervals
+	intervals := polygonDataProv.GetStrikeIntervals(underlying, time.Time{})
+	return math.Round(asOfPrice/intervals[0]) * intervals[0]
 }
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)
@@ -367,7 +367,7 @@ func (*PolygonDataProvider) parseExpiryFromSymbol(symbol string) time.Time {
 //
 // Returns:
 //
-//	float64 - the interval value for the given underlying asset.
-func (polygonDataProv *PolygonDataProvider) getIntervals(underlying string) float64 {
-	return polygonDataProv.GetSecondary().getIntervals(underlying) // TODO: implement proper intervals reading
+//	[]float64 - the interval values for the given underlying asset.
+func (polygonDataProv *PolygonDataProvider) GetStrikeIntervals(underlying string, expiryDate time.Time) []float64 {
+	return polygonDataProv.GetSecondary().GetStrikeIntervals(underlying, expiryDate) // TODO: implement proper intervals reading
 }

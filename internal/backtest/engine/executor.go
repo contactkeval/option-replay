@@ -27,11 +27,10 @@ type Config struct {
 	Entry      sch.EntryRule   `json:"entry"`      // Rules governing when to open trades
 	Strategy   st.StrategySpec `json:"strategy"`   // The option structure (e.g., Iron Condor)
 	Exit       ExitSpec        `json:"exit"`       // Rules governing when to close trades
-	ReportDir  string          `json:"report_dir,omitempty"`
+	ReportDir  string          `json:"report_dir"`
 	MaxTrades  int             `json:"max_trades,omitempty"`
-	Seed       int64           `json:"seed,omitempty"`
 	ExpiryTime string          `json:"option_expiry_time,omitempty"` // e.g., "16:00" for 4 PM market close, default: "16:00"
-	Verbosity  int             `json:"verbosity,omitempty"`
+	Verbosity  int             `json:"verbosity,omitempty"`          // 0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace (default:
 }
 
 // ExitSpec defines the multi-condition exit logic for a trade.

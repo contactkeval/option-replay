@@ -170,9 +170,9 @@ func (localFileDataProv *LocalFileDataProvider) parseExpiryFromSymbol(symbol str
 	return localFileDataProv.GetSecondary().parseExpiryFromSymbol(symbol)
 }
 
-// getIntervals reads the CSV once and caches it
-func (localFileDataProv *LocalFileDataProvider) getIntervals(underlying string) float64 {
-	return localFileDataProv.GetSecondary().getIntervals(underlying)
+// GetStrikeInterval reads the CSV once and caches it
+func (localFileDataProv *LocalFileDataProvider) GetStrikeIntervals(underlying string, expiryDate time.Time) []float64 {
+	return localFileDataProv.GetSecondary().GetStrikeIntervals(underlying, expiryDate)
 }
 
 // RoundToNearestStrike rounds `price` using the interval for the underlying

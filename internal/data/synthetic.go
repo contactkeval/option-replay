@@ -170,10 +170,10 @@ func (synthDataProv *synthDataProvider) GetRelevantExpiries(
 //   - The nearest strike price rounded based on the interval for the underlying asset.
 func (synthDataProv *synthDataProvider) RoundToNearestStrike(
 	underlying string,
-	_ time.Time, _ time.Time,
+	expiryDate time.Time, _ time.Time,
 	asOfPrice float64) float64 {
-	intervals := synthDataProv.getIntervals(underlying)
-	return math.Round(asOfPrice/intervals) * intervals
+	intervals := synthDataProv.GetStrikeIntervals(underlying, expiryDate)
+	return math.Round(asOfPrice/intervals[0]) * intervals[0]
 }
 
 // OptionSymbolFromParts generates an option symbol string by combining the underlying asset,
@@ -200,11 +200,11 @@ func (synthDataProv *synthDataProvider) parseExpiryFromSymbol(symbol string) tim
 // getIntervals returns the interval value for the given underlying asset.
 // If a secondary data provider is available, it delegates to that provider.
 // Otherwise, it returns the default value of 0.
-func (synthDataProv *synthDataProvider) getIntervals(underlying string) float64 {
+func (synthDataProv *synthDataProvider) GetStrikeIntervals(underlying string, expiryDate time.Time) []float64 {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.getIntervals(underlying)
+		return synthDataProv.secondary.GetStrikeIntervals(underlying, expiryDate)
 	}
-	return 0 // default
+	return []float64{0} // default
 }
 
 // extractCloses transforms a slice of data bars into a simple slice of close prices.

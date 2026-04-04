@@ -22,7 +22,7 @@ type Provider interface {
 	RoundToNearestStrike(underlying string, expiryDate, openDate time.Time, asOfPrice float64) float64
 	OptionSymbolFromParts(underlying string, expiryDate time.Time, optionType string, strike float64) string
 	parseExpiryFromSymbol(symbol string) time.Time
-	getIntervals(underlying string) float64
+	GetStrikeIntervals(underlying string, expiryDate time.Time) []float64
 }
 
 const (

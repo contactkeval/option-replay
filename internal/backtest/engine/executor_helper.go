@@ -19,9 +19,6 @@ func (e *Engine) initConfiguration() {
 	if e.cfg.ReportDir == "" {
 		e.cfg.ReportDir = "./out"
 	}
-	if e.cfg.Seed == 0 {
-		e.cfg.Seed = time.Now().UnixNano()
-	}
 	if e.cfg.Verbosity < VerbosityError || e.cfg.Verbosity > VerbosityTrace {
 		e.cfg.Verbosity = VerbosityInfo
 	}

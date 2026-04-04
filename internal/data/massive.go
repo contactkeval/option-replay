@@ -376,13 +376,13 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 	)
 
 	url := fmt.Sprintf(
-		"%s/v2/aggs/ticker/%s/range/%d/%s/%s/%s?adjusted=true&sort=asc&limit=%d&apiKey=%s",
+		"%s/v2/aggs/ticker/%s/range/%d/%s/%d/%d?adjusted=true&sort=asc&limit=%d&apiKey=%s",
 		massiveDataProv.BaseURL,
 		underlying,
 		multiplier,
 		timespan,
-		fromDate.Format("2006-01-02"),
-		toDate.Format("2006-01-02"),
+		fromDate.UnixMilli(),
+		toDate.UnixMilli(),
 		maxLimit,
 		massiveDataProv.APIKey,
 	)
@@ -633,7 +633,16 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 	return price, nil
 }
 
-// RoundToNearestStrike finds the nearest available option strike price to the given price.
+func (massiveDataProv *MassiveDataProvider) RoundToNearestStrike(
+	underlying string,
+	expiryDate, openDate time.Time,
+	asOfPrice float64,
+) float64 {
+	intervals := massiveDataProv.GetStrikeIntervals(underlying, expiryDate)
+	return math.Round(asOfPrice/intervals[0]) * intervals[0] // round to nearest strike interval
+}
+
+// FindNearestStrike finds the nearest available option strike price to the given price.
 // It retrieves all option contracts for the specified underlying asset and expiry date,
 // extracts their strike prices, and returns the strike closest to asOfPrice.
 // If no contracts are found or an error occurs, it returns asOfPrice unchanged.
@@ -647,7 +656,7 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 // Returns:
 //
 //	The strike price closest to asOfPrice, or asOfPrice if no contracts are available.
-func (massiveDataProv *MassiveDataProvider) RoundToNearestStrike(
+func (massiveDataProv *MassiveDataProvider) FindNearestStrike(
 	underlying string,
 	expiryDate, openDate time.Time,
 	asOfPrice float64,
@@ -672,7 +681,7 @@ func (massiveDataProv *MassiveDataProvider) RoundToNearestStrike(
 		return Closest(strikeList, asOfPrice)
 	}
 
-	return massiveDataProv.RoundToNearestStrike(
+	return massiveDataProv.FindNearestStrike(
 		underlying,
 		expiryDate,
 		openDate,
@@ -732,11 +741,52 @@ func (massiveDataProv *MassiveDataProvider) processGetRequest(
 	}
 }
 
-func (massiveDataProv *MassiveDataProvider) getIntervals(
+func (massiveDataProv *MassiveDataProvider) GetStrikeIntervals(
 	underlying string,
-) float64 {
-	// TODO: getIntervals is a placeholder for future interval logic (not yet implemented).
-	return massiveDataProv.GetSecondary().getIntervals(underlying)
+	expiryDate time.Time,
+) []float64 {
+
+	contractList, err := massiveDataProv.GetContracts(underlying, 0.0, expiryDate, expiryDate, expiryDate)
+	if err != nil || len(contractList) == 0 {
+		return nil
+	}
+
+	// Extract strikes
+	strikeList := make([]float64, 0, len(contractList))
+	for _, c := range contractList {
+		strikeList = append(strikeList, c.Strike)
+	}
+
+	// Sort strikes
+	sort.Float64s(strikeList)
+
+	// Deduplicate strikes (important!)
+	uniqueStrikes := make([]float64, 0, len(strikeList))
+	for i, s := range strikeList {
+		if i == 0 || s != strikeList[i-1] {
+			uniqueStrikes = append(uniqueStrikes, s)
+		}
+	}
+
+	// Compute intervals
+	intervalMap := make(map[float64]struct{})
+	for i := 0; i < len(uniqueStrikes)-1; i++ {
+		diff := uniqueStrikes[i+1] - uniqueStrikes[i]
+		if diff > 0 {
+			intervalMap[diff] = struct{}{}
+		}
+	}
+
+	// Convert to slice
+	intervalList := make([]float64, 0, len(intervalMap))
+	for interval := range intervalMap {
+		intervalList = append(intervalList, interval)
+	}
+
+	// Sort intervals
+	sort.Float64s(intervalList)
+
+	return intervalList
 }
 
 // OptionSymbolFromParts: improved OCC-like formatter (best-effort)

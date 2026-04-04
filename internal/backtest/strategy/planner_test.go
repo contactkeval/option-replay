@@ -92,7 +92,7 @@ func TestResolveStrike(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		actual, err := ResolveStrike(test.expr, underlying, asOfPrice, openDate, expiryDate, legs, provMassive)
+		actual, err := ResolveStrike(test.expr, underlying, asOfPrice, 0, openDate, expiryDate, legs, provMassive)
 		if err != nil {
 			t.Fatalf("Failed to resolve strike for expression {%s}: %v", test.expr, err)
 		}
