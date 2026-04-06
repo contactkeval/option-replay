@@ -1,6 +1,7 @@
 package data
 
 import (
+	"errors"
 	"math"
 	"os"
 	"sort"
@@ -48,6 +49,8 @@ type OptionContract struct {
 	Strike     float64
 	Type       string // "call" or "put"
 }
+
+var ErrNoDataFound = errors.New("no data found for given symbol")
 
 func GetLocalFileDataProvider() Provider {
 	var dataProv Provider

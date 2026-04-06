@@ -482,6 +482,9 @@ func (massiveDataProv *MassiveDataProvider) GetRelevantExpiries(
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
 
+	if symbol == "I:SPX" {
+		symbol = "I:NDX"
+	}
 	logger.Infof(
 		"resolving relevant expiries for %s [%s → %s]",
 		symbol,

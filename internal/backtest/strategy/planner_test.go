@@ -110,7 +110,7 @@ func TestPlanStrategyStrangle(t *testing.T) {
 		},
 		DateMatchType: data.MatchNearest,
 	}
-	legs, err := PlanStrategy(strategy, openDate, underlying, asOfPrice, []time.Time{expiryDate}, provMassive)
+	legs, err := PlanStrategy(&strategy, openDate, underlying, asOfPrice, []time.Time{expiryDate}, provMassive)
 	if err != nil {
 		t.Fatalf("Failed to plan strategy: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestPlanStrategyCustom(t *testing.T) {
 		},
 		DateMatchType: data.MatchHigher,
 	}
-	legs, err := PlanStrategy(strategy, openDate, underlying, asOfPrice, expiryList, provMassive)
+	legs, err := PlanStrategy(&strategy, openDate, underlying, asOfPrice, expiryList, provMassive)
 	if err != nil {
 		t.Fatalf("Failed to plan strategy: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestPlanStrategyCustom3(t *testing.T) {
 		},
 		DateMatchType: data.MatchHigher,
 	}
-	legs, err := PlanStrategy(strategy, openDate, underlying, asOfPrice, expiryList, provMassive)
+	legs, err := PlanStrategy(&strategy, openDate, underlying, asOfPrice, expiryList, provMassive)
 	if err != nil {
 		t.Fatalf("Failed to plan strategy: %v", err)
 	}

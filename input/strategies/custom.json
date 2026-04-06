@@ -1,9 +1,9 @@
 {
   "verbosity": 2,
-  "underlying": "I:NDX",
+  "underlying": "I:SPX",
   "entry": {
-    "start": "2026-03-01",
-    "end": "2026-03-15",
+    "start": "2026-03-08",
+    "end": "2026-03-31",
     "mode": "daily_time",
     "date_match_type": "higher",
     "time_of_day": "15:40",

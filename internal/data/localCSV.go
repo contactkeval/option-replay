@@ -2,6 +2,7 @@ package data
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,6 +94,7 @@ func (localFileDataProv *LocalFileDataProvider) GetBars(
 		return nil, err
 	}
 
+	emptyFile := true
 	for {
 		row, err := reader.Read()
 		if err == io.EOF {
@@ -101,6 +103,7 @@ func (localFileDataProv *LocalFileDataProvider) GetBars(
 		if err != nil {
 			continue
 		}
+		emptyFile = false
 
 		// CSV format: date(RFC3339), open, high, low, close, volume
 		t, _ := time.Parse(time.RFC3339, row[0])
@@ -122,6 +125,9 @@ func (localFileDataProv *LocalFileDataProvider) GetBars(
 			Volume: parseFloat(row[5]),
 		})
 	}
+	if emptyFile {
+		return nil, fmt.Errorf("%w: %s", ErrNoDataFound, underlying)
+	}
 
 	return out, nil
 }
@@ -136,19 +142,33 @@ func (localFileDataProv *LocalFileDataProvider) GetOptionPrice(
 ) (float64, error) {
 	symbol := localFileDataProv.OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 
-	// Search back-window (Massive logic)
+	// Search back-window
 	bars, err := localFileDataProv.GetBars(symbol, openDate.Add(-5*time.Minute), openDate, 1, "minute")
-	if err == nil && len(bars) != 0 {
+	if err != nil {
+		if errors.Is(err, ErrNoDataFound) {
+			return 0, err
+		} else {
+			return 0, fmt.Errorf("error while search back for option price %w", err)
+		}
+	}
+	if len(bars) != 0 {
 		return bars[len(bars)-1].Close, nil
 	}
 
-	// Search forward-window (Massive logic)
+	// Search forward-window
 	bars, err = localFileDataProv.GetBars(symbol, openDate, openDate.Add(5*time.Minute), 1, "minute")
-	if err == nil && len(bars) != 0 {
-		return bars[0].Open, nil
+	if err != nil {
+		if errors.Is(err, ErrNoDataFound) {
+			return 0, err
+		} else {
+			return 0, fmt.Errorf("error while search forward for option price %w", err)
+		}
+	}
+	if len(bars) != 0 {
+		return bars[0].Close, nil
 	}
 
-	return 0, fmt.Errorf("no local price for %s at %s", symbol, openDate)
+	return 0, fmt.Errorf("no local price for %s at %s", symbol, openDate.Format("2006-01-02 15:04"))
 }
 
 // GetRelevantExpiries mirrors the 5-step logic from Massive.go but pulls from local bars.

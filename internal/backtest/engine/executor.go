@@ -160,7 +160,7 @@ func (e *Engine) executeBacktest(
 		}
 
 		// Plan Strategy Legs
-		legs, err := st.PlanStrategy(e.cfg.Strategy, entryDate, e.cfg.Underlying, bar.Close, expiryList, e.dataProv)
+		legs, err := st.PlanStrategy(&e.cfg.Strategy, entryDate, e.cfg.Underlying, bar.Close, expiryList, e.dataProv)
 		if err != nil {
 			logger.Warnf("[%s] Entry Failed: Could not plan strategy legs: %v", entryDateStr, err)
 			continue
@@ -242,7 +242,7 @@ func simulatedCloseTrade(
 	}
 
 	// Check intraday price action (Fine minute filter)
-	exitByPriceChange(trade, closeByDateTime, cfg, dataProv)
+	exitByPriceChange(trade, &closeByDateTime, cfg, dataProv)
 }
 
 // exitByUnderlyingMove scans daily bars to find if the asset moved past a dollar threshold.
@@ -272,11 +272,11 @@ func exitByUnderlyingMove(
 // exitByPriceChange performs high-fidelity minute-by-minute simulation for the trade exit.
 func exitByPriceChange(
 	trade *Trade,
-	closeByDateTime time.Time,
+	closeByDateTime *time.Time,
 	cfg Config,
 	dataProv data.Provider,
 ) {
-	underlyingBars, err := dataProv.GetBars(cfg.Underlying, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
+	underlyingBars, err := dataProv.GetBars(cfg.Underlying, trade.OpenDateTime, *closeByDateTime, multiplierOne, timespanMinute)
 	if err != nil {
 		logger.Errorf("Trade #%d: Data error fetching minute bars: %v", trade.ID, err)
 	}
@@ -284,7 +284,7 @@ func exitByPriceChange(
 	// Precise underlying move check
 	if cfg.Exit.UnderlyingMovePx != nil {
 		if hitTime, movePrice, hit := checkUnderlyingMove(underlyingBars, trade, *cfg.Exit.UnderlyingMovePx); hit {
-			closeByDateTime = hitTime
+			*closeByDateTime = hitTime
 			trade.UnderlyingAtClose = movePrice
 			trade.ClosedBy = CloseByUnderlying
 		}
@@ -292,8 +292,8 @@ func exitByPriceChange(
 
 	// Profit/Stop Target checks
 	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
-		minuteData := fetchAndAlignLegData(trade, underlyingBars, closeByDateTime, dataProv, cfg)
-		if scanOptionExits(trade, minuteData, &closeByDateTime, cfg) {
+		minuteData := fetchAndAlignLegData(trade, underlyingBars, *closeByDateTime, dataProv, cfg)
+		if scanOptionExits(trade, minuteData, closeByDateTime, cfg) {
 			logger.Debugf("Trade #%d: Exit triggered by PnL Target at %s", trade.ID, closeByDateTime.Format("2006-01-02 15:04"))
 			trade.ClosedBy = CloseByPnL
 		}
@@ -301,8 +301,8 @@ func exitByPriceChange(
 
 	// If scanOptionExits didn't set a close premium, calculate final value at closeByDateTime
 	if trade.ClosePremium == 0.0 {
-		trade.CloseDateTime = &closeByDateTime
-		trade.ClosePremium = calculateFinalClosePremium(trade, closeByDateTime, cfg, dataProv)
+		trade.CloseDateTime = closeByDateTime
+		trade.ClosePremium = calculateFinalClosePremium(trade, *closeByDateTime, cfg, dataProv)
 		if trade.UnderlyingAtClose == 0 {
 			trade.UnderlyingAtClose = underlyingBars[len(underlyingBars)-1].Close // fallback to last known price
 		}

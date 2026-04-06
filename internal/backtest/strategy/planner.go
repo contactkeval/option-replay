@@ -106,7 +106,7 @@ type Hints struct {
 //   - []TradeLeg: Fully resolved trade legs in order
 //   - error: Non-nil if any leg cannot be resolved
 func PlanStrategy(
-	strategy StrategySpec,
+	strategy *StrategySpec,
 	openDateTime time.Time,
 	underlying string,
 	openPrice float64,
@@ -119,10 +119,11 @@ func PlanStrategy(
 	)
 
 	legs := make([]TradeLeg, 0, len(strategy.Legs))
+	var err error
 
-	strikeIntervals := strategy.Hints.StrikeIntervals
 	if len(strategy.Hints.StrikeIntervals) == 0 {
 		strategy.Hints.StrikeIntervals = dataProv.GetStrikeIntervals(underlying, expiryList[1]) // Get intervals for the first expiry as a fallback
+		logger.Infof("strike intervals: %v", strategy.Hints.StrikeIntervals)
 	}
 
 	for i, legSpec := range strategy.Legs {
@@ -155,8 +156,8 @@ func PlanStrategy(
 
 		openPremium, strike := 0.0, 0.0
 		// Retry loop for strike resolution and premium fetching
-		for i := 0; i < len(strikeIntervals); i++ {
-			strike, err := ResolveStrike(legSpec.StrikeRule, underlying, openPrice, strikeIntervals[i], openDateTime, expiryDate, legs, dataProv)
+		for i := range strategy.Hints.StrikeIntervals {
+			strike, err = ResolveStrike(legSpec.StrikeRule, underlying, openPrice, strategy.Hints.StrikeIntervals[i], openDateTime, expiryDate, legs, dataProv)
 			if err != nil {
 				return nil, fmt.Errorf("leg %d strike resolution failed: %w", legNum, err)
 			}
@@ -164,6 +165,10 @@ func PlanStrategy(
 			// Fetch option premium
 			openPremium, err = dataProv.GetOptionPrice(underlying, strike, expiryDate, legSpec.OptionType, openDateTime)
 			if err != nil {
+				if errors.Is(err, data.ErrNoDataFound) {
+					// skip this strike and continue with next strike interval
+					continue
+				}
 				return nil, fmt.Errorf("leg %d premium fetch failed: %w", legNum, err)
 			}
 			if openPremium != 0 {
