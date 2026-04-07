@@ -3,7 +3,11 @@
 package engine
 
 import (
+	"encoding/csv"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,14 +27,16 @@ type Engine struct {
 
 // Config defines the operational parameters for a single backtest run.
 type Config struct {
-	Underlying string          `json:"underlying"` // Ticker symbol of the asset
-	Entry      sch.EntryRule   `json:"entry"`      // Rules governing when to open trades
-	Strategy   st.StrategySpec `json:"strategy"`   // The option structure (e.g., Iron Condor)
-	Exit       ExitSpec        `json:"exit"`       // Rules governing when to close trades
-	ReportDir  string          `json:"report_dir"`
-	MaxTrades  int             `json:"max_trades,omitempty"`
-	ExpiryTime string          `json:"option_expiry_time,omitempty"` // e.g., "16:00" for 4 PM market close, default: "16:00"
-	Verbosity  int             `json:"verbosity,omitempty"`          // 0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace (default:
+	Underlying  string          `json:"underlying"` // Ticker symbol of the asset
+	Entry       sch.EntryRule   `json:"entry"`      // Rules governing when to open trades
+	Strategy    st.StrategySpec `json:"strategy"`   // The option structure (e.g., Iron Condor)
+	Exit        ExitSpec        `json:"exit"`       // Rules governing when to close trades
+	ReportDir   string          `json:"report_dir"`
+	FullReport  bool            `json:"full_report,omitempty"`
+	ExtraReport string          `json:"extra_report,omitempty"`
+	MaxTrades   int             `json:"max_trades,omitempty"`
+	ExpiryTime  string          `json:"option_expiry_time,omitempty"` // e.g., "16:00" for 4 PM market close, default: "16:00"
+	Verbosity   int             `json:"verbosity,omitempty"`          // 0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace (default:
 }
 
 // ExitSpec defines the multi-condition exit logic for a trade.
@@ -299,12 +305,88 @@ func exitByPriceChange(
 		}
 	}
 
+	if cfg.ExtraReport != "" {
+		ExtraReport(underlyingBars, *closeByDateTime, trade, cfg, dataProv)
+	}
+
 	// If scanOptionExits didn't set a close premium, calculate final value at closeByDateTime
 	if trade.ClosePremium == 0.0 {
 		trade.CloseDateTime = closeByDateTime
 		trade.ClosePremium = calculateFinalClosePremium(trade, *closeByDateTime, cfg, dataProv)
 		if trade.UnderlyingAtClose == 0 {
 			trade.UnderlyingAtClose = underlyingBars[len(underlyingBars)-1].Close // fallback to last known price
+		}
+	}
+}
+
+func ExtraReport(
+	underlyingBars []data.Bar,
+	closeByDateTime time.Time,
+	trade *Trade,
+	cfg Config,
+	dataProv data.Provider,
+) {
+	closeByDateTime = closeByDateTime.Add(time.Minute * 40)         // Add buffer to ensure we capture the bar after exit trigger
+	trade.OpenDateTime = trade.OpenDateTime.Add(time.Minute * -400) // before entry extra report
+	minuteData := fetchAndAlignLegData(trade, underlyingBars, closeByDateTime, dataProv, cfg)
+
+	// Step 1: Create directory ./out/data
+	dataDir := filepath.Join(cfg.ReportDir, "data")
+	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
+		logger.Errorf("could not create data dir %s: %v", dataDir, err)
+	}
+
+	// Step 2: Create file ./out/data/minData_trade.ID.csv
+	filePath := filepath.Join(dataDir, fmt.Sprintf("minData_%03d.csv", trade.ID))
+	file, err := os.Create(filePath)
+	if err != nil {
+		logger.Errorf("could not create file %s: %v", filePath, err)
+	}
+	defer file.Close()
+
+	// Step 3: Write data (CSV recommended)
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write header
+	header := []string{"Timestamp", "", ""}
+	for i := 0; i < len(trade.Legs); i++ {
+		header = append(header,
+			fmt.Sprintf("Leg%d", i+1),
+			fmt.Sprintf("%.2f", trade.Legs[i].Strike),
+			fmt.Sprintf("%s", trade.Legs[i].Expiration.Format("02/Jan")),
+			fmt.Sprintf("%s %dDTE", trade.Legs[i].Spec.Side, trade.Legs[i].Spec.Expiration),
+			fmt.Sprintf("%s %s %d contract", trade.Legs[i].Spec.StrikeRule, trade.Legs[i].Spec.OptionType, trade.Legs[i].Spec.Qty),
+			"",
+		)
+	}
+	header = append(header, "Underlying", "", "", "", "", "")
+	if err := writer.Write(header); err != nil {
+		logger.Errorf("failed to write CSV header: %v", err)
+	}
+
+	header = []string{"", ""}
+	for i := 0; i <= len(trade.Legs); i++ {
+		header = append(header, "", "Open", "High", "Low", "Close", "Volume")
+	}
+	if err := writer.Write(header); err != nil {
+		logger.Errorf("failed to write CSV header: %v", err)
+	}
+
+	// Write data rows
+	for _, row := range minuteData {
+		record := []string{row.Timestamp.Format("2006-01-02 15:04"), fmt.Sprintf("%d", row.Timestamp.UnixMilli())}
+		for _, legBar := range row.LegBars[:len(row.LegBars)] {
+			record = append(record, "",
+				strconv.FormatFloat(legBar.Open, 'f', 2, 64),
+				strconv.FormatFloat(legBar.High, 'f', 2, 64),
+				strconv.FormatFloat(legBar.Low, 'f', 2, 64),
+				strconv.FormatFloat(legBar.Close, 'f', 2, 64),
+				strconv.FormatFloat(legBar.Volume, 'f', -1, 64),
+			)
+		}
+		if err := writer.Write(record); err != nil {
+			logger.Errorf("failed to write CSV row: %v", err)
 		}
 	}
 }

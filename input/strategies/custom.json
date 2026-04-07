@@ -52,6 +52,8 @@
     "date_match_type": "higher"
   },
   "option_expiry_time": "16:00",
+  "full_report": true,
+  "extra_report": "OPEN-400/EXPIRY+40",
   "data_provider": {
     "provider": "massive"
   }

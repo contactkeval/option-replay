@@ -154,7 +154,7 @@ func fetchAndAlignLegData(
 	for i, leg := range trade.Legs {
 		symbol := dataProv.OptionSymbolFromParts(cfg.Underlying, leg.Expiration, leg.Spec.OptionType, leg.Strike)
 
-		// Note: We ignore errors here assuming gaps result in zero-value bars
+		// We ignore errors here assuming gaps result in zero-value bars
 		bars, _ := dataProv.GetBars(symbol, trade.OpenDateTime, closeByDateTime, multiplierOne, timespanMinute)
 
 		for _, bar := range bars {

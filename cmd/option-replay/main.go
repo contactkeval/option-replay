@@ -77,7 +77,7 @@ func runBacktest(engine *engine.Engine, cfg *engine.Config) {
 	}
 
 	if err := os.MkdirAll(cfg.ReportDir, 0750); err != nil {
-		logger.Warnf("could not create output dir %s: %v", cfg.ReportDir, err)
+		logger.Errorf("could not create output dir %s: %v", cfg.ReportDir, err)
 	}
 
 	_ = report.WriteJSON(res, cfg.ReportDir)
