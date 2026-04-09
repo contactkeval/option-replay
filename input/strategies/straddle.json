@@ -1,0 +1,46 @@
+{
+  "verbosity": 2,
+  "underlying": "SPY",
+  "entry": {
+    "start": "2026-03-08",
+    "end": "2026-03-31",
+    "mode": "daily_time",
+    "date_match_type": "higher",
+    "time_of_day": "15:40",
+    "timezone": "America/New_York"
+  },
+  "commented_exit": {
+    "exit_by_days_to_expiry": 0,
+    "max_days_in_trade": 1,
+    "underlying_move_px_commented": 0,
+    "profit_target_pct_commented": 0,
+    "stop_loss_pct_commented": 0
+  },
+  "strategy": {
+    "name": "straddle",
+    "dte": 0,
+    "legs": [
+      {
+        "side": "sell",
+        "option_type": "call",
+        "strike_rule": "ATM",
+        "qty": 1,
+        "expiration": 0
+      },
+      {
+        "side": "sell",
+        "option_type": "put",
+        "strike_rule": "ATM",
+        "qty": 1,
+        "expiration": 0
+      }
+    ],
+    "date_match_type": "higher"
+  },
+  "option_expiry_time": "16:00",
+  "full_report": true,
+  "extra_report": "OPEN-400/EXPIRY+40",
+  "data_provider": {
+    "provider": "massive"
+  }
+}

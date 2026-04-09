@@ -4,8 +4,8 @@
       "ID": 1,
       "OpenDateTime": "2026-03-09T09:00:00-04:00",
       "CloseDateTime": "2026-03-09T16:00:00-04:00",
-      "UnderlyingAtOpen": 6795.99,
-      "UnderlyingAtClose": 6795.9,
+      "UnderlyingAtOpen": 675.34,
+      "UnderlyingAtClose": 678.85,
       "Legs": [
         {
           "Spec": {
@@ -14,10 +14,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6795,
+          "Strike": 675,
           "Expiration": "2026-03-09T16:00:00-04:00",
-          "OpenPremium": 9.5,
-          "ClosePremium": 1.1
+          "OpenPremium": 3.35,
+          "ClosePremium": 3.81
         },
         {
           "Spec": {
@@ -26,50 +26,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6795,
+          "Strike": 675,
           "Expiration": "2026-03-09T16:00:00-04:00",
-          "OpenPremium": 9.1,
-          "ClosePremium": 0.5
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6795,
-          "Expiration": "2026-03-10T16:00:00-04:00",
-          "OpenPremium": 35.4,
-          "ClosePremium": 36.52
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6795,
-          "Expiration": "2026-03-10T16:00:00-04:00",
-          "OpenPremium": 35.5,
-          "ClosePremium": 30.38
+          "OpenPremium": 0.13,
+          "ClosePremium": 0.02
         }
       ],
-      "OpenPremium": 52.3,
-      "ClosePremium": 65.3,
-      "HighPremium": 52.3,
-      "LowPremium": 52.3,
+      "OpenPremium": -3.48,
+      "ClosePremium": -3.83,
+      "HighPremium": -3.48,
+      "LowPremium": -3.48,
       "ClosedBy": ""
     },
     {
       "ID": 2,
       "OpenDateTime": "2026-03-10T09:00:00-04:00",
       "CloseDateTime": "2026-03-10T16:00:00-04:00",
-      "UnderlyingAtOpen": 6781.48,
-      "UnderlyingAtClose": 6781.52,
+      "UnderlyingAtOpen": 677.95,
+      "UnderlyingAtClose": 677.25,
       "Legs": [
         {
           "Spec": {
@@ -78,10 +52,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6780,
+          "Strike": 678,
           "Expiration": "2026-03-10T16:00:00-04:00",
-          "OpenPremium": 15.3,
-          "ClosePremium": 1.45
+          "OpenPremium": 0.93,
+          "ClosePremium": 0.16
         },
         {
           "Spec": {
@@ -90,50 +64,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6780,
+          "Strike": 678,
           "Expiration": "2026-03-10T16:00:00-04:00",
-          "OpenPremium": 3.6,
-          "ClosePremium": 0.18
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6780,
-          "Expiration": "2026-03-11T16:00:00-04:00",
-          "OpenPremium": 44.5,
-          "ClosePremium": 40.6
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6780,
-          "Expiration": "2026-03-11T16:00:00-04:00",
-          "OpenPremium": 30.7,
-          "ClosePremium": 35.7
+          "OpenPremium": 0.9,
+          "ClosePremium": 0.86
         }
       ],
-      "OpenPremium": 56.3,
-      "ClosePremium": 74.67,
-      "HighPremium": 56.3,
-      "LowPremium": 56.3,
+      "OpenPremium": -1.83,
+      "ClosePremium": -1.02,
+      "HighPremium": -1.83,
+      "LowPremium": -1.83,
       "ClosedBy": ""
     },
     {
       "ID": 3,
       "OpenDateTime": "2026-03-11T09:00:00-04:00",
       "CloseDateTime": "2026-03-11T16:00:00-04:00",
-      "UnderlyingAtOpen": 6775.8,
-      "UnderlyingAtClose": 6775.78,
+      "UnderlyingAtOpen": 671.25,
+      "UnderlyingAtClose": 676.05,
       "Legs": [
         {
           "Spec": {
@@ -142,10 +90,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6775,
+          "Strike": 671,
           "Expiration": "2026-03-11T16:00:00-04:00",
-          "OpenPremium": 3.2,
-          "ClosePremium": 0.6
+          "OpenPremium": 5.19,
+          "ClosePremium": 5.38
         },
         {
           "Spec": {
@@ -154,50 +102,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6775,
+          "Strike": 671,
           "Expiration": "2026-03-11T16:00:00-04:00",
-          "OpenPremium": 6.6,
-          "ClosePremium": 0.45
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6775,
-          "Expiration": "2026-03-12T16:00:00-04:00",
-          "OpenPremium": 31,
-          "ClosePremium": 30.27
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6775,
-          "Expiration": "2026-03-12T16:00:00-04:00",
-          "OpenPremium": 33.95,
-          "ClosePremium": 33.18
+          "OpenPremium": 0.02,
+          "ClosePremium": 0.01
         }
       ],
-      "OpenPremium": 55.150000000000006,
-      "ClosePremium": 62.4,
-      "HighPremium": 55.150000000000006,
-      "LowPremium": 55.150000000000006,
+      "OpenPremium": -5.21,
+      "ClosePremium": -5.39,
+      "HighPremium": -5.21,
+      "LowPremium": -5.21,
       "ClosedBy": ""
     },
     {
       "ID": 4,
       "OpenDateTime": "2026-03-12T09:00:00-04:00",
       "CloseDateTime": "2026-03-12T16:00:00-04:00",
-      "UnderlyingAtOpen": 6672.62,
-      "UnderlyingAtClose": 6672.58,
+      "UnderlyingAtOpen": 666.48,
+      "UnderlyingAtClose": 666.29,
       "Legs": [
         {
           "Spec": {
@@ -206,10 +128,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6675,
+          "Strike": 666,
           "Expiration": "2026-03-12T16:00:00-04:00",
-          "OpenPremium": 11.75,
-          "ClosePremium": 0.25
+          "OpenPremium": 1.57,
+          "ClosePremium": 0.61
         },
         {
           "Spec": {
@@ -218,50 +140,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6675,
+          "Strike": 666,
           "Expiration": "2026-03-12T16:00:00-04:00",
-          "OpenPremium": 1.85,
-          "ClosePremium": 2.2
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6675,
-          "Expiration": "2026-03-13T16:00:00-04:00",
-          "OpenPremium": 48.4,
-          "ClosePremium": 40.3
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6675,
-          "Expiration": "2026-03-13T16:00:00-04:00",
-          "OpenPremium": 32.18,
-          "ClosePremium": 39.84
+          "OpenPremium": 0.16,
+          "ClosePremium": 0.23
         }
       ],
-      "OpenPremium": 66.97999999999999,
-      "ClosePremium": 77.69,
-      "HighPremium": 66.97999999999999,
-      "LowPremium": 66.97999999999999,
+      "OpenPremium": -1.73,
+      "ClosePremium": -0.84,
+      "HighPremium": -1.73,
+      "LowPremium": -1.73,
       "ClosedBy": ""
     },
     {
       "ID": 5,
       "OpenDateTime": "2026-03-13T09:00:00-04:00",
       "CloseDateTime": "2026-03-13T16:00:00-04:00",
-      "UnderlyingAtOpen": 6632.19,
-      "UnderlyingAtClose": 6632.25,
+      "UnderlyingAtOpen": 663.05,
+      "UnderlyingAtClose": 662.02,
       "Legs": [
         {
           "Spec": {
@@ -270,10 +166,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6630,
+          "Strike": 663,
           "Expiration": "2026-03-13T16:00:00-04:00",
-          "OpenPremium": 4.26,
-          "ClosePremium": 2.35
+          "OpenPremium": 0.18,
+          "ClosePremium": 0.04
         },
         {
           "Spec": {
@@ -282,50 +178,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6630,
+          "Strike": 663,
           "Expiration": "2026-03-13T16:00:00-04:00",
-          "OpenPremium": 8.3,
-          "ClosePremium": 0.1
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6630,
-          "Expiration": "2026-03-16T16:00:00-04:00",
-          "OpenPremium": 45.4,
-          "ClosePremium": 47.95
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6630,
-          "Expiration": "2026-03-16T16:00:00-04:00",
-          "OpenPremium": 50.2,
-          "ClosePremium": 47.3
+          "OpenPremium": 1.57,
+          "ClosePremium": 0.93
         }
       ],
-      "OpenPremium": 83.03999999999999,
-      "ClosePremium": 92.8,
-      "HighPremium": 83.03999999999999,
-      "LowPremium": 83.03999999999999,
+      "OpenPremium": -1.75,
+      "ClosePremium": -0.9700000000000001,
+      "HighPremium": -1.75,
+      "LowPremium": -1.75,
       "ClosedBy": ""
     },
     {
       "ID": 6,
       "OpenDateTime": "2026-03-16T09:00:00-04:00",
       "CloseDateTime": "2026-03-16T16:00:00-04:00",
-      "UnderlyingAtOpen": 6699.38,
-      "UnderlyingAtClose": 6699.39,
+      "UnderlyingAtOpen": 668.8,
+      "UnderlyingAtClose": 669.04,
       "Legs": [
         {
           "Spec": {
@@ -334,10 +204,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6700,
+          "Strike": 669,
           "Expiration": "2026-03-16T16:00:00-04:00",
-          "OpenPremium": 3.7,
-          "ClosePremium": 0.3
+          "OpenPremium": 0.5,
+          "ClosePremium": 0.27
         },
         {
           "Spec": {
@@ -346,50 +216,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6700,
+          "Strike": 669,
           "Expiration": "2026-03-16T16:00:00-04:00",
-          "OpenPremium": 4,
-          "ClosePremium": 0.45
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6700,
-          "Expiration": "2026-03-17T16:00:00-04:00",
-          "OpenPremium": 28.2,
-          "ClosePremium": 28.23
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6700,
-          "Expiration": "2026-03-17T16:00:00-04:00",
-          "OpenPremium": 28,
-          "ClosePremium": 27.7
+          "OpenPremium": 0.46,
+          "ClosePremium": 0.24
         }
       ],
-      "OpenPremium": 48.5,
-      "ClosePremium": 55.18,
-      "HighPremium": 48.5,
-      "LowPremium": 48.5,
+      "OpenPremium": -0.96,
+      "ClosePremium": -0.51,
+      "HighPremium": -0.96,
+      "LowPremium": -0.96,
       "ClosedBy": ""
     },
     {
       "ID": 7,
       "OpenDateTime": "2026-03-17T09:00:00-04:00",
       "CloseDateTime": "2026-03-17T16:00:00-04:00",
-      "UnderlyingAtOpen": 6716.09,
-      "UnderlyingAtClose": 6716.19,
+      "UnderlyingAtOpen": 670.22,
+      "UnderlyingAtClose": 670.86,
       "Legs": [
         {
           "Spec": {
@@ -398,10 +242,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6715,
+          "Strike": 670,
           "Expiration": "2026-03-17T16:00:00-04:00",
-          "OpenPremium": 6.2,
-          "ClosePremium": 1.4
+          "OpenPremium": 1.16,
+          "ClosePremium": 0.93
         },
         {
           "Spec": {
@@ -410,50 +254,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6715,
+          "Strike": 670,
           "Expiration": "2026-03-17T16:00:00-04:00",
-          "OpenPremium": 1.2,
-          "ClosePremium": 0.05
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6715,
-          "Expiration": "2026-03-18T16:00:00-04:00",
-          "OpenPremium": 32.3,
-          "ClosePremium": 31.3
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6715,
-          "Expiration": "2026-03-18T16:00:00-04:00",
-          "OpenPremium": 26.03,
-          "ClosePremium": 27.3
+          "OpenPremium": 0.09,
+          "ClosePremium": 0.02
         }
       ],
-      "OpenPremium": 50.93,
-      "ClosePremium": 57.150000000000006,
-      "HighPremium": 50.93,
-      "LowPremium": 50.93,
+      "OpenPremium": -1.25,
+      "ClosePremium": -0.9500000000000001,
+      "HighPremium": -1.25,
+      "LowPremium": -1.25,
       "ClosedBy": ""
     },
     {
       "ID": 8,
       "OpenDateTime": "2026-03-18T09:00:00-04:00",
       "CloseDateTime": "2026-03-18T16:00:00-04:00",
-      "UnderlyingAtOpen": 6624.7,
-      "UnderlyingAtClose": 6624.71,
+      "UnderlyingAtOpen": 660.91,
+      "UnderlyingAtClose": 661.48,
       "Legs": [
         {
           "Spec": {
@@ -462,10 +280,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6625,
+          "Strike": 661,
           "Expiration": "2026-03-18T16:00:00-04:00",
-          "OpenPremium": 9.6,
-          "ClosePremium": 0.2
+          "OpenPremium": 1.55,
+          "ClosePremium": 0.66
         },
         {
           "Spec": {
@@ -474,50 +292,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6625,
+          "Strike": 661,
           "Expiration": "2026-03-18T16:00:00-04:00",
-          "OpenPremium": 1.45,
-          "ClosePremium": 0.5
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6625,
-          "Expiration": "2026-03-19T16:00:00-04:00",
-          "OpenPremium": 40.5,
-          "ClosePremium": 35.5
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6625,
-          "Expiration": "2026-03-19T16:00:00-04:00",
-          "OpenPremium": 31.5,
-          "ClosePremium": 35.87
+          "OpenPremium": 0.12,
+          "ClosePremium": 0.11
         }
       ],
-      "OpenPremium": 60.95,
-      "ClosePremium": 70.66999999999999,
-      "HighPremium": 60.95,
-      "LowPremium": 60.95,
+      "OpenPremium": -1.67,
+      "ClosePremium": -0.77,
+      "HighPremium": -1.67,
+      "LowPremium": -1.67,
       "ClosedBy": ""
     },
     {
       "ID": 9,
       "OpenDateTime": "2026-03-19T09:00:00-04:00",
       "CloseDateTime": "2026-03-19T16:00:00-04:00",
-      "UnderlyingAtOpen": 6606.49,
-      "UnderlyingAtClose": 6606.48,
+      "UnderlyingAtOpen": 661.1,
+      "UnderlyingAtClose": 660.01,
       "Legs": [
         {
           "Spec": {
@@ -526,10 +318,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6605,
+          "Strike": 661,
           "Expiration": "2026-03-19T16:00:00-04:00",
-          "OpenPremium": 10.3,
-          "ClosePremium": 2.17
+          "OpenPremium": 0.44,
+          "ClosePremium": 0.06
         },
         {
           "Spec": {
@@ -538,50 +330,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6605,
+          "Strike": 661,
           "Expiration": "2026-03-19T16:00:00-04:00",
-          "OpenPremium": 2.95,
-          "ClosePremium": 0.1
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6605,
-          "Expiration": "2026-03-20T16:00:00-04:00",
-          "OpenPremium": 39.2,
-          "ClosePremium": 35.7
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6605,
-          "Expiration": "2026-03-20T16:00:00-04:00",
-          "OpenPremium": 29,
-          "ClosePremium": 30.3
+          "OpenPremium": 1.13,
+          "ClosePremium": 1.05
         }
       ],
-      "OpenPremium": 54.95,
-      "ClosePremium": 63.730000000000004,
-      "HighPremium": 54.95,
-      "LowPremium": 54.95,
+      "OpenPremium": -1.5699999999999998,
+      "ClosePremium": -1.11,
+      "HighPremium": -1.5699999999999998,
+      "LowPremium": -1.5699999999999998,
       "ClosedBy": ""
     },
     {
       "ID": 10,
       "OpenDateTime": "2026-03-20T09:00:00-04:00",
       "CloseDateTime": "2026-03-20T16:00:00-04:00",
-      "UnderlyingAtOpen": 6506.48,
-      "UnderlyingAtClose": 6506.68,
+      "UnderlyingAtOpen": 653.28,
+      "UnderlyingAtClose": 649.02,
       "Legs": [
         {
           "Spec": {
@@ -590,10 +356,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6505,
+          "Strike": 653,
           "Expiration": "2026-03-20T16:00:00-04:00",
-          "OpenPremium": 0.85,
-          "ClosePremium": 2.24
+          "OpenPremium": 0.02,
+          "ClosePremium": 0.02
         },
         {
           "Spec": {
@@ -602,50 +368,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6505,
+          "Strike": 653,
           "Expiration": "2026-03-20T16:00:00-04:00",
-          "OpenPremium": 23.94,
-          "ClosePremium": 0.15
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6505,
-          "Expiration": "2026-03-23T16:00:00-04:00",
-          "OpenPremium": 37.5,
-          "ClosePremium": 50.4
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6505,
-          "Expiration": "2026-03-23T16:00:00-04:00",
-          "OpenPremium": 60.05,
-          "ClosePremium": 39.97
+          "OpenPremium": 7.29,
+          "ClosePremium": 4.08
         }
       ],
-      "OpenPremium": 72.75999999999999,
-      "ClosePremium": 87.97999999999999,
-      "HighPremium": 72.75999999999999,
-      "LowPremium": 72.75999999999999,
+      "OpenPremium": -7.31,
+      "ClosePremium": -4.1,
+      "HighPremium": -7.31,
+      "LowPremium": -7.31,
       "ClosedBy": ""
     },
     {
       "ID": 11,
       "OpenDateTime": "2026-03-23T09:00:00-04:00",
       "CloseDateTime": "2026-03-23T16:00:00-04:00",
-      "UnderlyingAtOpen": 6581,
-      "UnderlyingAtClose": 6581.04,
+      "UnderlyingAtOpen": 656.75,
+      "UnderlyingAtClose": 654.8,
       "Legs": [
         {
           "Spec": {
@@ -654,10 +394,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6580,
+          "Strike": 657,
           "Expiration": "2026-03-23T16:00:00-04:00",
-          "OpenPremium": 22,
-          "ClosePremium": 2
+          "OpenPremium": 0.95,
+          "ClosePremium": 0.03
         },
         {
           "Spec": {
@@ -666,50 +406,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6580,
+          "Strike": 657,
           "Expiration": "2026-03-23T16:00:00-04:00",
-          "OpenPremium": 0.27,
-          "ClosePremium": 0.08
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6580,
-          "Expiration": "2026-03-24T16:00:00-04:00",
-          "OpenPremium": 50,
-          "ClosePremium": 34.8
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6580,
-          "Expiration": "2026-03-24T16:00:00-04:00",
-          "OpenPremium": 26.9,
-          "ClosePremium": 39.1
+          "OpenPremium": 0.29,
+          "ClosePremium": 2.03
         }
       ],
-      "OpenPremium": 54.629999999999995,
-      "ClosePremium": 71.82,
-      "HighPremium": 54.629999999999995,
-      "LowPremium": 54.629999999999995,
+      "OpenPremium": -1.24,
+      "ClosePremium": -2.0599999999999996,
+      "HighPremium": -1.24,
+      "LowPremium": -1.24,
       "ClosedBy": ""
     },
     {
       "ID": 12,
       "OpenDateTime": "2026-03-24T09:00:00-04:00",
       "CloseDateTime": "2026-03-24T16:00:00-04:00",
-      "UnderlyingAtOpen": 6556.37,
-      "UnderlyingAtClose": 6556.33,
+      "UnderlyingAtOpen": 657.55,
+      "UnderlyingAtClose": 653.37,
       "Legs": [
         {
           "Spec": {
@@ -718,10 +432,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6555,
+          "Strike": 658,
           "Expiration": "2026-03-24T16:00:00-04:00",
-          "OpenPremium": 11.7,
-          "ClosePremium": 1.15
+          "OpenPremium": 0.03,
+          "ClosePremium": 0.01
         },
         {
           "Spec": {
@@ -730,50 +444,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6555,
+          "Strike": 658,
           "Expiration": "2026-03-24T16:00:00-04:00",
-          "OpenPremium": 1.52,
-          "ClosePremium": 0.17
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6555,
-          "Expiration": "2026-03-25T16:00:00-04:00",
-          "OpenPremium": 39.46,
-          "ClosePremium": 35.99
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6555,
-          "Expiration": "2026-03-25T16:00:00-04:00",
-          "OpenPremium": 29.3,
-          "ClosePremium": 31.3
+          "OpenPremium": 4.03,
+          "ClosePremium": 4.73
         }
       ],
-      "OpenPremium": 55.540000000000006,
-      "ClosePremium": 65.97,
-      "HighPremium": 55.540000000000006,
-      "LowPremium": 55.540000000000006,
+      "OpenPremium": -4.0600000000000005,
+      "ClosePremium": -4.74,
+      "HighPremium": -4.0600000000000005,
+      "LowPremium": -4.0600000000000005,
       "ClosedBy": ""
     },
     {
       "ID": 13,
       "OpenDateTime": "2026-03-25T09:00:00-04:00",
       "CloseDateTime": "2026-03-25T16:00:00-04:00",
-      "UnderlyingAtOpen": 6591.9,
-      "UnderlyingAtClose": 6591.96,
+      "UnderlyingAtOpen": 655.41,
+      "UnderlyingAtClose": 657.04,
       "Legs": [
         {
           "Spec": {
@@ -782,10 +470,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6590,
+          "Strike": 655,
           "Expiration": "2026-03-25T16:00:00-04:00",
-          "OpenPremium": 3.4,
-          "ClosePremium": 1.95
+          "OpenPremium": 1.46,
+          "ClosePremium": 2.07
         },
         {
           "Spec": {
@@ -794,50 +482,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6590,
+          "Strike": 655,
           "Expiration": "2026-03-25T16:00:00-04:00",
-          "OpenPremium": 4.75,
-          "ClosePremium": 0.3
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6590,
-          "Expiration": "2026-03-26T16:00:00-04:00",
-          "OpenPremium": 31.4,
-          "ClosePremium": 35.2
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6590,
-          "Expiration": "2026-03-26T16:00:00-04:00",
-          "OpenPremium": 32.13,
-          "ClosePremium": 28.8
+          "OpenPremium": 0.14,
+          "ClosePremium": 0.04
         }
       ],
-      "OpenPremium": 55.38,
-      "ClosePremium": 61.75,
-      "HighPremium": 55.38,
-      "LowPremium": 55.38,
+      "OpenPremium": -1.6,
+      "ClosePremium": -2.11,
+      "HighPremium": -1.6,
+      "LowPremium": -1.6,
       "ClosedBy": ""
     },
     {
       "ID": 14,
       "OpenDateTime": "2026-03-26T09:00:00-04:00",
       "CloseDateTime": "2026-03-26T16:00:00-04:00",
-      "UnderlyingAtOpen": 6477.16,
-      "UnderlyingAtClose": 6477.1,
+      "UnderlyingAtOpen": 647.86,
+      "UnderlyingAtClose": 645.22,
       "Legs": [
         {
           "Spec": {
@@ -846,10 +508,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6475,
+          "Strike": 648,
           "Expiration": "2026-03-26T16:00:00-04:00",
-          "OpenPremium": 11.5,
-          "ClosePremium": 2.4
+          "OpenPremium": 0.08,
+          "ClosePremium": 0.04
         },
         {
           "Spec": {
@@ -858,50 +520,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6475,
+          "Strike": 648,
           "Expiration": "2026-03-26T16:00:00-04:00",
-          "OpenPremium": 0.95,
-          "ClosePremium": 0.05
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6475,
-          "Expiration": "2026-03-27T16:00:00-04:00",
-          "OpenPremium": 43.2,
-          "ClosePremium": 40.2
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6475,
-          "Expiration": "2026-03-27T16:00:00-04:00",
-          "OpenPremium": 31,
-          "ClosePremium": 35.71
+          "OpenPremium": 2.07,
+          "ClosePremium": 2.78
         }
       ],
-      "OpenPremium": 61.75,
-      "ClosePremium": 73.46000000000001,
-      "HighPremium": 61.75,
-      "LowPremium": 61.75,
+      "OpenPremium": -2.15,
+      "ClosePremium": -2.82,
+      "HighPremium": -2.15,
+      "LowPremium": -2.15,
       "ClosedBy": ""
     },
     {
       "ID": 15,
       "OpenDateTime": "2026-03-27T09:00:00-04:00",
       "CloseDateTime": "2026-03-27T16:00:00-04:00",
-      "UnderlyingAtOpen": 6368.85,
-      "UnderlyingAtClose": 6368.71,
+      "UnderlyingAtOpen": 632.98,
+      "UnderlyingAtClose": 633.5,
       "Legs": [
         {
           "Spec": {
@@ -910,10 +546,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6370,
+          "Strike": 633,
           "Expiration": "2026-03-27T16:00:00-04:00",
-          "OpenPremium": 4.7,
-          "ClosePremium": 0.15
+          "OpenPremium": 1.64,
+          "ClosePremium": 1.01
         },
         {
           "Spec": {
@@ -922,50 +558,24 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6370,
+          "Strike": 633,
           "Expiration": "2026-03-27T16:00:00-04:00",
-          "OpenPremium": 6.1,
-          "ClosePremium": 0.65
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6370,
-          "Expiration": "2026-03-30T16:00:00-04:00",
-          "OpenPremium": 51.3,
-          "ClosePremium": 47.41
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6370,
-          "Expiration": "2026-03-30T16:00:00-04:00",
-          "OpenPremium": 52.47,
-          "ClosePremium": 57.3
+          "OpenPremium": 0.25,
+          "ClosePremium": 0.47
         }
       ],
-      "OpenPremium": 92.97,
-      "ClosePremium": 103.91,
-      "HighPremium": 92.97,
-      "LowPremium": 92.97,
+      "OpenPremium": -1.89,
+      "ClosePremium": -1.48,
+      "HighPremium": -1.89,
+      "LowPremium": -1.89,
       "ClosedBy": ""
     },
     {
       "ID": 16,
       "OpenDateTime": "2026-03-30T09:00:00-04:00",
       "CloseDateTime": "2026-03-30T16:00:00-04:00",
-      "UnderlyingAtOpen": 6343.72,
-      "UnderlyingAtClose": 6343.84,
+      "UnderlyingAtOpen": 630.58,
+      "UnderlyingAtClose": 631.59,
       "Legs": [
         {
           "Spec": {
@@ -974,10 +584,10 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6345,
+          "Strike": 631,
           "Expiration": "2026-03-30T16:00:00-04:00",
-          "OpenPremium": 0.8,
-          "ClosePremium": 0.4
+          "OpenPremium": 0.35,
+          "ClosePremium": 0.7
         },
         {
           "Spec": {
@@ -986,42 +596,54 @@
             "strike_rule": "ATM",
             "qty": 1
           },
-          "Strike": 6345,
+          "Strike": 631,
           "Expiration": "2026-03-30T16:00:00-04:00",
-          "OpenPremium": 16.2,
-          "ClosePremium": 1.13
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "call",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6345,
-          "Expiration": "2026-03-31T16:00:00-04:00",
-          "OpenPremium": 27.16,
-          "ClosePremium": 33.6
-        },
-        {
-          "Spec": {
-            "side": "buy",
-            "option_type": "put",
-            "strike_rule": "ATM",
-            "qty": 1,
-            "expiration": 1
-          },
-          "Strike": 6345,
-          "Expiration": "2026-03-31T16:00:00-04:00",
-          "OpenPremium": 46.05,
-          "ClosePremium": 38.5
+          "OpenPremium": 0.81,
+          "ClosePremium": 0.16
         }
       ],
-      "OpenPremium": 56.209999999999994,
-      "ClosePremium": 70.57,
-      "HighPremium": 56.209999999999994,
-      "LowPremium": 56.209999999999994,
+      "OpenPremium": -1.1600000000000001,
+      "ClosePremium": -0.86,
+      "HighPremium": -1.1600000000000001,
+      "LowPremium": -1.1600000000000001,
+      "ClosedBy": ""
+    },
+    {
+      "ID": 17,
+      "OpenDateTime": "2026-03-31T09:00:00-04:00",
+      "CloseDateTime": "2026-03-31T16:00:00-04:00",
+      "UnderlyingAtOpen": 652.28,
+      "UnderlyingAtClose": 650.46,
+      "Legs": [
+        {
+          "Spec": {
+            "side": "sell",
+            "option_type": "call",
+            "strike_rule": "ATM",
+            "qty": 1
+          },
+          "Strike": 652,
+          "Expiration": "2026-03-31T16:00:00-04:00",
+          "OpenPremium": 0.19,
+          "ClosePremium": 0.06
+        },
+        {
+          "Spec": {
+            "side": "sell",
+            "option_type": "put",
+            "strike_rule": "ATM",
+            "qty": 1
+          },
+          "Strike": 652,
+          "Expiration": "2026-03-31T16:00:00-04:00",
+          "OpenPremium": 1.71,
+          "ClosePremium": 1.6
+        }
+      ],
+      "OpenPremium": -1.9,
+      "ClosePremium": -1.6600000000000001,
+      "HighPremium": -1.9,
+      "LowPremium": -1.9,
       "ClosedBy": ""
     }
   ]

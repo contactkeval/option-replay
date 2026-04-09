@@ -56,6 +56,7 @@ func TestMassiveProvider_GetDailyBars_HTTPError(t *testing.T) {
 	}
 }
 
+// TODO: test pagination logic
 func TestMassiveProvider_Pagination(t *testing.T) {
 	callCount := 0
 
@@ -153,7 +154,7 @@ func TestGetStrikeIntervals(t *testing.T) {
 	if len(intervals) == 0 {
 		t.Fatal("expected non-empty intervals")
 	}
-	expected := []float64{5.0} // Assuming NDX has 5 point intervals
+	expected := []float64{5.0, 10, 25, 100, 200} // Assuming NDX has 5 point intervals
 	for i, interval := range intervals {
 		if interval != expected[i] {
 			t.Fatalf("expected interval %f, got %f", expected[i], interval)

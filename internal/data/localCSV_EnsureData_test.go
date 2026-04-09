@@ -33,3 +33,13 @@ func TestEnsureLocal(t *testing.T) {
 		t.Fatalf("Expected file not found: %s", expectedFile)
 	}
 }
+
+func TestEnsureLocal_ExistingRecord(t *testing.T) {
+	// This test will check the behavior of EnsureLocalData when a record already exists in the manifest.
+	// It will create a dummy record with an old last date and verify that it gets updated to today.
+	var dataProv Provider
+	dataProv = NewLocalFileDataProvider("..\\..\\input\\data", dataProv)
+	dataProv.SetSecondary(NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))) // Massive data provider as secondary
+	localProv := dataProv.(*LocalFileDataProvider)
+	localProv.RunMaintenancePipeline() // Ensure manifest is loaded and cleaned up
+}

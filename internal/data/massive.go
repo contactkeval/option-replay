@@ -47,7 +47,7 @@ type MassiveDataProvider struct {
 
 // massiveContract represents a single option contract
 // returned by Massive's contracts reference endpoint.
-type massiveContract struct {
+type massiveContracts struct {
 	CFI               string  `json:"cfi"`
 	ContractType      string  `json:"contract_type"`
 	ExerciseStyle     string  `json:"exercise_style"`
@@ -59,13 +59,24 @@ type massiveContract struct {
 	Underlying        string  `json:"underlying_ticker"`
 }
 
-// massiveContractsResp models the paginated response
-// returned by Massive's option contracts API.
-type massiveContractsResp struct {
-	Results   []massiveContract `json:"results"`
-	Status    string            `json:"status"`
-	RequestID string            `json:"request_id"`
-	NextURL   string            `json:"next_url"`
+type massiveBars struct {
+	Open  float64 `json:"o"`
+	Close float64 `json:"c"`
+	High  float64 `json:"h"`
+	Low   float64 `json:"l"`
+	VWAP  float64 `json:"vw"` // volume-weighted average price
+	// Volume is a number in Massive's API, but some symbols can have very large volumes that exceed uint32 limits (eg. {"v":1.558824e+06,"vw":584.5036,"o":584.97,"c":584.9,"h":584.97,"l":584.9,"t":1735852380000,"n":62}). Using float64 to avoid overflow issues.
+	Volume    float64 `json:"v"` // trading volume of the symbol in the given time period
+	Trades    int64   `json:"n"` // number of transactions in the aggregate window
+	Timestamp int64   `json:"t"` // epoch millis
+}
+
+// massiveResp models the paginated response returned by Massive's API.
+type massiveResp[T any] struct {
+	Status    string `json:"status"`
+	RequestID string `json:"request_id"`
+	NextURL   string `json:"next_url"`
+	Results   []T    `json:"results"`
 }
 
 const (
@@ -318,14 +329,14 @@ func (massiveDataProv *MassiveDataProvider) GetContracts(
 			)
 		}
 
-		var massiveResp massiveContractsResp
-		if err := json.Unmarshal(body, &massiveResp); err != nil {
+		var contractsResp massiveResp[massiveContracts]
+		if err := json.Unmarshal(body, &contractsResp); err != nil {
 			return nil, fmt.Errorf("decode: %w", err)
 		}
 
-		logger.Tracef("received %d contracts", len(massiveResp.Results))
+		logger.Tracef("received %d contracts", len(contractsResp.Results))
 
-		for _, result := range massiveResp.Results {
+		for _, result := range contractsResp.Results {
 			// parse expiration
 			t, err := time.Parse("2006-01-02", result.ExpiryDate)
 			if err != nil {
@@ -339,7 +350,11 @@ func (massiveDataProv *MassiveDataProvider) GetContracts(
 			})
 		}
 
-		reqURL = massiveResp.NextURL
+		reqURL = ""
+		if contractsResp.NextURL != "" {
+			reqURL = contractsResp.NextURL
+		}
+		contractsResp.NextURL = "" // reset next URL before each request to avoid infinite loops on errors
 	}
 
 	return out, nil
@@ -375,7 +390,16 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 		timespan,
 	)
 
-	url := fmt.Sprintf(
+	// massive style response model
+	var massiveBarsResp struct {
+		massiveResp[massiveBars]
+		Underlying   string `json:"ticker"`
+		Adjusted     bool   `json:"adjusted"`
+		QueryCount   int    `json:"queryCount"`
+		ResultsCount int    `json:"resultsCount"`
+	}
+
+	reqURL := fmt.Sprintf(
 		"%s/v2/aggs/ticker/%s/range/%d/%s/%d/%d?adjusted=true&sort=asc&limit=%d&apiKey=%s",
 		massiveDataProv.BaseURL,
 		underlying,
@@ -387,64 +411,53 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 		massiveDataProv.APIKey,
 	)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		logger.Errorf("bars request errored=%v", err)
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
+	out := make([]Bar, 0, len(massiveBarsResp.Results))
+	for reqURL != "" {
+		req, err := http.NewRequest("GET", reqURL, nil)
+		if err != nil {
+			logger.Errorf("bars request errored=%v", err)
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
 
-	req.Header.Set("x-api-key", massiveDataProv.APIKey)
+		req.Header.Set("x-api-key", massiveDataProv.APIKey)
 
-	resp, err := massiveDataProv.processGetRequest(req)
-	if err != nil {
-		logger.Errorf("bars request failed")
-		return nil, fmt.Errorf("massive api request failed: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := massiveDataProv.processGetRequest(req)
+		if err != nil {
+			logger.Errorf("bars request failed: %v", err)
+			return nil, fmt.Errorf("massive api request failed: %w", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf(
-			"massive daily bars status=%d body=%s",
-			resp.StatusCode,
-			string(bodyBytes),
-		)
-	}
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf(
+				"massive daily bars status=%d body=%s",
+				resp.StatusCode,
+				string(bodyBytes),
+			)
+		}
 
-	// Massive/POLYGON style response model
-	var body struct {
-		Symbol   string `json:"ticker"`
-		Adjusted bool   `json:"adjusted"`
-		Results  []struct {
-			Open  float64 `json:"o"`
-			Close float64 `json:"c"`
-			High  float64 `json:"h"`
-			Low   float64 `json:"l"`
-			VWAP  float64 `json:"vw"` // volume-weighted average price
-			// Volume is a number in Massive's API, but some symbols can have very large volumes that exceed uint32 limits (eg. {"v":1.558824e+06,"vw":584.5036,"o":584.97,"c":584.9,"h":584.97,"l":584.9,"t":1735852380000,"n":62}). Using float64 to avoid overflow issues.
-			Volume    float64 `json:"v"` // trading volume of the symbol in the given time period
-			Trades    int64   `json:"n"` // number of transactions in the aggregate window
-			Timestamp int64   `json:"t"` // epoch millis
-		} `json:"results"`
-		Status string `json:"status"`
-	}
+		if err := json.NewDecoder(resp.Body).Decode(&massiveBarsResp); err != nil {
+			return nil, fmt.Errorf("parsing massive response: %w", err)
+		}
 
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, fmt.Errorf("parsing massive response: %w", err)
-	}
+		logger.Tracef("bars received: %d records", len(massiveBarsResp.Results))
 
-	logger.Tracef("bars received: %d records", len(body.Results))
-
-	out := make([]Bar, 0, len(body.Results))
-	for _, r := range body.Results {
-		out = append(out, Bar{
-			Date:   time.UnixMilli(r.Timestamp).UTC(),
-			Open:   r.Open,
-			High:   r.High,
-			Low:    r.Low,
-			Close:  r.Close,
-			Volume: r.Volume,
-		})
+		for _, r := range massiveBarsResp.Results {
+			out = append(out, Bar{
+				Date:   time.UnixMilli(r.Timestamp).UTC(),
+				Open:   r.Open,
+				High:   r.High,
+				Low:    r.Low,
+				Close:  r.Close,
+				Volume: r.Volume,
+			})
+		}
+		reqURL = ""
+		if massiveBarsResp.NextURL != "" {
+			reqURL = fmt.Sprintf(massiveBarsResp.NextURL+"&adjusted=true&sort=asc&limit=%d&apiKey=%s", maxLimit, massiveDataProv.APIKey)
+		}
+		massiveBarsResp.NextURL = "" // reset next URL before each request to avoid infinite loops on errors
 	}
 
 	return out, nil

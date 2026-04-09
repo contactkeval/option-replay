@@ -9,7 +9,7 @@
       "program": "${workspaceFolder}/cmd/option-replay",
       "args": [
         "-config",
-        "${workspaceFolder}/input/strategies/custom.json"
+        "${workspaceFolder}/input/strategies/straddle.json"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
