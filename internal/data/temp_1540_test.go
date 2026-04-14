@@ -86,10 +86,9 @@ var (
 // ---------------------------------------------------
 // Get 15:40 close
 // ---------------------------------------------------
-func getCloseAt1540(date time.Time, loc *time.Location) (float64, error) {
-	target := time.Date(date.Year(), date.Month(), date.Day(), 15, 40, 0, 0, loc)
+func getClosePrice(underlying string, date time.Time, loc *time.Location) (float64, error) {
 
-	bars, _ := localDataProv.GetBars("SPY", target, target.Add(5*time.Minute), multiplierOne, timespanMinute)
+	bars, _ := localDataProv.GetBars(underlying, date, date.Add(5*time.Minute), multiplierOne, timespanMinute)
 
 	if len(bars) > 0 {
 		return bars[0].Close, nil
@@ -106,15 +105,15 @@ func findBestStrike(
 	expiry time.Time,
 	openTime time.Time,
 	step float64,
-	dataProv Provider,
+	localDataProv Provider,
 ) (bestStrike, bestCall, bestPut float64, err error) {
 
 	getPrices := func(strike float64) (float64, float64, error) {
-		call, err := dataProv.GetOptionPrice(underlying, strike, expiry, "call", openTime)
+		call, err := localDataProv.GetOptionPrice(underlying, strike, expiry, "call", openTime)
 		if err != nil {
 			return 0, 0, err
 		}
-		put, err := dataProv.GetOptionPrice(underlying, strike, expiry, "put", openTime)
+		put, err := localDataProv.GetOptionPrice(underlying, strike, expiry, "put", openTime)
 		return call, put, err
 	}
 
@@ -167,7 +166,7 @@ func findBestStrike(
 func TestMain(t *testing.T) {
 
 	// Open Diff.csv
-	diffFile, err := os.Open("..\\..\\input\\data\\massive\\spy_spx_diff_sample.csv")
+	diffFile, err := os.Open("..\\..\\input\\data\\massive\\spy_spx_diff.csv")
 	if err != nil {
 		dir, err := os.Getwd()
 		if err != nil {
@@ -192,12 +191,13 @@ func TestMain(t *testing.T) {
 	defer writer.Flush()
 
 	// Header
-	writer.Write([]string{"Date", "Diff", "Close", "Strike", "Call", "Put"})
+	writer.Write([]string{"Date", "Strike", "Diff", "Close", "", "OpenSPY", "Call0o", "Put0o", "Call1o", "Put1o", "", "CloseSPY", "Call0c", "Put0c", "Call1c", "Put1c"})
 
 	loc, _ := time.LoadLocation("America/New_York")
 
+	currRecord, _ := reader.Read()
 	for {
-		record, err := reader.Read()
+		nextRecord, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
@@ -205,11 +205,14 @@ func TestMain(t *testing.T) {
 			continue
 		}
 
-		date, _ := time.ParseInLocation("02-01-2006", record[0], loc)
-		diff, _ := strconv.ParseFloat(record[1], 64)
+		expDate, _ := time.ParseInLocation("02-01-2006", currRecord[0], loc)
+		diff, _ := strconv.ParseFloat(currRecord[1], 64)
+		nextDate, _ := time.ParseInLocation("02-01-2006", nextRecord[0], loc)
+		currRecord = nextRecord
 
 		// 1. Get close
-		closePrice, err := getCloseAt1540(date, loc)
+		tradeTime := time.Date(expDate.Year(), expDate.Month(), expDate.Day(), 15, 40, 0, 0, loc)
+		closePrice, err := getClosePrice("SPY", tradeTime, loc)
 		if err != nil {
 			continue
 		}
@@ -219,13 +222,13 @@ func TestMain(t *testing.T) {
 		atmStrike := math.Round(closePrice/step) * step
 
 		// 3. Time = 15:40
-		openTime := time.Date(date.Year(), date.Month(), date.Day(), 15, 40, 0, 0, loc)
+		openTime := time.Date(expDate.Year(), expDate.Month(), expDate.Day(), 15, 40, 0, 0, loc)
 
 		// 4. Find strike
 		bestStrike, call, put, err := findBestStrike(
 			Temp_underlying,
 			atmStrike,
-			date,
+			expDate,
 			openTime,
 			step,
 			localDataProv,
@@ -234,14 +237,60 @@ func TestMain(t *testing.T) {
 			continue
 		}
 
+		getPrices := func(strike float64) (float64, float64, error) {
+			call, err := localDataProv.GetOptionPrice(Temp_underlying, strike, expDate, "call", openTime)
+			if err != nil {
+				return 0, 0, err
+			}
+			put, err := localDataProv.GetOptionPrice(Temp_underlying, strike, expDate, "put", openTime)
+			return call, put, err
+		}
+
+		currDate := expDate
+		expDate = nextDate
+		call1, put1, err := getPrices(bestStrike)
+		if err != nil {
+			return
+		}
+
+		openTime = openTime.Add(19 * time.Minute)
+		expDate = currDate
+		call2, put2, err := getPrices(bestStrike)
+		if err != nil {
+			return
+		}
+
+		expDate = nextDate
+		call3, put3, err := getPrices(bestStrike)
+		if err != nil {
+			return
+		}
+
+		tradeTime = tradeTime.Add(19 * time.Minute)
+		closePrice2, err := getClosePrice("SPY", tradeTime, loc)
+		if err != nil {
+			continue
+		}
+
+		expDate = currDate
 		// 5. Write output
 		writer.Write([]string{
-			date.Format("02-01-2006"),
+			expDate.Format("02-01-2006"),
+			fmt.Sprintf("%.0f", bestStrike),
 			fmt.Sprintf("%.2f", diff),
 			fmt.Sprintf("%.2f", closePrice),
-			fmt.Sprintf("%.0f", bestStrike),
+			"",
+			fmt.Sprintf("%.2f", (closePrice-diff)/10),
 			fmt.Sprintf("%.2f", call),
 			fmt.Sprintf("%.2f", put),
+			fmt.Sprintf("%.2f", call1),
+			fmt.Sprintf("%.2f", put1),
+			"",
+			fmt.Sprintf("%.2f", closePrice2),
+			fmt.Sprintf("%.2f", call2),
+			fmt.Sprintf("%.2f", put2),
+			fmt.Sprintf("%.2f", call3),
+			fmt.Sprintf("%.2f", put3),
 		})
 	}
 }
