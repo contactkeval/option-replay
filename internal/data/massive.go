@@ -80,9 +80,9 @@ type massiveResp[T any] struct {
 }
 
 const (
-	multiplierOne  = 1
-	timespanDay    = "day"
-	timespanMinute = "minute"
+	MultiplierOne  = 1
+	TimespanDay    = "day"
+	TimespanMinute = "minute"
 )
 
 // NewMassiveDataProvider constructs a Massive-backed data provider.
@@ -506,7 +506,7 @@ func (massiveDataProv *MassiveDataProvider) GetRelevantExpiries(
 	)
 
 	// Step 1: Load spot bars
-	bars, err := massiveDataProv.GetBars(symbol, fromDate, toDate, multiplierOne, timespanDay)
+	bars, err := massiveDataProv.GetBars(symbol, fromDate, toDate, MultiplierOne, TimespanDay)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch spot data: %w", err)
 	}
@@ -621,7 +621,7 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 	symbol := massiveDataProv.OptionSymbolFromParts(underlying, expiryDate, optionType, strike)
 	price := 0.0
 
-	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime, multiplierOne, timespanMinute)
+	bars, err := massiveDataProv.GetBars(symbol, tradeDateTime.Add(-5*time.Minute), tradeDateTime, MultiplierOne, TimespanMinute)
 	if err != nil {
 		return 0, fmt.Errorf("fetch option bars: %w", err)
 	}
@@ -631,7 +631,7 @@ func (massiveDataProv *MassiveDataProvider) GetOptionPrice(
 	} else {
 		logger.Tracef("no bars before trade time, trying forward window")
 
-		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute), multiplierOne, timespanMinute)
+		bars, err := massiveDataProv.GetBars(symbol, tradeDateTime, tradeDateTime.Add(5*time.Minute), MultiplierOne, TimespanMinute)
 		if err != nil {
 			logger.Errorf("no option bars found for %s", symbol)
 			return 0, fmt.Errorf("fetch option bars: %w", err)
@@ -744,6 +744,7 @@ func (massiveDataProv *MassiveDataProvider) processGetRequest(
 			sleepDuration := time.Until(
 				now.Truncate(time.Minute).Add(time.Minute),
 			)
+			sleepDuration += 15 * time.Second // add buffer to ensure limit resets
 
 			logger.Infof("rate limit hit, sleeping for %2.0f seconds", sleepDuration.Seconds())
 			time.Sleep(sleepDuration)

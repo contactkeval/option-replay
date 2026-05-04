@@ -33,8 +33,8 @@ type TempBar struct {
 
 var (
 	Temp_underlying = "SPX"
-	step            = 5.0
-	localDataProv   = NewLocalFileDataProvider("..\\..\\input\\data", NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))) // Massive data provider as secondary
+	// step            = 5.0
+	// localDataProv   = NewLocalFileDataProvider("..\\..\\input\\data", NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))) // Massive data provider as secondary
 )
 
 // ---------------------------------------------------
@@ -88,7 +88,7 @@ var (
 // ---------------------------------------------------
 func getClosePrice(underlying string, date time.Time, loc *time.Location) (float64, error) {
 
-	bars, _ := localDataProv.GetBars(underlying, date, date.Add(5*time.Minute), multiplierOne, timespanMinute)
+	bars, _ := localDataProv.GetBars(underlying, date, date.Add(5*time.Minute), MultiplierOne, TimespanMinute)
 
 	if len(bars) > 0 {
 		return bars[0].Close, nil
@@ -196,6 +196,7 @@ func TestMain(t *testing.T) {
 	loc, _ := time.LoadLocation("America/New_York")
 
 	currRecord, _ := reader.Read()
+	closeAfter := 18 * time.Minute
 	for {
 		nextRecord, err := reader.Read()
 		if err == io.EOF {
@@ -253,7 +254,7 @@ func TestMain(t *testing.T) {
 			return
 		}
 
-		openTime = openTime.Add(19 * time.Minute)
+		openTime = openTime.Add(closeAfter)
 		expDate = currDate
 		call2, put2, err := getPrices(bestStrike)
 		if err != nil {
@@ -266,7 +267,7 @@ func TestMain(t *testing.T) {
 			return
 		}
 
-		tradeTime = tradeTime.Add(19 * time.Minute)
+		tradeTime = tradeTime.Add(closeAfter)
 		closePrice2, err := getClosePrice("SPY", tradeTime, loc)
 		if err != nil {
 			continue
@@ -293,4 +294,9 @@ func TestMain(t *testing.T) {
 			fmt.Sprintf("%.2f", put3),
 		})
 	}
+}
+
+func TestSPXPipeline(t *testing.T) {
+	// This test can be used to run the entire SPX pipeline for a single date, using the logic from TestMain.
+	// It can be useful for debugging and validating the individual components of the pipeline.
 }
