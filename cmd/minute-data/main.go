@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -13,9 +14,9 @@ import (
 )
 
 var (
-	startDateStr = "2026-04-01"
-	endDateStr   = "2026-04-02"
-	symbolsInput = "SPY,QQQ"
+	startDateStr = "2024-07-01"
+	endDateStr   = "2024-07-01"
+	symbolsInput = "SPY,O:SPY240701C00545000,O:SPY240701P00545000,O:SPY240702C00545000,O:SPY240702P00545000,O:SPY240703C00545000,O:SPY240703P00545000"
 	outputFile   = "minute_bars_wide.csv"
 )
 
@@ -49,9 +50,9 @@ func parseSymbols(input string) []string {
 	return out
 }
 
-func dateRange(start, end time.Time) []time.Time {
+func dateRange(startDate, endDate time.Time) []time.Time {
 	var days []time.Time
-	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
 		days = append(days, d)
 	}
 	return days
@@ -79,9 +80,9 @@ func main() {
 		dataBars[symbol] = make(map[int64]Bar)
 
 		for _, day := range days {
-			start := time.Date(day.Year(), day.Month(), day.Day(), 9, 30, 0, 0, loc)
-			end := time.Date(day.Year(), day.Month(), day.Day(), 16, 0, 0, 0, loc)
-			bars, err := localDataProv.GetBars(symbol, start, end, data.MultiplierOne, data.TimespanMinute)
+			fromDate := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, loc)
+			toDate := time.Date(day.Year(), day.Month(), day.Day(), 16, 30, 0, 0, loc)
+			bars, err := localDataProv.GetBars(symbol, fromDate, toDate, data.MultiplierOne, data.TimespanMinute)
 			if err != nil {
 				continue
 			}
@@ -124,32 +125,37 @@ func main() {
 	defer writer.Flush()
 
 	// Header
-	header := []string{"DateTime"}
-	for _, sym := range symbols {
-		header = append(header,
-			sym+"_Open",
-			sym+"_High",
-			sym+"_Low",
-			sym+"_Close",
-			sym+"_Volume",
+	header1 := []string{"", "", ""}
+	header2 := []string{"Timestamp", "Date", "Time"}
+	for _, symbol := range symbols {
+		header2 = append(header2, "",
+			"Open",
+			"High",
+			"Low",
+			"Close",
+			"Volume",
 		)
+		header1 = append(header1, "", symbol, "", "", "", "")
 	}
-	writer.Write(header)
+	writer.Write(header1)
+	writer.Write(header2)
 
 	// Rows
 	for _, ts := range timestamps {
 		row := []string{
-			time.Unix(ts, 0).In(loc).Format(time.RFC3339),
+			fmt.Sprintf("%d", ts),
+			time.Unix(ts, 0).In(loc).Format("2006-01-02"),
+			time.Unix(ts, 0).In(loc).Format("15:04:05"),
 		}
-		for _, sym := range symbols {
-			bar, ok := dataBars[sym][ts]
+		for _, symbol := range symbols {
+			bar, ok := dataBars[symbol][ts]
 			if !ok {
 				// missing bar → empty columns
-				row = append(row, "", "", "", "", "")
+				row = append(row, "", "", "", "", "", "")
 				continue
 			}
 
-			row = append(row,
+			row = append(row, "",
 				fmt.Sprintf("%.2f", bar.Open),
 				fmt.Sprintf("%.2f", bar.High),
 				fmt.Sprintf("%.2f", bar.Low),
@@ -160,5 +166,10 @@ func main() {
 		writer.Write(row)
 	}
 
-	logger.Infof("Done: %s generated", outputFile)
+	absPath, err := filepath.Abs(outputFile)
+	if err != nil {
+		logger.Infof("Done: %s generated", outputFile)
+	} else {
+		logger.Infof("Done: %s generated", absPath)
+	}
 }
