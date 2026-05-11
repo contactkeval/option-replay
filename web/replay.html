@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Option Replay</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { background:#111; color:#ddd; font-family:Arial; }
+        #chart { height: 500px; }
+        #controls { margin-top:10px; }
+    </style>
+</head>
+
+<body>
+
+<h3>Option Replay</h3>
+<div id="chart"></div>
+
+<div id="controls">
+    Speed:
+    <select id="speed">
+        <option value="1000">1x</option>
+        <option value="500">2x</option>
+        <option value="100">10x</option>
+    </select>
+    <button onclick="togglePlay()">Play/Pause (Space)</button>
+    <button onclick="reset()">Reset (0)</button>
+</div>
+
+<script>
+let chart = LightweightCharts.createChart(document.getElementById('chart'), {
+    layout: { background: { color: '#111' }, textColor: '#DDD' },
+    grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } }
+});
+
+// series
+const spySeries = chart.addLineSeries({ color: 'white' });
+const c1Series  = chart.addLineSeries({ color: 'green' });
+const p1Series  = chart.addLineSeries({ color: 'red' });
+const c2Series  = chart.addLineSeries({ color: 'lime' });
+const p2Series  = chart.addLineSeries({ color: 'orange' });
+const finalSeries = chart.addLineSeries({ color: 'yellow' });
+
+// state
+let data = [];
+let index = 0;
+let playing = false;
+let timer = null;
+
+// -------- Load data --------
+fetch("data.json")
+.then(res => res.json())
+.then(json => {
+    data = normalize(json); // normalize all series
+    updateChart();
+});
+
+// -------- Normalize (index = 100) --------
+function normalize(raw) {
+    if (raw.length === 0) return raw;
+
+    let base = raw[0];
+
+    return raw.map(d => ({
+        time: d.time,
+        spy:   d.spy   / base.spy   * 100,
+        c1:    d.c1    / base.c1    * 100,
+        p1:    d.p1    / base.p1    * 100,
+        c2:    d.c2    / base.c2    * 100,
+        p2:    d.p2    / base.p2    * 100,
+        final: d.final / base.final * 100
+    }));
+}
+
+// -------- Update chart (incremental) --------
+function updateChart() {
+    if (index >= data.length) return;
+
+    let d = data[index];
+
+    spySeries.update({ time: d.time, value: d.spy });
+    c1Series.update({ time: d.time, value: d.c1 });
+    p1Series.update({ time: d.time, value: d.p1 });
+    c2Series.update({ time: d.time, value: d.c2 });
+    p2Series.update({ time: d.time, value: d.p2 });
+    finalSeries.update({ time: d.time, value: d.final });
+
+    index++;
+}
+
+// -------- Step controls --------
+function step(n) {
+    for (let i = 0; i < n; i++) {
+        updateChart();
+    }
+}
+
+// -------- Reset --------
+function reset() {
+    index = 0;
+    chart.remove();
+    location.reload();
+}
+
+// -------- Play --------
+function togglePlay() {
+    playing = !playing;
+
+    if (playing) {
+        let speed = document.getElementById("speed").value;
+        timer = setInterval(() => step(1), speed);
+    } else {
+        clearInterval(timer);
+    }
+}
+
+// -------- Keyboard controls --------
+document.addEventListener("keydown", (e) => {
+
+    if (e.key === "ArrowRight") step(1);
+    if (e.key === "ArrowLeft")  step(-1);
+    if (e.key === "+" || e.key === "=") step(10);
+    if (e.key === "-" || e.key === "_") step(-10);
+    if (e.key === " ") togglePlay();
+    if (e.key === "0") reset();
+});
+
+</script>
+
+</body>
+</html>
