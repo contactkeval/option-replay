@@ -5,11 +5,12 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"time"
 )
 
 func ProcessFile(path string, cache *WriterCache) error {
 
-	fmt.Printf("PROCESSING %s\n", path)
+	fmt.Printf("%s PROCESSING %s\n", time.Now().Format("2006-01-02 15:04:05"), path)
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -62,7 +63,13 @@ func ProcessFile(path string, cache *WriterCache) error {
 		)
 
 		if err := cache.Write(parsed, line); err != nil {
-			return err
+			fmt.Printf(
+				"WRITE ERROR ticker=%s err=%v\n",
+				ticker,
+				err,
+			)
+
+			continue
 		}
 	}
 

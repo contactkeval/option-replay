@@ -11,17 +11,6 @@ func Run(inputRoot string, outputRoot string) error {
 
 	fmt.Printf("Found %d files\n", len(files))
 
-	// cache := NewWriterCache(outputRoot)
-
-	// defer cache.Close()
-
-	// for _, file := range files {
-
-	// 	if err := ProcessFile(file, cache); err != nil {
-	// 		fmt.Printf("ERROR %s: %v\n", file, err)
-	// 	}
-	// }
-
 	for _, file := range files {
 
 		cache := NewWriterCache(outputRoot)
