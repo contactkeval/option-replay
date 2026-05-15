@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
-	"option-replay/internal/parquetbuilder"
+	"github.com/contactkeval/option-replay/internal/parquetbuilder"
 )
 
 func main() {
@@ -13,7 +14,7 @@ func main() {
 
 	parquetRoot := `F:\data\parquet`
 
-	tickerFiles, err := parquetbuilder.DiscoverTickerFiles(stagingRoot)
+	tickerFiles, err := parquetbuilder.DiscoverTickerFiles(stagingRoot, parquetRoot)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -21,7 +22,8 @@ func main() {
 	for ticker, files := range tickerFiles {
 
 		fmt.Printf(
-			"PROCESSING %s (%d files)\n",
+			"%s PROCESSING %s (%d files)\n",
+			time.Now().Format("2006-01-02 15:04:05"),
 			ticker,
 			len(files),
 		)
