@@ -1,17 +1,19 @@
 package parquetbuilder
 
+const PriceScale = 10000
+
 type OptionRow struct {
-	Expiry     int32  `parquet:"expiry"`
-	Strike     int64  `parquet:"strike"`
-	OptionType string `parquet:"option_type"`
+	Expiry     uint32 `parquet:"expiry"`
+	Strike     uint32 `parquet:"strike"`
+	OptionType bool   `parquet:"option_type"`
 
-	WindowStart int64 `parquet:"window_start"`
+	WindowStart uint32 `parquet:"window_start"`
 
-	Open  float32 `parquet:"open"`
-	High  float32 `parquet:"high"`
-	Low   float32 `parquet:"low"`
-	Close float32 `parquet:"close"`
+	Open  uint32 `parquet:"open"`
+	High  uint32 `parquet:"high"`
+	Low   uint32 `parquet:"low"`
+	Close uint32 `parquet:"close"`
 
-	Volume       int64 `parquet:"volume"`
-	Transactions int32 `parquet:"transactions"`
+	Volume       uint32 `parquet:"volume"`
+	Transactions uint32 `parquet:"transactions"`
 }

@@ -73,19 +73,11 @@ func TickerAlreadyProcessed(
 
 	tickerDir := filepath.Join(parquetRoot, ticker)
 
-	entries, err := os.ReadDir(tickerDir)
+	info, err := os.Stat(tickerDir)
 
 	if err != nil {
 		return false
 	}
 
-	// Success marker file exists
-	for _, e := range entries {
-
-		if e.Name() == "_SUCCESS" {
-			return true
-		}
-	}
-
-	return false
+	return info.IsDir()
 }

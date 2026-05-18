@@ -1,24 +1,28 @@
 package parquetbuilder
 
 import (
-    "os"
+	"os"
 
-    "github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/compress/zstd"
 )
 
 func WriteParquet(path string, rows []OptionRow) error {
 
-    file, err := os.Create(path)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-    writer := parquet.NewGenericWriter[OptionRow](file)
+	writer := parquet.NewGenericWriter[OptionRow](
+		file,
+		parquet.Compression(&zstd.Codec{}),
+		parquet.MaxRowsPerRowGroup(2_000_000),
+	)
+	defer writer.Close()
 
-    defer writer.Close()
+	_, err = writer.Write(rows)
 
-    _, err = writer.Write(rows)
-
-    return err
+	return err
 }
