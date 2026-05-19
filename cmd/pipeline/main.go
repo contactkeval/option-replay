@@ -3,31 +3,30 @@ package main
 import (
 	"log"
 
-	"github.com/contactkeval/option-replay/internal/s3sync"
-	"github.com/contactkeval/option-replay/internal/staging"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
+	stage1 "github.com/contactkeval/option-replay/internal/pipeline/stage1_raw_to_expiry"
+	stage2 "github.com/contactkeval/option-replay/internal/pipeline/stage2_expiry_rollover"
+	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_sort_dedupe"
+	stage4 "github.com/contactkeval/option-replay/internal/pipeline/stage4_parquet"
 )
-
-func main_old() {
-	cfg := s3sync.Config{
-		Bucket:              "your-bucket-name",
-		Prefix:              "", // optional
-		LocalDir:            "./data",
-		Region:              "us-east-1",
-		ConcurrentDownloads: 5,
-	}
-
-	if err := s3sync.Sync(cfg); err != nil {
-		log.Fatal(err)
-	}
-}
 
 func main() {
 
-	inputRoot := `F:\data\minute_aggs_v1`
+	cfg := config.Load()
 
-	outputRoot := `F:\data\staging`
+	if err := stage1.Run(cfg); err != nil {
+		log.Fatal(err)
+	}
 
-	if err := staging.Run(inputRoot, outputRoot); err != nil {
+	if err := stage2.Run(cfg); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := stage3.Run(cfg); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := stage4.Run(cfg); err != nil {
 		log.Fatal(err)
 	}
 }
