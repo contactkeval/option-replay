@@ -1,67 +1,64 @@
 package stage3_sort_dedupe
 
 import (
-	"bufio"
-	"fmt"
 	"os"
-	"sort"
+	"path/filepath"
+	"strings"
 
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 func Run(cfg config.Config) error {
 
-	return nil
-}
+	return filepath.Walk(
+		cfg.Stage3Root,
+		func(path string, info os.FileInfo, err error) error {
 
-func SortAndDedupe(path string) error {
+			if err != nil {
+				return err
+			}
 
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+			if info.IsDir() {
+				return nil
+			}
 
-	scanner := bufio.NewScanner(file)
+			if !strings.HasSuffix(path, ".csv") {
+				return nil
+			}
 
-	var rows []string
+			logger.Infof(
+				"stage3 processing path=%s",
+				path,
+			)
 
-	for scanner.Scan() {
-		rows = append(rows, scanner.Text())
-	}
+			rows, err := LoadRows(path)
 
-	sort.Strings(rows)
+			if err != nil {
+				return err
+			}
 
-	tempPath := path + ".tmp"
+			SortRows(rows)
 
-	out, err := os.Create(tempPath)
-	if err != nil {
-		return err
-	}
+			rows, duplicates := DedupeRows(rows)
 
-	writer := bufio.NewWriterSize(out, 64*1024)
+			if err := RewriteFile(
+				cfg,
+				path,
+				rows,
+				duplicates,
+			); err != nil {
 
-	var last string
+				return err
+			}
 
-	for _, row := range rows {
-
-		if row == last {
-			fmt.Printf("DUPLICATE %s\n", row)
-			continue
-		}
-
-		_, err := writer.WriteString(row + "\n")
-		if err != nil {
-			return err
-		}
-
-		last = row
-	}
-
-	writer.Flush()
-	out.Close()
-
-	os.Remove(path)
-
-	return os.Rename(tempPath, path)
+			logger.Infof(
+				"stage3 completed path=%s rows=%d duplicates_removed=%d",
+				path,
+				len(rows),
+				duplicates,
+			)
+			return nil
+		},
+	)
 }

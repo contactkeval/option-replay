@@ -1,7 +1,8 @@
 package config
 
 type Config struct {
-	RawRoot string
+	RawRoot  string
+	TempRoot string
 
 	Stage2Root string
 	Stage3Root string
@@ -20,15 +21,16 @@ type Config struct {
 func Load() Config {
 
 	return Config{
-		RawRoot: "/f/data/minute_aggs_v1",
+		RawRoot:  "G:\\data\\minute_aggs_v1",
+		TempRoot: "G:\\data\\temp",
 
-		Stage2Root: "/f/data/stage2",
-		Stage3Root: "/f/data/stage3",
+		Stage2Root: "G:\\data\\stage2",
+		Stage3Root: "G:\\data\\stage3",
 
-		ParquetRoot: "/f/data/parquet",
+		ParquetRoot: "G:\\data\\parquet",
 
-		ArchiveRawRoot:    "/f/archive/minute_aggs_v1",
-		ArchiveSortedRoot: "/f/archive/expiry_sorted",
+		ArchiveRawRoot:    "G:\\archive\\minute_aggs_v1",
+		ArchiveSortedRoot: "G:\\archive\\expiry_sorted",
 
 		MaxOpenFiles: 128,
 
