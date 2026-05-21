@@ -6,7 +6,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/cmd/option-replay",
+      "program": "${workspaceFolder}/cmd/pipeline",
       "args": [
         "-config",
         "${workspaceFolder}/input/strategies/straddle.json"

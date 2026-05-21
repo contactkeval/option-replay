@@ -13,7 +13,7 @@ import (
 func Run(cfg config.Config) error {
 
 	// today := time.Now().Format("060102")
-	today := time.Date(2026, 01, 31, 0, 0, 0, 0, time.UTC).Format("060102")
+	today := time.Date(2026, 02, 02, 0, 0, 0, 0, time.UTC).Format("060102")
 
 	return filepath.Walk(cfg.Stage2Root, func(path string, info os.FileInfo, err error) error {
 

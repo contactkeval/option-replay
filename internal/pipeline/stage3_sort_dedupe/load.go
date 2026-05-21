@@ -5,6 +5,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/contactkeval/option-replay/internal/pipeline/constants"
+	"github.com/contactkeval/option-replay/internal/pipeline/util"
 )
 
 func LoadRows(path string) ([]Stage3Row, error) {
@@ -17,19 +20,18 @@ func LoadRows(path string) ([]Stage3Row, error) {
 
 	scanner := bufio.NewScanner(file)
 
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024)
-
+	buf := make([]byte, 0, constants.ScannerBufferInitial)
+	scanner.Buffer(buf, constants.ScannerBufferMax)
 	var rows []Stage3Row
 
 	for scanner.Scan() {
 
 		line := scanner.Text()
 		parts := strings.Split(line, ",")
-		strike, _ := strconv.ParseUint(parts[0], 10, 32)
-		optionType := parts[1] == "C"
+		strike := util.ParseStrike(parts[0])
+		optionType := util.ParseOptionType(parts[1])
 		windowStartNs, _ := strconv.ParseUint(parts[2], 10, 64)
-		windowStartSec := uint32(windowStartNs / 1_000_000_000)
+		windowStartSec := util.NanosecondsToSeconds(windowStartNs)
 
 		openFloat, _ := strconv.ParseFloat(parts[3], 64)
 		highFloat, _ := strconv.ParseFloat(parts[4], 64)
@@ -44,10 +46,10 @@ func LoadRows(path string) ([]Stage3Row, error) {
 			OptionType:  optionType,
 			WindowStart: windowStartSec,
 
-			Open:  uint32(openFloat * 100),
-			High:  uint32(highFloat * 100),
-			Low:   uint32(lowFloat * 100),
-			Close: uint32(closeFloat * 100),
+			Open:  util.PriceToUint32(openFloat),
+			High:  util.PriceToUint32(highFloat),
+			Low:   util.PriceToUint32(lowFloat),
+			Close: util.PriceToUint32(closeFloat),
 
 			Volume:       uint32(volume),
 			Transactions: uint32(transactions),
