@@ -78,10 +78,23 @@ func (c *WriterCache) Write(
 
 func (c *WriterCache) CloseAll() error {
 
-	for _, entry := range c.writers {
+	for key, entry := range c.writers {
 
-		entry.Writer.Flush()
-		entry.File.Close()
+		if err := entry.Writer.Flush(); err != nil {
+			return fmt.Errorf(
+				"flush failed for %s: %w",
+				key,
+				err,
+			)
+		}
+
+		if err := entry.File.Close(); err != nil {
+			return fmt.Errorf(
+				"close failed for %s: %w",
+				key,
+				err,
+			)
+		}
 	}
 
 	c.writers = make(map[string]*WriterEntry)

@@ -20,15 +20,15 @@ func Run(cfg config.Config) error {
 		cfg.MaxOpenFiles,
 	)
 
-	defer cache.CloseAll()
-
 	for _, file := range files {
 
 		if err := ProcessRawFile(file, cache); err != nil {
 			return err
 		}
 
-		cache.CloseAll()
+		if err := cache.CloseAll(); err != nil {
+			return err
+		}
 
 		if err := ArchiveRawFile(file, cfg); err != nil {
 			return err
