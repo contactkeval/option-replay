@@ -17,7 +17,7 @@ func Run(cfg config.Config) error {
 	stage3Root := cfg.Stage3Root
 	archiveRoot := cfg.ArchiveSortedRoot
 	// today := time.Now()
-	today := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	today := time.Date(2026, 1, 28, 0, 0, 0, 0, time.UTC)
 	logger.Infof("Stage 2 processing started")
 
 	return filepath.Walk(
@@ -55,10 +55,10 @@ func Run(cfg config.Config) error {
 				return nil
 			}
 
-			logger.Infof(
-				"stage2 finalize start: %s",
-				path,
-			)
+			// logger.Infof(
+			// 	"stage2 finalize start: %s",
+			// 	path,
+			// )
 
 			rows, err := LoadRows(path)
 			if err != nil {
@@ -128,10 +128,10 @@ func Run(cfg config.Config) error {
 			}
 
 			logger.Infof(
-				"stage2 finalize complete: %s rows=%d duplicates=%d",
-				path,
-				len(dedupedRows),
+				"duplicates=%d rows=%d, %s processed",
 				duplicates,
+				len(dedupedRows),
+				path,
 			)
 
 			return nil

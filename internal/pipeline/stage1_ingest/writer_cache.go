@@ -1,4 +1,4 @@
-package stage1_raw_to_expiry
+package stage1_ingest
 
 import (
 	"bufio"

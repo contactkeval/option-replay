@@ -3,10 +3,10 @@ package stage2_finalize
 import (
 	"sort"
 
-	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_sort_dedupe"
+	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
 )
 
-func SortRows(rows []stage3.Stage3Row) {
+func SortRows(rows []stage3.ParquetRow) {
 
 	sort.Slice(rows, func(i, j int) bool {
 
@@ -18,8 +18,8 @@ func SortRows(rows []stage3.Stage3Row) {
 		}
 
 		if a.OptionType != b.OptionType {
-			// false (Put) before true (Call)
-			return !a.OptionType && b.OptionType
+			// Call before Put
+			return a.OptionType && !b.OptionType
 		}
 
 		return a.WindowStart < b.WindowStart

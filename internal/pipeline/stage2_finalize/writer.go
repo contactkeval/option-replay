@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_sort_dedupe"
+	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
 )
 
-func WriteRows(path string, rows []stage3.Stage3Row) error {
+func WriteRows(path string, rows []stage3.ParquetRow) error {
 
 	file, err := os.Create(path)
 	if err != nil {

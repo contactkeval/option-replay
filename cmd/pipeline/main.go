@@ -4,8 +4,9 @@ import (
 	"log"
 
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
-	stage1 "github.com/contactkeval/option-replay/internal/pipeline/stage1_raw_to_expiry"
+	stage1 "github.com/contactkeval/option-replay/internal/pipeline/stage1_ingest"
 	stage2 "github.com/contactkeval/option-replay/internal/pipeline/stage2_finalize"
+	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
 )
 
 func main() {
@@ -20,11 +21,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// if err := stage3.Run(cfg); err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// if err := stage4.Run(cfg); err != nil {
-	// 	log.Fatal(err)
-	// }
+	if err := stage3.Run(cfg); err != nil {
+		log.Fatal(err)
+	}
 }
