@@ -5,9 +5,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
-func LoadRows(path string) ([]ParquetRow, error) {
+func LoadRows(path string) ([]model.ParquetRow, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -17,7 +19,7 @@ func LoadRows(path string) ([]ParquetRow, error) {
 
 	scanner := bufio.NewScanner(file)
 
-	var rows []ParquetRow
+	var rows []model.ParquetRow
 
 	for scanner.Scan() {
 
@@ -41,7 +43,7 @@ func LoadRows(path string) ([]ParquetRow, error) {
 		volume, _ := strconv.ParseUint(parts[7], 10, 32)
 		transactions, _ := strconv.ParseUint(parts[8], 10, 32)
 
-		rows = append(rows, ParquetRow{
+		rows = append(rows, model.ParquetRow{
 			Strike:      uint32(strike),
 			OptionType:  optionType,
 			WindowStart: uint32(windowStart),

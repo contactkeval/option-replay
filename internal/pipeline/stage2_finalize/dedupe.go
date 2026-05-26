@@ -1,14 +1,14 @@
 package stage2_finalize
 
-import stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
+import "github.com/contactkeval/option-replay/internal/pipeline/model"
 
-func DedupeRows(rows []stage3.ParquetRow) ([]stage3.ParquetRow, int) {
+func DedupeRows(rows []model.ParquetRow) ([]model.ParquetRow, int) {
 
 	if len(rows) == 0 {
 		return rows, 0
 	}
 
-	result := make([]stage3.ParquetRow, 0, len(rows))
+	result := make([]model.ParquetRow, 0, len(rows))
 
 	result = append(result, rows[0])
 

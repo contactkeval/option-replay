@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
-func WriteRows(path string, rows []stage3.ParquetRow) error {
+func WriteRows(path string, rows []model.ParquetRow) error {
 
 	file, err := os.Create(path)
 	if err != nil {

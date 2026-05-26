@@ -3,13 +3,13 @@ package stage2_finalize
 import (
 	"strconv"
 
-	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 	"github.com/contactkeval/option-replay/internal/pipeline/util"
 )
 
-func ConvertRows(rows []CsvRow) []stage3.ParquetRow {
+func ConvertRows(rows []model.CsvRow) []model.ParquetRow {
 
-	result := make([]stage3.ParquetRow, 0, len(rows))
+	result := make([]model.ParquetRow, 0, len(rows))
 
 	for _, r := range rows {
 
@@ -19,7 +19,7 @@ func ConvertRows(rows []CsvRow) []stage3.ParquetRow {
 			32,
 		)
 
-		result = append(result, stage3.ParquetRow{
+		result = append(result, model.ParquetRow{
 			Strike:      uint32(strike),
 			OptionType:  r.OptionType == "C",
 			WindowStart: uint32(r.WindowStart / 1_000_000_000),

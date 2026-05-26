@@ -3,12 +3,13 @@ package stage3_parquet
 import (
 	"os"
 
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 	"github.com/parquet-go/parquet-go"
 )
 
 func WriteRowGroup(
 	path string,
-	rows []ParquetRow,
+	rows []model.ParquetRow,
 ) error {
 
 	file, err := os.OpenFile(
@@ -22,7 +23,7 @@ func WriteRowGroup(
 	}
 	defer file.Close()
 
-	writer := parquet.NewGenericWriter[ParquetRow](file)
+	writer := parquet.NewGenericWriter[model.ParquetRow](file)
 	defer writer.Close()
 
 	_, err = writer.Write(rows)

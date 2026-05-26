@@ -3,11 +3,13 @@ package stage3_parquet
 import (
 	"encoding/json"
 	"os"
+
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
-func LoadMetadata(path string) (TickerMetadata, error) {
+func LoadMetadata(path string) (model.TickerMetadata, error) {
 
-	var meta TickerMetadata
+	var meta model.TickerMetadata
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -26,7 +28,7 @@ func LoadMetadata(path string) (TickerMetadata, error) {
 
 func SaveMetadata(
 	path string,
-	meta TickerMetadata,
+	meta model.TickerMetadata,
 ) error {
 
 	data, err := json.MarshalIndent(

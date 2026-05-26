@@ -5,9 +5,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
-func LoadRows(path string) ([]CsvRow, error) {
+func LoadRows(path string) ([]model.CsvRow, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -20,7 +22,7 @@ func LoadRows(path string) ([]CsvRow, error) {
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 10*1024*1024)
 
-	var rows []CsvRow
+	var rows []model.CsvRow
 
 	for scanner.Scan() {
 
@@ -38,7 +40,7 @@ func LoadRows(path string) ([]CsvRow, error) {
 		volume, _ := strconv.ParseUint(parts[7], 10, 32)
 		transactions, _ := strconv.ParseUint(parts[8], 10, 32)
 
-		rows = append(rows, CsvRow{
+		rows = append(rows, model.CsvRow{
 			Strike:      parts[0],
 			OptionType:  parts[1],
 			WindowStart: windowStart,

@@ -9,6 +9,7 @@ import (
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	"github.com/contactkeval/option-replay/internal/pipeline/constants"
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
 func Run(cfg config.Config) error {
@@ -84,7 +85,7 @@ func ProcessTicker(
 		return err
 	}
 
-	var pendingRows []ParquetRow
+	var pendingRows []model.ParquetRow
 	pendingCount := meta.PendingRows
 
 	for _, file := range files {
