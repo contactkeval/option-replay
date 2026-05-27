@@ -29,10 +29,10 @@ type ParquetRow struct {
 }
 
 type TickerMetadata struct {
-	CurrentFile   string `json:"current_file"`
-	RowGroups     int    `json:"row_groups"`
-	PendingRows   int    `json:"pending_rows"`
-	CurrentExpiry string `json:"current_expiry"`
+	CurrentFile  string   `json:"current_file"`
+	RowGroups    int      `json:"row_groups"`
+	PendingRows  int      `json:"pending_rows"`
+	PendingFiles []string `json:"pending_files"`
 }
 
 type ParsedTicker struct {

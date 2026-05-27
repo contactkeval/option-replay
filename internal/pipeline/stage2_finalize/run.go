@@ -17,7 +17,7 @@ func Run(cfg config.Config) error {
 	stage3Root := cfg.Stage3Root
 	archiveRoot := cfg.ArchiveSortedRoot
 	// today := time.Now()
-	today := time.Date(2026, 1, 28, 0, 0, 0, 0, time.UTC)
+	today := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
 	logger.Infof("Stage 2 processing started")
 
 	return filepath.Walk(

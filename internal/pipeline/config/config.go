@@ -24,9 +24,8 @@ func Load() Config {
 		RawRoot:  "G:\\data\\minute_aggs_v1",
 		TempRoot: "G:\\data\\temp",
 
-		Stage2Root: "G:\\data\\stage2",
-		Stage3Root: "G:\\data\\stage3",
-
+		Stage2Root:  "G:\\data\\stage2",
+		Stage3Root:  "G:\\data\\stage3",
 		ParquetRoot: "G:\\data\\parquet",
 
 		ArchiveRawRoot:    "G:\\archive\\minute_aggs_v1",
