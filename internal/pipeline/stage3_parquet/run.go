@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
@@ -65,20 +66,13 @@ func ProcessTicker(
 	currentFiles, err := filepath.Glob(
 		filepath.Join(stage3Dir, "*.csv"),
 	)
+
 	if err != nil {
 		return fmt.Errorf(
-			"glob stage3 files ticker=%s: %w",
+			"discover stage3 files for %s: %w",
 			ticker,
 			err,
 		)
-	}
-
-	if len(currentFiles) == 0 {
-		logger.Infof(
-			"ticker=%s no pending csv files",
-			ticker,
-		)
-		return nil
 	}
 
 	sort.Strings(currentFiles)
@@ -92,246 +86,6 @@ func ProcessTicker(
 		parquetDir,
 		0755,
 	); err != nil {
-
-		return fmt.Errorf(
-			"create parquet directory %s: %w",
-			parquetDir,
-			err,
-		)
-	}
-
-	metaPath := filepath.Join(
-		parquetDir,
-		"_metadata.json",
-	)
-
-	meta, err := LoadMetadata(metaPath)
-
-	if err != nil {
-		return fmt.Errorf(
-			"load metadata %s: %w",
-			metaPath,
-			err,
-		)
-	}
-
-	// Build pending file set
-	pendingSet := make(map[string]bool)
-
-	for _, f := range meta.PendingFiles {
-		pendingSet[f] = true
-	}
-
-	// Add newly discovered files
-	for _, f := range currentFiles {
-		if pendingSet[f] {
-			continue
-		}
-
-		rows, err := CountRows(f)
-		if err != nil {
-			return fmt.Errorf(
-				"count rows file=%s: %w",
-				f,
-				err,
-			)
-		}
-
-		meta.PendingFiles = append(
-			meta.PendingFiles,
-			f,
-		)
-
-		meta.PendingRows += rows
-
-		logger.Infof(
-			"ticker=%s added pending file=%s rows=%d total_pending=%d",
-			ticker,
-			filepath.Base(f),
-			rows,
-			meta.PendingRows,
-		)
-	}
-
-	// Sanity check
-	if len(meta.PendingFiles) == 0 &&
-		meta.PendingRows != 0 {
-
-		return fmt.Errorf(
-			"inconsistent metadata ticker=%s pending_rows=%d pending_files=0",
-			ticker,
-			meta.PendingRows,
-		)
-	}
-
-	// Still below threshold
-	if meta.PendingRows < constants.RowGroupTargetRows {
-		logger.Infof(
-			"ticker=%s pending_rows=%d below threshold=%d",
-			ticker,
-			meta.PendingRows,
-			constants.RowGroupTargetRows,
-		)
-
-		if err := SaveMetadata(
-			metaPath,
-			meta,
-		); err != nil {
-
-			return fmt.Errorf(
-				"save metadata %s: %w",
-				metaPath,
-				err,
-			)
-		}
-
-		return nil
-	}
-
-	logger.Infof(
-		"ticker=%s flushing parquet pending_files=%d pending_rows=%d",
-		ticker,
-		len(meta.PendingFiles),
-		meta.PendingRows,
-	)
-
-	// Load ALL pending rows
-	var batchRows []model.ParquetRow
-
-	for _, f := range meta.PendingFiles {
-		rows, err := LoadRows(f)
-		if err != nil {
-			return fmt.Errorf(
-				"load rows file=%s: %w",
-				f,
-				err,
-			)
-		}
-
-		batchRows = append(
-			batchRows,
-			rows...,
-		)
-	}
-
-	// Flush parquet row group
-	if err := FlushRowGroup(
-		ticker,
-		&meta,
-		batchRows,
-		cfg,
-	); err != nil {
-
-		return fmt.Errorf(
-			"flush row group ticker=%s: %w",
-			ticker,
-			err,
-		)
-	}
-
-	// Archive ONLY after successful parquet write
-	for _, f := range meta.PendingFiles {
-
-		expiry := ExtractExpiry(f)
-		archivePath := filepath.Join(
-			cfg.ArchiveSortedRoot,
-			ticker,
-			"20"+expiry[:2],
-			filepath.Base(f)+".gz",
-		)
-
-		if err := ArchiveFile(
-			f,
-			archivePath,
-		); err != nil {
-
-			return fmt.Errorf(
-				"archive file=%s: %w",
-				f,
-				err,
-			)
-		}
-	}
-
-	// ONLY NOW commit metadata changes
-
-	meta.RowGroups++
-
-	meta.PendingFiles = nil
-	meta.PendingRows = 0
-
-	// Rotate parquet file
-	if meta.RowGroups >= constants.MaxRowGroupsPerFile {
-
-		logger.Infof(
-			"ticker=%s rotating parquet file row_groups=%d",
-			ticker,
-			meta.RowGroups,
-		)
-
-		meta.CurrentFile = ""
-		meta.RowGroups = 0
-	}
-
-	if err := SaveMetadata(
-		metaPath,
-		meta,
-	); err != nil {
-
-		return fmt.Errorf(
-			"save metadata %s: %w",
-			metaPath,
-			err,
-		)
-	}
-
-	logger.Infof(
-		"ticker=%s parquet flush complete row_groups=%d",
-		ticker,
-		meta.RowGroups,
-	)
-
-	return nil
-}
-
-func FlushRowGroup(
-	ticker string,
-	meta *model.TickerMetadata,
-	rows []model.ParquetRow,
-	cfg config.Config,
-) error {
-
-	if len(rows) == 0 {
-
-		return fmt.Errorf(
-			"empty row group ticker=%s",
-			ticker,
-		)
-	}
-
-	if meta.CurrentFile == "" {
-
-		firstExpiry := FirstExpiryFromFiles(
-			meta.PendingFiles,
-		)
-
-		meta.CurrentFile = fmt.Sprintf(
-			"%s_%s.parquet",
-			ticker,
-			firstExpiry,
-		)
-	}
-
-	parquetDir := filepath.Join(
-		cfg.ParquetRoot,
-		ticker,
-	)
-
-	if err := os.MkdirAll(
-		parquetDir,
-		0755,
-	); err != nil {
-
 		return fmt.Errorf(
 			"create parquet dir %s: %w",
 			parquetDir,
@@ -339,30 +93,284 @@ func FlushRowGroup(
 		)
 	}
 
-	parquetPath := filepath.Join(
+	statePath := filepath.Join(
 		parquetDir,
-		meta.CurrentFile,
+		"parquet_state.json",
 	)
 
-	logger.Infof(
-		"writing parquet=%s rows=%d",
-		parquetPath,
-		len(rows),
+	state, err := LoadParquetState(
+		statePath,
 	)
 
-	if err := WriteRowGroup(
-		parquetPath,
-		rows,
-	); err != nil {
+	if err != nil {
+		return err
+	}
 
-		return fmt.Errorf(
-			"write row group parquet=%s: %w",
-			parquetPath,
-			err,
+	activeMetaPath := filepath.Join(
+		parquetDir,
+		"metadata_active.csv",
+	)
+
+	activeRows, err := LoadActiveMetadata(
+		activeMetaPath,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	known := make(map[string]bool)
+
+	for _, r := range activeRows {
+		known[r.Expiry] = true
+	}
+
+	// Discover new expiries
+	for _, f := range currentFiles {
+
+		expiry := ExtractExpiry(f)
+
+		if known[expiry] {
+			continue
+		}
+
+		rowCount, err := CountRows(f)
+
+		if err != nil {
+			return err
+		}
+
+		activeRows = append(
+			activeRows,
+			model.ActiveMetadataRow{
+				Expiry: expiry,
+				Rows:   rowCount,
+				Status: "pending",
+			},
 		)
 	}
 
-	return nil
+	// Calculate pending rows
+	totalPendingRows := 0
+
+	for _, r := range activeRows {
+
+		if r.Status == "pending" {
+			totalPendingRows += r.Rows
+		}
+	}
+
+	// Below threshold
+	if totalPendingRows < constants.RowGroupTargetRows {
+
+		logger.Infof(
+			"ticker=%s pending_rows=%d below threshold",
+			ticker,
+			totalPendingRows,
+		)
+
+		return SaveActiveMetadata(
+			activeMetaPath,
+			activeRows,
+		)
+	}
+
+	// Process ALL possible row groups
+	for totalPendingRows >= constants.RowGroupTargetRows {
+
+		// Build parquet batch
+		var batchRows []model.ParquetRow
+
+		var processedExpiries []string
+
+		for _, r := range activeRows {
+
+			if r.Status != "pending" {
+				continue
+			}
+
+			filePath := filepath.Join(
+				stage3Dir,
+				fmt.Sprintf(
+					"%s_%s.csv",
+					ticker,
+					r.Expiry,
+				),
+			)
+
+			rows, err := LoadRows(filePath)
+
+			if err != nil {
+				return err
+			}
+
+			batchRows = append(
+				batchRows,
+				rows...,
+			)
+
+			processedExpiries = append(
+				processedExpiries,
+				r.Expiry,
+			)
+
+			if len(batchRows) >= constants.RowGroupTargetRows {
+				break
+			}
+		}
+
+		if len(batchRows) == 0 {
+			break
+		}
+
+		if state.CurrentFile == "" ||
+			state.RowGroups >= constants.MaxRowGroupsPerFile {
+
+			state.RowGroups = 0
+
+			state.CurrentFile = fmt.Sprintf(
+				"%s_%s.parquet",
+				ticker,
+				processedExpiries[0],
+			)
+		}
+
+		parquetPath := filepath.Join(
+			parquetDir,
+			state.CurrentFile,
+		)
+
+		logger.Infof(
+			"writing parquet rows=%d file=%s row_group=%d",
+			len(batchRows),
+			parquetPath,
+			state.RowGroups,
+		)
+
+		if err := WriteRowGroup(
+			parquetPath,
+			batchRows,
+		); err != nil {
+			return err
+		}
+
+		currentRowGroup := state.RowGroups
+		archiveMetaPath := filepath.Join(
+			cfg.ParquetRoot,
+			"_metadata",
+			"archive.csv",
+		)
+
+		if err := os.MkdirAll(
+			filepath.Dir(archiveMetaPath),
+			0755,
+		); err != nil {
+			return err
+		}
+
+		// Mark processed
+		for i := range activeRows {
+
+			r := &activeRows[i]
+
+			if r.Status != "pending" {
+				continue
+			}
+
+			found := false
+
+			for _, e := range processedExpiries {
+
+				if r.Expiry == e {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				continue
+			}
+			r.Status = "processed"
+
+			archiveRow := model.ArchiveMetadataRow{
+				Ticker:      ticker,
+				Expiry:      r.Expiry,
+				Rows:        r.Rows,
+				ParquetFile: state.CurrentFile,
+				RowGroup:    currentRowGroup,
+				ArchivedAt:  time.Now().UTC().Format(time.RFC3339),
+			}
+
+			if err := AppendArchiveMetadata(
+				archiveMetaPath,
+				archiveRow,
+			); err != nil {
+				return err
+			}
+
+			sourceFile := filepath.Join(
+				stage3Dir,
+				fmt.Sprintf(
+					"%s_%s.csv",
+					ticker,
+					r.Expiry,
+				),
+			)
+
+			archivePath := filepath.Join(
+				cfg.ArchiveSortedRoot,
+				ticker,
+				"20"+r.Expiry[:2],
+				filepath.Base(sourceFile)+".gz",
+			)
+
+			if err := ArchiveFile(
+				sourceFile,
+				archivePath,
+			); err != nil {
+				return err
+			}
+		}
+
+		// recompute pending rows
+		totalPendingRows = 0
+
+		for _, r := range activeRows {
+
+			if r.Status == "pending" {
+				totalPendingRows += r.Rows
+			}
+		}
+		state.RowGroups++
+	}
+
+	if err := SaveParquetState(
+		statePath,
+		state,
+	); err != nil {
+		return err
+	}
+
+	var remaining []model.ActiveMetadataRow
+
+	for _, r := range activeRows {
+
+		if r.Status == "pending" {
+			remaining = append(
+				remaining,
+				r,
+			)
+		}
+	}
+
+	activeRows = remaining
+
+	// persist updated active metadata
+	return SaveActiveMetadata(
+		activeMetaPath,
+		activeRows,
+	)
+
 }
 
 func ExtractExpiry(path string) string {
@@ -380,14 +388,4 @@ func ExtractExpiry(path string) string {
 		parts[1],
 		".csv",
 	)
-}
-
-func FirstExpiryFromFiles(
-	files []string,
-) string {
-
-	if len(files) == 0 {
-		return "unknown"
-	}
-	return ExtractExpiry(files[0])
 }

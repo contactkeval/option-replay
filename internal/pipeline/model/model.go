@@ -28,11 +28,10 @@ type ParquetRow struct {
 	Transactions uint32 `parquet:"name=transactions, type=UINT32"`
 }
 
-type TickerMetadata struct {
-	CurrentFile  string   `json:"current_file"`
-	RowGroups    int      `json:"row_groups"`
-	PendingRows  int      `json:"pending_rows"`
-	PendingFiles []string `json:"pending_files"`
+type ParquetState struct {
+	CurrentFile string `json:"current_file"`
+	RowGroups   int    `json:"row_groups"`
+	BatchID     int    `json:"batch_id"`
 }
 
 type ParsedTicker struct {

@@ -1,7 +1,6 @@
 package stage2_finalize
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,37 +78,6 @@ func Run(cfg config.Config) error {
 			)
 
 			if err := WriteRows(outputPath, dedupedRows); err != nil {
-				return err
-			}
-
-			metadataDir := filepath.Join(
-				stage3Root,
-				"_metadata",
-			)
-
-			if err := os.MkdirAll(metadataDir, 0755); err != nil {
-				return err
-			}
-
-			metaPath := filepath.Join(
-				metadataDir,
-				fmt.Sprintf(
-					"%s_%s.json",
-					ticker,
-					expiry,
-				),
-			)
-
-			meta := Metadata{
-				Ticker:            ticker,
-				Expiry:            expiry,
-				Rows:              len(dedupedRows),
-				DuplicatesRemoved: duplicates,
-				MinWindowStart:    dedupedRows[0].WindowStart,
-				MaxWindowStart:    dedupedRows[len(dedupedRows)-1].WindowStart,
-			}
-
-			if err := WriteMetadata(metaPath, meta); err != nil {
 				return err
 			}
 
