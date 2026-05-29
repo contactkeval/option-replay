@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 var AllowedUnderlyings = map[string]struct{}{}
@@ -45,6 +47,11 @@ func LoadAllowedUnderlyings(
 
 		AllowedUnderlyings[ticker] = struct{}{}
 	}
+
+	logger.Infof(
+		"loaded allowed underlyings=%d",
+		len(AllowedUnderlyings),
+	)
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf(

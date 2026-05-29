@@ -2,6 +2,7 @@ package stage2_finalize
 
 import (
 	"bufio"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -27,11 +28,32 @@ func LoadRows(path string) ([]model.CsvRow, error) {
 	for scanner.Scan() {
 
 		line := scanner.Text()
-
 		parts := strings.Split(line, ",")
 
-		windowStart, _ := strconv.ParseUint(parts[2], 10, 64)
+		if len(parts) < 3 {
 
+			log.Printf(
+				"invalid csv row file=%s len=%d row=%q",
+				path,
+				len(parts),
+				line,
+			)
+
+			continue
+		}
+
+		windowStart, err := strconv.ParseUint(parts[2], 10, 64)
+		if err != nil {
+
+			log.Printf(
+				"invalid timestamp file=%s value=%q row=%q",
+				path,
+				parts[2],
+				line,
+			)
+
+			continue
+		}
 		openVal, _ := strconv.ParseFloat(parts[3], 64)
 		highVal, _ := strconv.ParseFloat(parts[4], 64)
 		lowVal, _ := strconv.ParseFloat(parts[5], 64)
