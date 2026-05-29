@@ -14,9 +14,9 @@ func Run(cfg config.Config) error {
 
 	stage2Root := cfg.Stage2Root
 	stage3Root := cfg.Stage3Root
-	archiveRoot := cfg.ArchiveSortedRoot
+
 	// today := time.Now()
-	today := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	today := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	logger.Infof("Stage 2 processing started")
 
 	return filepath.Walk(
@@ -78,20 +78,6 @@ func Run(cfg config.Config) error {
 			)
 
 			if err := WriteRows(outputPath, dedupedRows); err != nil {
-				return err
-			}
-
-			archivePath := filepath.Join(
-				archiveRoot,
-				ticker,
-				expiry[:2],
-				base+".gz",
-			)
-
-			if err := ArchiveStage2File(
-				path,
-				archivePath,
-			); err != nil {
 				return err
 			}
 

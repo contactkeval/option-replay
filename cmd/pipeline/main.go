@@ -13,6 +13,12 @@ func main() {
 
 	cfg := config.Load()
 
+	if err := config.LoadAllowedUnderlyings(
+		"../../internal/pipeline/config/allowed_underlyings.txt",
+	); err != nil {
+		log.Fatal(err)
+	}
+
 	if err := stage1.Run(cfg); err != nil {
 		log.Fatal(err)
 	}
