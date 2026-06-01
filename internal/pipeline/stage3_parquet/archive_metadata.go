@@ -45,9 +45,9 @@ func AppendArchiveMetadata(
 			"ticker",
 			"expiry",
 			"rows",
-			"duplicates_removed",
 			"parquet_file",
-			"row_group",
+			"start_row_group",
+			"row_group_count",
 			"archived_at",
 		}); err != nil {
 			return err
@@ -58,9 +58,9 @@ func AppendArchiveMetadata(
 		row.Ticker,
 		row.Expiry,
 		strconv.Itoa(row.Rows),
-		strconv.Itoa(row.DuplicatesRemoved),
 		row.ParquetFile,
-		strconv.Itoa(row.RowGroup),
+		strconv.Itoa(row.StartRowGroup),
+		strconv.Itoa(row.RowGroupCount),
 		row.ArchivedAt,
 	})
 }

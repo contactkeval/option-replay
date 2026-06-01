@@ -7,12 +7,13 @@ type ActiveMetadataRow struct {
 }
 
 type ArchiveMetadataRow struct {
-	Ticker            string
-	Expiry            string
-	Rows              int
-	DuplicatesRemoved int
+	Ticker string
+	Expiry string
+	Rows   int
 
-	ParquetFile string
-	RowGroup    int
-	ArchivedAt  string
+	ParquetFile   string
+	StartRowGroup int
+	RowGroupCount int
+
+	ArchivedAt string
 }
