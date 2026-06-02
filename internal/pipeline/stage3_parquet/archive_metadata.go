@@ -9,9 +9,9 @@ import (
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
-func AppendArchiveMetadata(
+func AppendActiveParquetMetadata(
 	path string,
-	row model.ArchiveMetadataRow,
+	row model.ActiveParquetMetadataRow,
 ) error {
 
 	newFile := false
@@ -48,7 +48,7 @@ func AppendArchiveMetadata(
 			"parquet_file",
 			"start_row_group",
 			"row_group_count",
-			"archived_at",
+			"created_at",
 		}); err != nil {
 			return err
 		}
@@ -61,6 +61,6 @@ func AppendArchiveMetadata(
 		row.ParquetFile,
 		strconv.Itoa(row.StartRowGroup),
 		strconv.Itoa(row.RowGroupCount),
-		row.ArchivedAt,
+		row.CreatedAt,
 	})
 }

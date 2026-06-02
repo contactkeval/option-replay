@@ -10,7 +10,6 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
-	"github.com/contactkeval/option-replay/internal/pipeline/constants"
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
@@ -77,6 +76,7 @@ func ProcessTicker(
 	)
 
 	if err != nil {
+
 		return fmt.Errorf(
 			"discover stage3 files for %s: %w",
 			ticker,
@@ -99,6 +99,7 @@ func ProcessTicker(
 		parquetDir,
 		0755,
 	); err != nil {
+
 		return fmt.Errorf(
 			"create parquet dir %s: %w",
 			parquetDir,
@@ -106,23 +107,23 @@ func ProcessTicker(
 		)
 	}
 
-	statePath := filepath.Join(
-		parquetDir,
-		"parquet_state.json",
-	)
-
-	state, err := LoadParquetState(
-		statePath,
-	)
-
-	if err != nil {
-		return err
-	}
-
 	activeMetaPath := filepath.Join(
-		parquetDir,
-		"metadata_active.csv",
+		cfg.MetadataRoot,
+		"active",
+		ticker+".csv",
 	)
+
+	if err := os.MkdirAll(
+		filepath.Dir(activeMetaPath),
+		0755,
+	); err != nil {
+
+		return fmt.Errorf(
+			"create active metadata dir %s: %w",
+			filepath.Dir(activeMetaPath),
+			err,
+		)
+	}
 
 	activeRows, err := LoadActiveMetadata(
 		activeMetaPath,
@@ -138,7 +139,7 @@ func ProcessTicker(
 		known[r.Expiry] = true
 	}
 
-	// discover new expiries
+	// Discover new expiries
 	for _, f := range currentFiles {
 
 		expiry := ExtractExpiry(f)
@@ -158,7 +159,6 @@ func ProcessTicker(
 			model.ActiveMetadataRow{
 				Expiry: expiry,
 				Rows:   rowCount,
-				Status: "pending",
 			},
 		)
 	}
@@ -167,31 +167,62 @@ func ProcessTicker(
 		activeMetaPath,
 		activeRows,
 	); err != nil {
+
 		return err
+	}
+
+	if len(activeRows) == 0 {
+		return nil
 	}
 
 	accumulator := RowGroupAccumulator{}
 
-	archiveMetaPath := filepath.Join(
-		cfg.ParquetRoot,
-		"_metadata",
-		"archive.csv",
+	activeParquetMetaPath := filepath.Join(
+		cfg.MetadataRoot,
+		"parquet_active",
+		ticker+".csv",
 	)
 
 	if err := os.MkdirAll(
-		filepath.Dir(archiveMetaPath),
+		filepath.Dir(activeParquetMetaPath),
 		0755,
 	); err != nil {
+
+		return fmt.Errorf(
+			"create archive metadata dir %s: %w",
+			filepath.Dir(activeParquetMetaPath),
+			err,
+		)
+	}
+
+	firstExpiry := activeRows[0].Expiry
+
+	parquetFile := fmt.Sprintf(
+		"%s_%s.parquet",
+		ticker,
+		firstExpiry,
+	)
+
+	parquetPath := filepath.Join(
+		parquetDir,
+		parquetFile,
+	)
+
+	pw, err := NewParquetFileWriter(
+		parquetPath,
+	)
+
+	if err != nil {
 		return err
 	}
 
-	for i := range activeRows {
+	defer pw.Close()
+	rowGroupNumber := 0
 
-		r := &activeRows[i]
+	var processedExpiries []string
+	var metadataRows []model.ActiveParquetMetadataRow
 
-		if r.Status != "pending" {
-			continue
-		}
+	for _, r := range activeRows {
 
 		filePath := filepath.Join(
 			stage3Dir,
@@ -208,27 +239,10 @@ func ProcessTicker(
 			return err
 		}
 
-		// rotate parquet ONLY BEFORE new expiry
-		// NEVER mid-expiry
-		if state.CurrentFile == "" ||
-			state.RowGroups >= constants.MaxRowGroupsPerFile {
+		startRowGroup := rowGroupNumber
 
-			state.CurrentFile = fmt.Sprintf(
-				"%s_%s.parquet",
-				ticker,
-				r.Expiry,
-			)
-
-			state.RowGroups = 0
-		}
-
-		startRowGroup := state.RowGroups
-
-		flushedGroups := accumulator.AppendExpiry(rows)
-
-		parquetPath := filepath.Join(
-			parquetDir,
-			state.CurrentFile,
+		flushedGroups := accumulator.AppendExpiry(
+			rows,
 		)
 
 		for _, group := range flushedGroups {
@@ -237,42 +251,40 @@ func ProcessTicker(
 				"writing parquet rows=%d file=%s row_group=%d",
 				len(group),
 				parquetPath,
-				state.RowGroups,
+				rowGroupNumber,
 			)
 
-			if err := WriteRowGroup(
-				parquetPath,
+			if err := pw.WriteRowGroup(
 				group,
 			); err != nil {
 				return err
 			}
 
-			state.RowGroups++
+			if err := pw.FlushRowGroup(); err != nil {
+				return err
+			}
+			rowGroupNumber++
 		}
 
-		rowGroupCount := state.RowGroups - startRowGroup
+		rowGroupCount := rowGroupNumber - startRowGroup
 
-		archiveRow := model.ArchiveMetadataRow{
-			Ticker: ticker,
-			Expiry: r.Expiry,
-			Rows:   r.Rows,
+		metadataRows = append(
+			metadataRows,
+			model.ActiveParquetMetadataRow{
+				Ticker: ticker,
+				Expiry: r.Expiry,
+				Rows:   r.Rows,
 
-			ParquetFile: state.CurrentFile,
+				ParquetFile: parquetFile,
 
-			StartRowGroup: startRowGroup,
-			RowGroupCount: rowGroupCount,
+				StartRowGroup: startRowGroup,
+				RowGroupCount: rowGroupCount,
 
-			ArchivedAt: time.Now().
-				UTC().
-				Format(time.RFC3339),
-		}
-
-		if err := AppendArchiveMetadata(
-			archiveMetaPath,
-			archiveRow,
-		); err != nil {
-			return err
-		}
+				CreatedAt: time.Now().
+					UTC().
+					Format(time.RFC3339),
+			},
+		)
 
 		sourceFile := filepath.Join(
 			stage3Dir,
@@ -294,51 +306,67 @@ func ProcessTicker(
 			sourceFile,
 			archivePath,
 		); err != nil {
+
 			return err
 		}
 
-		r.Status = "processed"
+		processedExpiries = append(
+			processedExpiries,
+			r.Expiry,
+		)
 	}
 
-	// flush trailing partial RG
+	// Flush trailing partial row group
 	remaining := accumulator.FlushRemaining()
 
 	if len(remaining) > 0 {
-
-		parquetPath := filepath.Join(
-			parquetDir,
-			state.CurrentFile,
-		)
 
 		logger.Infof(
 			"flushing trailing row group rows=%d file=%s row_group=%d",
 			len(remaining),
 			parquetPath,
-			state.RowGroups,
+			rowGroupNumber,
 		)
 
-		if err := WriteRowGroup(
-			parquetPath,
+		if err := pw.WriteRowGroup(
 			remaining,
 		); err != nil {
 			return err
 		}
 
-		state.RowGroups++
+		if err := pw.FlushRowGroup(); err != nil {
+			return err
+		}
+		rowGroupNumber++
 	}
 
-	if err := SaveParquetState(
-		statePath,
-		state,
-	); err != nil {
-		return err
+	for _, metadataRow := range metadataRows {
+
+		if err := AppendActiveParquetMetadata(
+			activeParquetMetaPath,
+			metadataRow,
+		); err != nil {
+
+			return err
+		}
 	}
 
+	// Remove processed rows from active metadata
 	var remainingActive []model.ActiveMetadataRow
 
 	for _, r := range activeRows {
 
-		if r.Status == "pending" {
+		found := false
+
+		for _, expiry := range processedExpiries {
+
+			if r.Expiry == expiry {
+				found = true
+				break
+			}
+		}
+
+		if !found {
 
 			remainingActive = append(
 				remainingActive,
@@ -346,6 +374,11 @@ func ProcessTicker(
 			)
 		}
 	}
+
+	// TODO: uncomment below code after commenting defer pw.Close() above
+	// if err := pw.Close(); err != nil {
+	// 	return err
+	// }
 
 	return SaveActiveMetadata(
 		activeMetaPath,

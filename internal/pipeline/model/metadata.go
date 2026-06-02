@@ -1,12 +1,12 @@
 package model
 
 type ActiveMetadataRow struct {
-	Expiry string
-	Rows   int
-	Status string
+	Expiry            string
+	Rows              int
+	DuplicatesRemoved int
 }
 
-type ArchiveMetadataRow struct {
+type ActiveParquetMetadataRow struct {
 	Ticker string
 	Expiry string
 	Rows   int
@@ -15,5 +15,5 @@ type ArchiveMetadataRow struct {
 	StartRowGroup int
 	RowGroupCount int
 
-	ArchivedAt string
+	CreatedAt string
 }

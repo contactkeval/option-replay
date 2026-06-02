@@ -7,7 +7,8 @@ type Config struct {
 	Stage2Root string
 	Stage3Root string
 
-	ParquetRoot string
+	ParquetRoot  string
+	MetadataRoot string
 
 	ArchiveRawRoot    string
 	ArchiveSortedRoot string
@@ -30,6 +31,7 @@ func Load() Config {
 
 		ArchiveRawRoot:    "G:\\archive\\minute_aggs_v1",
 		ArchiveSortedRoot: "G:\\archive\\expiry_sorted",
+		MetadataRoot:      "G:\\data\\metadata",
 
 		MaxOpenFiles: 128,
 

@@ -7,6 +7,7 @@ import (
 	stage1 "github.com/contactkeval/option-replay/internal/pipeline/stage1_ingest"
 	stage2 "github.com/contactkeval/option-replay/internal/pipeline/stage2_finalize"
 	stage3 "github.com/contactkeval/option-replay/internal/pipeline/stage3_parquet"
+	stage4 "github.com/contactkeval/option-replay/internal/pipeline/stage4_compact"
 )
 
 func main() {
@@ -28,6 +29,10 @@ func main() {
 	}
 
 	if err := stage3.Run(cfg); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := stage4.Run(cfg); err != nil {
 		log.Fatal(err)
 	}
 }

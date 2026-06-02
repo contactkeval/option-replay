@@ -9,83 +9,48 @@ import (
 )
 
 func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run inspect_parquet.go <parquet-root-dir>")
+		return
+	}
 
-	parquetRoot := `G:\data\parquet`
+	root := os.Args[1]
 
-	err := filepath.Walk(
-		parquetRoot,
-		func(path string, info os.FileInfo, err error) error {
-
-			if err != nil {
-				return err
-			}
-
-			if info.IsDir() {
-				return nil
-			}
-
-			if filepath.Ext(path) != ".parquet" {
-				return nil
-			}
-
-			if err := PrintRowGroupCount(path); err != nil {
-				fmt.Printf(
-					"ERROR %s: %v\n",
-					path,
-					err,
-				)
-			}
-
-			return nil
-		},
-	)
-
+	files, err := filepath.Glob(filepath.Join(root, "*.parquet"))
 	if err != nil {
-		panic(err)
+		fmt.Printf("error discovering parquet files: %v\n", err)
+		return
+	}
+
+	if len(files) == 0 {
+		fmt.Println("No parquet files found")
+		return
+	}
+
+	for _, path := range files {
+		if err := PrintRowGroupInfo(path); err != nil {
+			fmt.Printf("error processing %s: %v\n", path, err)
+		}
 	}
 }
 
-func PrintRowGroupCount(
-	path string,
-) error {
-
+func PrintRowGroupInfo(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf(
-			"open parquet file %s: %w",
-			path,
-			err,
-		)
+		return fmt.Errorf("open parquet %s: %w", path, err)
 	}
 	defer file.Close()
 
-	stat, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf(
-			"stat parquet file %s: %w",
-			path,
-			err,
+	reader := parquet.NewGenericReader[any](file)
+	rowGroups := reader.File().RowGroups()
+
+	for i, rg := range rowGroups {
+		fmt.Printf("%s, %d, %d\n",
+			filepath.Base(path), // FileName
+			i,                   // RowGroupNo
+			rg.NumRows(),        // RowCount
 		)
 	}
-
-	reader, err := parquet.OpenFile(
-		file,
-		stat.Size(),
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"open parquet reader %s: %w",
-			path,
-			err,
-		)
-	}
-
-	fmt.Printf(
-		"%s -> row_groups=%d rows=%d\n",
-		path,
-		len(reader.RowGroups()),
-		reader.NumRows(),
-	)
 
 	return nil
 }

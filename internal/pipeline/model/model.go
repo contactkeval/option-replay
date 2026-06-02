@@ -28,12 +28,6 @@ type ParquetRow struct {
 	Transactions uint32 `parquet:"name=transactions, type=UINT32"`
 }
 
-type ParquetState struct {
-	CurrentFile string `json:"current_file"`
-	RowGroups   int    `json:"row_groups"`
-	BatchID     int    `json:"batch_id"`
-}
-
 type ParsedTicker struct {
 	Underlying string
 	Expiry     string
