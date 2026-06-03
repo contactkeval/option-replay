@@ -4,6 +4,7 @@ type ActiveMetadataRow struct {
 	Expiry            string
 	Rows              int
 	DuplicatesRemoved int
+	Status            string
 }
 
 type ActiveParquetMetadataRow struct {
@@ -14,6 +15,7 @@ type ActiveParquetMetadataRow struct {
 	ParquetFile   string
 	StartRowGroup int
 	RowGroupCount int
+	Status        string
 
 	CreatedAt string
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
+	"github.com/contactkeval/option-replay/internal/pipeline/constants"
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
@@ -159,6 +160,7 @@ func ProcessTicker(
 			model.ActiveMetadataRow{
 				Expiry: expiry,
 				Rows:   rowCount,
+				Status: "pending",
 			},
 		)
 	}
@@ -189,7 +191,7 @@ func ProcessTicker(
 	); err != nil {
 
 		return fmt.Errorf(
-			"create archive metadata dir %s: %w",
+			"create parquet metadata dir %s: %w",
 			filepath.Dir(activeParquetMetaPath),
 			err,
 		)
@@ -208,19 +210,12 @@ func ProcessTicker(
 		parquetFile,
 	)
 
-	pw, err := NewParquetFileWriter(
-		parquetPath,
-	)
+	var candidateExpiries []model.ActiveMetadataRow
+	var finalizedExpiries []model.ActiveMetadataRow
 
-	if err != nil {
-		return err
-	}
+	var pw *ParquetFileWriter
 
-	defer pw.Close()
 	rowGroupNumber := 0
-
-	var processedExpiries []string
-	var metadataRows []model.ActiveParquetMetadataRow
 
 	for _, r := range activeRows {
 
@@ -239,13 +234,27 @@ func ProcessTicker(
 			return err
 		}
 
-		startRowGroup := rowGroupNumber
+		candidateExpiries = append(
+			candidateExpiries,
+			r,
+		)
 
 		flushedGroups := accumulator.AppendExpiry(
 			rows,
 		)
 
 		for _, group := range flushedGroups {
+
+			if pw == nil {
+
+				pw, err = NewParquetFileWriter(
+					parquetPath,
+				)
+
+				if err != nil {
+					return err
+				}
+			}
 
 			logger.Infof(
 				"writing parquet rows=%d file=%s row_group=%d",
@@ -263,28 +272,132 @@ func ProcessTicker(
 			if err := pw.FlushRowGroup(); err != nil {
 				return err
 			}
+
 			rowGroupNumber++
 		}
 
-		rowGroupCount := rowGroupNumber - startRowGroup
+		trailingRows :=
+			accumulator.PendingRows()
 
-		metadataRows = append(
-			metadataRows,
-			model.ActiveParquetMetadataRow{
-				Ticker: ticker,
-				Expiry: r.Expiry,
-				Rows:   r.Rows,
-
-				ParquetFile: parquetFile,
-
-				StartRowGroup: startRowGroup,
-				RowGroupCount: rowGroupCount,
-
-				CreatedAt: time.Now().
-					UTC().
-					Format(time.RFC3339),
-			},
+		logger.Infof(
+			"ticker=%s row_groups=%d trailing_rows=%d",
+			ticker,
+			rowGroupNumber,
+			trailingRows,
 		)
+
+		// Need at least one RG before finalization
+		if rowGroupNumber == 0 {
+			continue
+		}
+
+		// Finalize ONLY when trailing rows are acceptable
+		if trailingRows <= constants.MaxTrailingRows {
+
+			logger.Infof(
+				"finalizing parquet file=%s row_groups=%d trailing_rows=%d",
+				parquetPath,
+				rowGroupNumber,
+				trailingRows,
+			)
+
+			finalizedExpiries =
+				append(
+					finalizedExpiries,
+					candidateExpiries...,
+				)
+
+			break
+		}
+	}
+
+	// Nothing eligible yet
+	if len(finalizedExpiries) == 0 {
+
+		logger.Infof(
+			"ticker=%s nothing eligible for parquet finalization",
+			ticker,
+		)
+
+		if pw != nil {
+			_ = pw.Close()
+			_ = os.Remove(parquetPath)
+		}
+
+		return nil
+	}
+
+	// Flush trailing rows into final RG
+	remaining := accumulator.FlushRemaining()
+
+	if len(remaining) > 0 {
+
+		if pw == nil {
+
+			pw, err = NewParquetFileWriter(
+				parquetPath,
+			)
+
+			if err != nil {
+				return err
+			}
+		}
+
+		logger.Infof(
+			"writing final trailing row group rows=%d file=%s row_group=%d",
+			len(remaining),
+			parquetPath,
+			rowGroupNumber,
+		)
+
+		if err := pw.WriteRowGroup(
+			remaining,
+		); err != nil {
+			return err
+		}
+
+		if err := pw.FlushRowGroup(); err != nil {
+			return err
+		}
+
+		rowGroupNumber++
+	}
+
+	if pw != nil {
+
+		if err := pw.Close(); err != nil {
+			return err
+		}
+	}
+
+	processedExpiries := make(map[string]struct{})
+
+	for _, r := range finalizedExpiries {
+
+		metadataRow := model.ActiveParquetMetadataRow{
+			Ticker: ticker,
+			Expiry: r.Expiry,
+			Rows:   r.Rows,
+
+			ParquetFile: parquetFile,
+
+			StartRowGroup: -1,
+			RowGroupCount: 0,
+
+			Status: "active",
+
+			CreatedAt: time.Now().
+				UTC().
+				Format(time.RFC3339),
+		}
+
+		if err := AppendActiveParquetMetadata(
+			activeParquetMetaPath,
+			metadataRow,
+		); err != nil {
+
+			return err
+		}
 
 		sourceFile := filepath.Join(
 			stage3Dir,
@@ -310,63 +423,15 @@ func ProcessTicker(
 			return err
 		}
 
-		processedExpiries = append(
-			processedExpiries,
-			r.Expiry,
-		)
+		processedExpiries[r.Expiry] = struct{}{}
 	}
 
-	// Flush trailing partial row group
-	remaining := accumulator.FlushRemaining()
-
-	if len(remaining) > 0 {
-
-		logger.Infof(
-			"flushing trailing row group rows=%d file=%s row_group=%d",
-			len(remaining),
-			parquetPath,
-			rowGroupNumber,
-		)
-
-		if err := pw.WriteRowGroup(
-			remaining,
-		); err != nil {
-			return err
-		}
-
-		if err := pw.FlushRowGroup(); err != nil {
-			return err
-		}
-		rowGroupNumber++
-	}
-
-	for _, metadataRow := range metadataRows {
-
-		if err := AppendActiveParquetMetadata(
-			activeParquetMetaPath,
-			metadataRow,
-		); err != nil {
-
-			return err
-		}
-	}
-
-	// Remove processed rows from active metadata
 	var remainingActive []model.ActiveMetadataRow
 
 	for _, r := range activeRows {
 
-		found := false
-
-		for _, expiry := range processedExpiries {
-
-			if r.Expiry == expiry {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if _, found :=
+			processedExpiries[r.Expiry]; !found {
 
 			remainingActive = append(
 				remainingActive,
@@ -374,11 +439,6 @@ func ProcessTicker(
 			)
 		}
 	}
-
-	// TODO: uncomment below code after commenting defer pw.Close() above
-	// if err := pw.Close(); err != nil {
-	// 	return err
-	// }
 
 	return SaveActiveMetadata(
 		activeMetaPath,

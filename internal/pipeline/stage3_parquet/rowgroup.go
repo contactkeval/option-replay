@@ -21,6 +21,11 @@ func (a *RowGroupAccumulator) Reset() {
 	a.Rows = nil
 }
 
+// PendingRows returns current buffered row count
+func (a *RowGroupAccumulator) PendingRows() int {
+	return len(a.Rows)
+}
+
 // AppendExpiry:
 // - never splits strike
 // - targets RG size
@@ -118,13 +123,8 @@ func (a *RowGroupAccumulator) AppendExpiry(
 // used at parquet-file boundary
 func (a *RowGroupAccumulator) FlushRemaining() []model.ParquetRow {
 
-	if len(a.Rows) == 0 {
-		return nil
-	}
+	out := a.Rows
+	a.Rows = nil
 
-	rows := a.Rows
-
-	a.Reset()
-
-	return rows
+	return out
 }

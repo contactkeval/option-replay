@@ -46,11 +46,15 @@ func LoadActiveMetadata(
 			continue
 		}
 
-		rowCount, _ := strconv.Atoi(r[1])
+		rowCount, err := strconv.Atoi(r[1])
+		if err != nil {
+			return nil, fmt.Errorf("parse row count for expiry %s: %w", r[0], err)
+		}
 
 		rows = append(rows, model.ActiveMetadataRow{
 			Expiry: r[0],
 			Rows:   rowCount,
+			Status: r[2],
 		})
 	}
 
@@ -78,6 +82,7 @@ func SaveActiveMetadata(
 	if err := writer.Write([]string{
 		"expiry",
 		"rows",
+		"status",
 	}); err != nil {
 		return err
 	}
@@ -87,6 +92,7 @@ func SaveActiveMetadata(
 		if err := writer.Write([]string{
 			r.Expiry,
 			strconv.Itoa(r.Rows),
+			r.Status,
 		}); err != nil {
 			return err
 		}
