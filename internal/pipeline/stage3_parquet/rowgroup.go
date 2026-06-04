@@ -6,30 +6,25 @@ import (
 )
 
 type RowGroupAccumulator struct {
-	Rows []model.ParquetRow
+	pending []model.ParquetRow
 }
 
-func (a *RowGroupAccumulator) Count() int {
-	return len(a.Rows)
+func (a *RowGroupAccumulator) PendingRows() []model.ParquetRow {
+	return a.pending
 }
 
-func (a *RowGroupAccumulator) Empty() bool {
-	return len(a.Rows) == 0
+func (a *RowGroupAccumulator) PendingCount() int {
+	return len(a.pending)
 }
 
 func (a *RowGroupAccumulator) Reset() {
-	a.Rows = nil
-}
-
-// PendingRows returns current buffered row count
-func (a *RowGroupAccumulator) PendingRows() int {
-	return len(a.Rows)
+	a.pending = nil
 }
 
 // AppendExpiry:
 // - never splits strike
-// - targets RG size
 // - expiry MAY span RGs
+// - returns completed RGs
 func (a *RowGroupAccumulator) AppendExpiry(
 	expiryRows []model.ParquetRow,
 ) [][]model.ParquetRow {
@@ -44,22 +39,20 @@ func (a *RowGroupAccumulator) AppendExpiry(
 
 	for start < len(expiryRows) {
 
-		target := constants.RowGroupTargetRows
+		remainingCapacity :=
+			constants.RowGroupTargetRows - len(a.pending)
 
-		remainingCapacity := target - len(a.Rows)
-
-		// if current RG already full enough,
-		// flush BEFORE appending more
 		if remainingCapacity <= 0 {
 
 			flushed = append(
 				flushed,
-				a.Rows,
+				a.pending,
 			)
 
 			a.Reset()
 
-			remainingCapacity = target
+			remainingCapacity =
+				constants.RowGroupTargetRows
 		}
 
 		end := start
@@ -73,7 +66,8 @@ func (a *RowGroupAccumulator) AppendExpiry(
 		// NEVER split strike
 		if end < len(expiryRows) {
 
-			lastStrike := expiryRows[end-1].Strike
+			lastStrike :=
+				expiryRows[end-1].Strike
 
 			for end > start &&
 				expiryRows[end].Strike == lastStrike {
@@ -81,35 +75,34 @@ func (a *RowGroupAccumulator) AppendExpiry(
 				end--
 			}
 
-			// pathological case:
-			// single strike > RG size
+			// pathological case
 			if end == start {
 
 				end = start
 
-				currentStrike := expiryRows[start].Strike
+				strike := expiryRows[start].Strike
 
 				for end < len(expiryRows) &&
-					expiryRows[end].Strike == currentStrike {
+					expiryRows[end].Strike == strike {
 
 					end++
 				}
 			}
 		}
 
-		a.Rows = append(
-			a.Rows,
+		a.pending = append(
+			a.pending,
 			expiryRows[start:end]...,
 		)
 
 		start = end
 
-		// flush once threshold crossed
-		if len(a.Rows) >= target {
+		if len(a.pending) >=
+			constants.RowGroupTargetRows {
 
 			flushed = append(
 				flushed,
-				a.Rows,
+				a.pending,
 			)
 
 			a.Reset()
@@ -117,14 +110,4 @@ func (a *RowGroupAccumulator) AppendExpiry(
 	}
 
 	return flushed
-}
-
-// FlushRemaining
-// used at parquet-file boundary
-func (a *RowGroupAccumulator) FlushRemaining() []model.ParquetRow {
-
-	out := a.Rows
-	a.Rows = nil
-
-	return out
 }

@@ -2,11 +2,11 @@ package stage2_finalize
 
 import (
 	"bufio"
-	"log"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
 
@@ -30,9 +30,9 @@ func LoadRows(path string) ([]model.CsvRow, error) {
 		line := scanner.Text()
 		parts := strings.Split(line, ",")
 
-		if len(parts) < 3 {
+		if len(parts) < 9 {
 
-			log.Printf(
+			logger.Errorf(
 				"invalid csv row file=%s len=%d row=%q",
 				path,
 				len(parts),
@@ -45,7 +45,7 @@ func LoadRows(path string) ([]model.CsvRow, error) {
 		windowStart, err := strconv.ParseUint(parts[2], 10, 64)
 		if err != nil {
 
-			log.Printf(
+			logger.Errorf(
 				"invalid timestamp file=%s value=%q row=%q",
 				path,
 				parts[2],
@@ -54,10 +54,46 @@ func LoadRows(path string) ([]model.CsvRow, error) {
 
 			continue
 		}
-		openVal, _ := strconv.ParseFloat(parts[3], 64)
-		highVal, _ := strconv.ParseFloat(parts[4], 64)
-		lowVal, _ := strconv.ParseFloat(parts[5], 64)
-		closeVal, _ := strconv.ParseFloat(parts[6], 64)
+		openVal, err := strconv.ParseFloat(parts[3], 64)
+		if err != nil {
+			logger.Errorf(
+				"invalid open value file=%s value=%q row=%q",
+				path,
+				parts[3],
+				line,
+			)
+			continue
+		}
+		highVal, err := strconv.ParseFloat(parts[4], 64)
+		if err != nil {
+			logger.Errorf(
+				"invalid high value file=%s value=%q row=%q",
+				path,
+				parts[4],
+				line,
+			)
+			continue
+		}
+		lowVal, err := strconv.ParseFloat(parts[5], 64)
+		if err != nil {
+			logger.Errorf(
+				"invalid low value file=%s value=%q row=%q",
+				path,
+				parts[5],
+				line,
+			)
+			continue
+		}
+		closeVal, err := strconv.ParseFloat(parts[6], 64)
+		if err != nil {
+			logger.Errorf(
+				"invalid close value file=%s value=%q row=%q",
+				path,
+				parts[6],
+				line,
+			)
+			continue
+		}
 
 		volume, _ := strconv.ParseUint(parts[7], 10, 32)
 		transactions, _ := strconv.ParseUint(parts[8], 10, 32)

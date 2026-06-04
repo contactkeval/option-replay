@@ -9,13 +9,7 @@ const (
 	// 1.2345 -> 12345
 	PriceScale uint32 = 10000
 
-	// StrikeScale converts strike values
-	// into fixed-point uint32 values.
-	//
-	// Example:
-	// 450.00 -> 4500000
-	StrikeScale uint32 = 10000
-
+	MaxOpenFiles         = 128
 	ScannerBufferInitial = 64 * 1024
 	ScannerBufferMax     = 10 * 1024 * 1024
 

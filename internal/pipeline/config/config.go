@@ -1,41 +1,42 @@
 package config
 
 type Config struct {
-	RawRoot  string
-	TempRoot string
+	ArchiveRawRoot string
+	MetadataRoot   string
+	ParquetRoot    string
+	RawRoot        string
+	SQLiteRoot     string
+	TempRoot       string
 
-	Stage2Root string
-	Stage3Root string
-
-	ParquetRoot  string
-	MetadataRoot string
-
-	ArchiveRawRoot    string
+	// TODO: delete
 	ArchiveSortedRoot string
+	Stage2Root        string
+	Stage3Root        string
 
-	MaxOpenFiles int
-
-	MinRowsPerRowGroup  int
-	MaxRowGroupsPerFile int
+	// Deleted as the parameters are now defined as constants in internal/pipeline/constants/constants.go
+	// MaxOpenFiles        int
+	// MinRowsPerRowGroup  int
+	// MaxRowGroupsPerFile int
 }
 
 func Load() Config {
 
 	return Config{
-		RawRoot:  "G:\\data\\minute_aggs_v1",
-		TempRoot: "G:\\data\\temp",
+		ArchiveRawRoot: "G:\\data\\rawdata\\archive\\minute_aggs_v1",
+		MetadataRoot:   "G:\\data\\metadata",
+		ParquetRoot:    "G:\\data\\parquet",
+		RawRoot:        "G:\\data\\rawdata\\pending\\minute_aggs_v1",
+		SQLiteRoot:     "G:\\data\\sqLite",
+		TempRoot:       "G:\\data\\temp",
 
-		Stage2Root:  "G:\\data\\stage2",
-		Stage3Root:  "G:\\data\\stage3",
-		ParquetRoot: "G:\\data\\parquet",
+		// TODO: delete
+		Stage2Root:        "G:\\data\\stage2",
+		Stage3Root:        "G:\\data\\stage3",
+		ArchiveSortedRoot: "G:\\data\\archive\\expiry_sorted",
 
-		ArchiveRawRoot:    "G:\\archive\\minute_aggs_v1",
-		ArchiveSortedRoot: "G:\\archive\\expiry_sorted",
-		MetadataRoot:      "G:\\data\\metadata",
-
-		MaxOpenFiles: 128,
-
-		MinRowsPerRowGroup:  100000,
-		MaxRowGroupsPerFile: 100,
+		// Deleted as the parameters are now defined as constants in internal/pipeline/constants/constants.go
+		// MaxOpenFiles:        128,
+		// MinRowsPerRowGroup:  100000,
+		// MaxRowGroupsPerFile: 100,
 	}
 }

@@ -15,10 +15,6 @@ func PriceToUint32(v float64) uint32 {
 	return uint32(math.Round(v * float64(constants.PriceScale)))
 }
 
-func StrikeToUint32(v float64) uint32 {
-	return uint32(math.Round(v * float64(constants.StrikeScale)))
-}
-
 func FormatOptionType(v bool) string {
 	if v {
 		return "C"

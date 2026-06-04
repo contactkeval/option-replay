@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
+	"github.com/contactkeval/option-replay/internal/pipeline/constants"
 )
 
 func Run(cfg config.Config) error {
@@ -17,7 +18,7 @@ func Run(cfg config.Config) error {
 
 	cache := NewWriterCache(
 		cfg.Stage2Root,
-		cfg.MaxOpenFiles,
+		constants.MaxOpenFiles,
 	)
 
 	for _, file := range files {
