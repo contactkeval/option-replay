@@ -3,6 +3,8 @@ package transientdb
 import (
 	"database/sql"
 	"fmt"
+
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 func InsertBars(
@@ -22,19 +24,22 @@ func InsertBars(
         high,
         low,
         close,
-        volume
+        volume,
+		transactions
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, table)
 
 	stmt, err := tx.Prepare(query)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
+	inserted := 0
+	ignored := 0
 	for _, bar := range bars {
-		_, err := stmt.Exec(
+		result, err := stmt.Exec(
 			bar.Ticker,
 			bar.Strike,
 			bar.OptionType,
@@ -44,12 +49,25 @@ func InsertBars(
 			bar.Low,
 			bar.Close,
 			bar.Volume,
+			bar.Transactions,
 		)
+
+		if err != nil {
+			return fmt.Errorf("execute statement: %w", err)
+		}
+		affected, err := result.RowsAffected()
 
 		if err != nil {
 			return err
 		}
+
+		if affected == 1 {
+			inserted++
+		} else {
+			ignored++
+		}
 	}
 
+	logger.Infof("Expiry=%s: Inserted: %d, Ignored: %d", expiry, inserted, ignored)
 	return nil
 }

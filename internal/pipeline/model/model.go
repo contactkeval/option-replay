@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 type CsvRow struct {
 	Strike      string
 	OptionType  string
@@ -30,7 +32,29 @@ type ParquetRow struct {
 
 type ParsedTicker struct {
 	Underlying string
-	Expiry     string
+	ExpiryDate time.Time
 	OptionType bool
 	Strike     uint32
+}
+
+type ActiveMetadataRow struct {
+	Ticker     string
+	ExpiryDate time.Time
+	RowCount   int
+
+	Status        string
+	ParquetPath   *string
+	RowGroupCount *int
+}
+type ActiveParquetMetadataRow struct {
+	Ticker     string
+	ExpiryDate time.Time
+	RowCount   int
+
+	Status        string
+	ParquetPath   string
+	StartRowGroup int
+	RowGroupCount int
+
+	CreatedAt string
 }

@@ -22,10 +22,10 @@ type Config struct {
 func Load() Config {
 
 	return Config{
-		ArchiveRawRoot: "G:\\data\\rawdata\\archive\\minute_aggs_v1",
+		ArchiveRawRoot: "G:\\data\\rawdata\\archive",
 		MetadataRoot:   "G:\\data\\metadata",
 		ParquetRoot:    "G:\\data\\parquet",
-		RawRoot:        "G:\\data\\rawdata\\pending\\minute_aggs_v1",
+		RawRoot:        "G:\\data\\rawdata\\pending",
 		SQLiteRoot:     "G:\\data\\sqLite",
 		TempRoot:       "G:\\data\\temp",
 

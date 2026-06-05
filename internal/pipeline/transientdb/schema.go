@@ -4,31 +4,41 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
+
+type TransientRow struct {
+	Ticker string
+
+	model.ParquetRow
+}
 
 func tableName(expiry string) string {
 	expiry = strings.ReplaceAll(expiry, "-", "")
 	return fmt.Sprintf("options_%s", expiry)
 }
 
-func EnsureExpiryTable(db *sql.DB, expiry string) error {
+func EnsureExpiryTable(
+	tx *sql.Tx,
+	expiry string,
+) error {
 	table := tableName(expiry)
 
 	query := fmt.Sprintf(`
     CREATE TABLE IF NOT EXISTS %s (
-        ticker TEXT NOT NULL,
+        ticker       TEXT NOT NULL,
+        strike       INTEGER NOT NULL,
+        option_type  INTEGER NOT NULL,
+        window_start INTEGER NOT NULL,
 
-        strike INTEGER NOT NULL,
-        option_type TEXT NOT NULL,
-
-        window_start TEXT NOT NULL,
-
-        open INTEGER NOT NULL,
-        high INTEGER NOT NULL,
-        low INTEGER NOT NULL,
+        open  INTEGER NOT NULL,
+        high  INTEGER NOT NULL,
+        low   INTEGER NOT NULL,
         close INTEGER NOT NULL,
 
-        volume INTEGER NOT NULL,
+        volume       INTEGER NOT NULL,
+        transactions INTEGER NOT NULL,
 
         PRIMARY KEY (
             ticker,
@@ -39,15 +49,15 @@ func EnsureExpiryTable(db *sql.DB, expiry string) error {
     );
     `, table)
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	if err != nil {
 		return err
 	}
 
-	return createIndexes(db, table)
+	return createIndexes(tx, table)
 }
 
-func createIndexes(db *sql.DB, table string) error {
+func createIndexes(tx *sql.Tx, table string) error {
 	queries := []string{
 		fmt.Sprintf(`
         CREATE INDEX IF NOT EXISTS idx_%s_ticker
@@ -66,7 +76,7 @@ func createIndexes(db *sql.DB, table string) error {
 	}
 
 	for _, q := range queries {
-		if _, err := db.Exec(q); err != nil {
+		if _, err := tx.Exec(q); err != nil {
 			return err
 		}
 	}

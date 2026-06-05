@@ -44,7 +44,7 @@ func (c *WriterCache) Write(
 	filename := fmt.Sprintf(
 		"%s_%s.csv",
 		t.Underlying,
-		t.Expiry,
+		t.ExpiryDate.Format("20060102"),
 	)
 
 	path := filepath.Join(dir, filename)

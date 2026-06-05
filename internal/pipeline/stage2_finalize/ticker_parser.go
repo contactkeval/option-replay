@@ -1,9 +1,11 @@
-package stage1_ingest
+package stage2_finalize
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
@@ -23,17 +25,21 @@ func ParseTicker(raw string) (model.ParsedTicker, error) {
 
 	expiryStart := len(s) - 15
 	underlying := s[:expiryStart]
-	expiry := s[expiryStart : expiryStart+6]
+	expiryStr := s[expiryStart : expiryStart+6]
 	optionTypeChar := s[expiryStart+6]
 	strikeStr := s[expiryStart+7:]
 	strike, err := strconv.ParseUint(strikeStr, 10, 32)
 	if err != nil {
-		return model.ParsedTicker{}, err
+		return model.ParsedTicker{}, fmt.Errorf("parse strike price: %w", err)
+	}
+	expiry, err := time.Parse("060102", expiryStr)
+	if err != nil {
+		return model.ParsedTicker{}, fmt.Errorf("parse expiry date: %w", err)
 	}
 
 	return model.ParsedTicker{
 		Underlying: strings.ToUpper(underlying),
-		Expiry:     expiry,
+		ExpiryDate: expiry,
 		OptionType: optionTypeChar == 'C',
 		Strike:     uint32(strike),
 	}, nil
