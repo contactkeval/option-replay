@@ -40,7 +40,7 @@ func (a *RowGroupAccumulator) AppendExpiry(
 	for start < len(expiryRows) {
 
 		remainingCapacity :=
-			constants.RowGroupTargetRows - len(a.pending)
+			constants.TargetRowsPerRowGroup - len(a.pending)
 
 		if remainingCapacity <= 0 {
 
@@ -52,7 +52,7 @@ func (a *RowGroupAccumulator) AppendExpiry(
 			a.Reset()
 
 			remainingCapacity =
-				constants.RowGroupTargetRows
+				constants.TargetRowsPerRowGroup
 		}
 
 		end := start
@@ -70,7 +70,7 @@ func (a *RowGroupAccumulator) AppendExpiry(
 				expiryRows[end-1].Strike
 
 			for end > start &&
-				expiryRows[end].Strike == lastStrike {
+				expiryRows[end-1].Strike == lastStrike {
 
 				end--
 			}
@@ -98,7 +98,7 @@ func (a *RowGroupAccumulator) AppendExpiry(
 		start = end
 
 		if len(a.pending) >=
-			constants.RowGroupTargetRows {
+			constants.TargetRowsPerRowGroup {
 
 			flushed = append(
 				flushed,

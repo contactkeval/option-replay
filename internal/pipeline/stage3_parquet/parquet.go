@@ -3,7 +3,10 @@ package stage3_parquet
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/compress/zstd"
@@ -91,4 +94,52 @@ func (p *ParquetFileWriter) FlushRowGroup() error {
 	}
 
 	return nil
+}
+
+func WriteTinyParquet(
+	cfg config.Config,
+	ticker string,
+	firstExpiry time.Time,
+	rowGroups [][]model.ParquetRow,
+) (string, error) {
+
+	filename := fmt.Sprintf(
+		"%s_%s.parquet",
+		ticker,
+		firstExpiry.Format("20060102"),
+	)
+
+	outputPath := filepath.Join(
+		cfg.Stage3Root,
+		filename,
+	)
+
+	writer, err := NewParquetFileWriter(
+		outputPath,
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("create parquet writer: %w", err)
+	}
+
+	defer writer.Close()
+
+	for _, rowGroup := range rowGroups {
+
+		err := writer.WriteRowGroup(
+			rowGroup,
+		)
+
+		if err != nil {
+			return "", fmt.Errorf("write row group: %w", err)
+		}
+
+		err = writer.FlushRowGroup()
+
+		if err != nil {
+			return "", fmt.Errorf("flush row group: %w", err)
+		}
+	}
+
+	return outputPath, nil
 }
