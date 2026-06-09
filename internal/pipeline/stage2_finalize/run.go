@@ -30,6 +30,11 @@ func Run(cfg config.Config) error {
 
 	defer db.Close()
 
+	// TODO: Log rejected rows details to a separate table for later analysis
+	if err = transientdb.EnsureRejectedRowsTable(db); err != nil {
+		return fmt.Errorf("ensure rejected rows table: %w", err)
+	}
+
 	return filepath.Walk(
 		cfg.RawRoot,
 		func(
@@ -99,11 +104,11 @@ func Run(cfg config.Config) error {
 					return fmt.Errorf("insert bars for %s: %w", expiry, err)
 				}
 
-				logger.Infof(
-					"expiry=%s rows=%d",
-					expiry,
-					len(rows),
-				)
+				// logger.Infof(
+				// 	"expiry=%s rows=%d",
+				// 	expiry,
+				// 	len(rows),
+				// )
 			}
 
 			// --------------------------------
@@ -119,16 +124,17 @@ func Run(cfg config.Config) error {
 			err = ArchiveRawFile(
 				path,
 				cfg.RawRoot,
+				cfg.ArchiveRawRoot,
 			)
 
 			if err != nil {
 				return fmt.Errorf("archive raw file %s: %w", path, err)
 			}
 
-			logger.Infof(
-				"completed raw file: %s",
-				path,
-			)
+			// logger.Infof(
+			// 	"completed raw file: %s",
+			// 	path,
+			// )
 
 			return nil
 		},
@@ -138,20 +144,23 @@ func Run(cfg config.Config) error {
 func ArchiveRawFile(
 	sourcePath string,
 	rawRoot string,
+	archivedRoot string,
 ) error {
 
 	rel, err := filepath.Rel(
-		filepath.Join(rawRoot, "pending"),
+		rawRoot,
 		sourcePath,
 	)
 
 	if err != nil {
-		return fmt.Errorf("calculate relative path: %w", err)
+		return fmt.Errorf(
+			"calculate relative path: %w",
+			err,
+		)
 	}
 
 	targetPath := filepath.Join(
-		rawRoot,
-		"archive",
+		archivedRoot,
 		rel,
 	)
 
@@ -164,8 +173,22 @@ func ArchiveRawFile(
 		return fmt.Errorf("create archive directory: %w", err)
 	}
 
-	return os.Rename(
+	err = os.Rename(
 		sourcePath,
 		targetPath,
 	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"move raw file to archive: %w",
+			err,
+		)
+	}
+
+	logger.Infof(
+		"archived raw file: %s",
+		targetPath,
+	)
+
+	return nil
 }

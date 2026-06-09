@@ -54,7 +54,7 @@ func Run(cfg config.Config) error {
 	today := time.Date(
 		2024,
 		5,
-		20,
+		22,
 		0,
 		0,
 		0,

@@ -68,6 +68,8 @@ func InsertBars(
 		}
 	}
 
-	logger.Infof("Expiry=%s: Inserted: %d, Ignored: %d", expiry, inserted, ignored)
+	if ignored > 0 {
+		logger.Warnf("Expiry=%s: Inserted: %d, Ignored: %d", expiry, inserted, ignored)
+	}
 	return nil
 }
