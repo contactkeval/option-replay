@@ -100,7 +100,7 @@ func WriteTinyParquet(
 	cfg config.Config,
 	ticker string,
 	firstExpiry time.Time,
-	rowGroups [][]model.ParquetRow,
+	rowGroups []RowGroup,
 ) (string, error) {
 
 	filename := fmt.Sprintf(
@@ -109,8 +109,20 @@ func WriteTinyParquet(
 		firstExpiry.Format("20060102"),
 	)
 
+	tickerDir := filepath.Join(
+		cfg.ParquetRoot,
+		ticker,
+	)
+
+	if err := os.MkdirAll(
+		tickerDir,
+		0755,
+	); err != nil {
+		return "", err
+	}
+
 	outputPath := filepath.Join(
-		cfg.Stage3Root,
+		tickerDir,
 		filename,
 	)
 
@@ -122,12 +134,10 @@ func WriteTinyParquet(
 		return "", fmt.Errorf("create parquet writer: %w", err)
 	}
 
-	defer writer.Close()
-
 	for _, rowGroup := range rowGroups {
 
 		err := writer.WriteRowGroup(
-			rowGroup,
+			rowGroup.Rows,
 		)
 
 		if err != nil {
@@ -139,6 +149,15 @@ func WriteTinyParquet(
 		if err != nil {
 			return "", fmt.Errorf("flush row group: %w", err)
 		}
+	}
+
+	err = writer.Close()
+
+	if err != nil {
+		return "", fmt.Errorf(
+			"close parquet writer: %w",
+			err,
+		)
 	}
 
 	return outputPath, nil

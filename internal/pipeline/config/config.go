@@ -8,11 +8,6 @@ type Config struct {
 	SQLiteRoot     string
 	TempRoot       string
 
-	// TODO: delete
-	ArchiveSortedRoot string
-	Stage2Root        string
-	Stage3Root        string
-
 	// Deleted as the parameters are now defined as constants in internal/pipeline/constants/constants.go
 	// MaxOpenFiles        int
 	// MinRowsPerRowGroup  int
@@ -28,11 +23,6 @@ func Load() Config {
 		RawRoot:        "G:\\data\\rawdata\\pending",
 		SQLiteRoot:     "G:\\data\\sqLite",
 		TempRoot:       "G:\\data\\temp",
-
-		// TODO: delete
-		Stage2Root:        "G:\\data\\stage2",
-		Stage3Root:        "G:\\data\\stage3",
-		ArchiveSortedRoot: "G:\\data\\archive\\expiry_sorted",
 
 		// Deleted as the parameters are now defined as constants in internal/pipeline/constants/constants.go
 		// MaxOpenFiles:        128,

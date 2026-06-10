@@ -1,6 +1,7 @@
 package stage3_parquet
 
 import (
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -23,22 +24,30 @@ func Run(cfg config.Config) error {
 		"metadata.db",
 	)
 
-	transientDB, err := OpenMetadataDB(
+	transientDB, err := OpenSQLiteDB(
 		transientDBPath,
 	)
 
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"open transient db: %w",
+			err,
+		)
 	}
+
 	defer transientDB.Close()
 
-	metadataDB, err := OpenMetadataDB(
+	metadataDB, err := OpenSQLiteDB(
 		metadataDBPath,
 	)
 
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"open metadata db: %w",
+			err,
+		)
 	}
+
 	defer metadataDB.Close()
 
 	err = EnsureMetadataTable(
@@ -46,15 +55,22 @@ func Run(cfg config.Config) error {
 	)
 
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"ensure metadata table: %w",
+			err,
+		)
 	}
 
-	// today := time.Now().UTC()
+	// -------------------------------------------------
+	// Discover newly expired expiry tables
+	// -------------------------------------------------
+
+	// today := time.Now().UTC() // TODO: for testing use a fixed date
 
 	today := time.Date(
 		2024,
-		5,
-		22,
+		7,
+		1,
 		0,
 		0,
 		0,
@@ -69,89 +85,236 @@ func Run(cfg config.Config) error {
 	)
 
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"discover expired tables: %w",
+			err,
+		)
 	}
 
-	activeRows, err := LoadCreatedRows(
-		metadataDB,
-	)
+	workDone := true
 
-	if err != nil {
-		return err
-	}
+	for workDone {
 
-	grouped := GroupMetadataRowsByTicker(
-		activeRows,
-	)
+		workDone = false
 
-	for ticker, rows := range grouped {
+		// -------------------------------------------------
+		// Load active metadata rows
+		// -------------------------------------------------
 
-		allRows, err := LoadTickerRows(
-			transientDB,
-			rows,
+		activeRows, err := LoadCreatedRows(
+			metadataDB,
 		)
 
 		if err != nil {
-			return err
+			return fmt.Errorf(
+				"load active metadata rows: %w",
+				err,
+			)
 		}
-
-		rowGroups := BuildRowGroups(
-			allRows,
-			constants.TargetRowsPerRowGroup,
-			constants.MaxTrailingRows,
+		grouped := GroupMetadataRowsByTicker(
+			activeRows,
 		)
 
-		if len(rowGroups) == 0 {
+		// -------------------------------------------------
+		// Process ticker by ticker
+		// -------------------------------------------------
 
-			for _, row := range rows {
+		for ticker, rows := range grouped {
 
-				err := UpdateMetadataPending(
-					metadataDB,
+			eligibleRows := SelectEligibleMetadataRows(
+				rows,
+				constants.TargetRowsPerRowGroup,
+				constants.MaxTrailingRows,
+			)
+
+			// ---------------------------------------------
+			// nothing eligible yet
+			// ---------------------------------------------
+
+			if len(eligibleRows) == 0 {
+
+				logger.Infof(
+					"ticker=%s pending rows not sufficient yet",
+					ticker,
+				)
+
+				continue
+			}
+
+			logger.Infof(
+				"ticker=%s eligible expiries=%d",
+				ticker,
+				len(eligibleRows),
+			)
+
+			// ---------------------------------------------
+			// load rows from transient sqlite
+			// ---------------------------------------------
+
+			allRows, err := LoadTickerRows(
+				transientDB,
+				eligibleRows,
+			)
+
+			if err != nil {
+				return fmt.Errorf(
+					"load ticker rows for %s: %w",
+					ticker,
+					err,
+				)
+			}
+
+			// ---------------------------------------------
+			// sanity validation
+			// ---------------------------------------------
+
+			expectedRows := 0
+
+			for _, row := range eligibleRows {
+				expectedRows += row.RowCount
+			}
+
+			if expectedRows != len(allRows) {
+
+				return fmt.Errorf(
+					"row mismatch ticker=%s metadata=%d actual=%d",
+					ticker,
+					expectedRows,
+					len(allRows),
+				)
+			}
+
+			// ---------------------------------------------
+			// build physical parquet rowgroups
+			// ---------------------------------------------
+
+			rowGroups := BuildPhysicalRowGroups(
+				allRows,
+			)
+
+			if len(rowGroups) == 0 {
+
+				logger.Infof(
+					"ticker=%s no rowgroups built",
+					ticker,
+				)
+
+				continue
+			}
+
+			// ---------------------------------------------
+			// parquet write
+			// ---------------------------------------------
+
+			parquetPath, err := WriteTinyParquet(
+				cfg,
+				ticker,
+				eligibleRows[0].ExpiryDate,
+				rowGroups,
+			)
+
+			if err != nil {
+				return fmt.Errorf(
+					"write parquet for %s: %w",
+					ticker,
+					err,
+				)
+			}
+
+			// ---------------------------------------------
+			// metadata update
+			// ---------------------------------------------
+
+			metadataDBtx, err := metadataDB.Begin()
+			if err != nil {
+				return fmt.Errorf(
+					"begin metadata update transaction: %w",
+					err,
+				)
+			}
+			defer metadataDBtx.Rollback()
+
+			for _, row := range eligibleRows {
+
+				err := UpdateMetadataProcessed(
+					metadataDBtx,
+					ticker,
+					row.ExpiryDate,
+					parquetPath,
+					len(rowGroups),
+				)
+
+				if err != nil {
+					return fmt.Errorf(
+						"update metadata processed ticker=%s expiry=%s: %w",
+						ticker,
+						row.ExpiryDate.Format("2006-01-02"),
+						err,
+					)
+				}
+			}
+
+			// ---------------------------------------------
+			// cleanup processed transient sqlite rows
+			// ---------------------------------------------
+
+			transientDBtx, err := transientDB.Begin()
+			if err != nil {
+				return fmt.Errorf(
+					"begin transient cleanup transaction: %w",
+					err,
+				)
+			}
+			defer transientDBtx.Rollback()
+
+			for _, row := range eligibleRows {
+
+				err := DeleteProcessedTickerRows(
+					transientDBtx,
 					ticker,
 					row.ExpiryDate,
 				)
 
 				if err != nil {
-					return err
+					return fmt.Errorf(
+						"delete transient rows ticker=%s expiry=%s: %w",
+						ticker,
+						row.ExpiryDate.Format("2006-01-02"),
+						err,
+					)
 				}
 			}
 
-			continue
-		}
+			err = transientDBtx.Commit()
+			if err != nil {
+				transientDBtx.Rollback()
+				return fmt.Errorf(
+					"commit transient cleanup transaction: %w",
+					err,
+				)
+			}
 
-		parquetPath, err := WriteTinyParquet(
-			cfg,
-			ticker,
-			rows[0].ExpiryDate,
-			rowGroups,
-		)
+			err = metadataDBtx.Commit()
+			if err != nil {
+				metadataDBtx.Rollback()
+				return fmt.Errorf(
+					"commit metadata update transaction: %w",
+					err,
+				)
+			}
+			workDone = true
 
-		if err != nil {
-			return err
-		}
-
-		for _, row := range rows {
-
-			err := UpdateMetadataProcessed(
-				metadataDB,
+			logger.Infof(
+				"ticker=%s parquet=%s rowgroups=%d rows=%d",
 				ticker,
-				row.ExpiryDate,
 				parquetPath,
 				len(rowGroups),
+				len(allRows),
 			)
-
-			if err != nil {
-				return err
-			}
 		}
-
-		logger.Infof(
-			"ticker=%s rowgroups=%d parquet=%s",
-			ticker,
-			len(rowGroups),
-			parquetPath,
-		)
 	}
+
+	logger.Infof("stage3 parquet completed")
 
 	return nil
 }

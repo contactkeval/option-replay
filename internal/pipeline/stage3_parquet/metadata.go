@@ -2,36 +2,144 @@ package stage3_parquet
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	_ "modernc.org/sqlite"
 )
 
-func OpenMetadataDB(path string) (*sql.DB, error) {
+func SelectEligibleMetadataRows(
+	rows []model.ActiveMetadataRow,
+	targetRows int,
+	maxTrailingRows int,
+) []model.ActiveMetadataRow {
 
-	db, err := sql.Open(
-		"sqlite",
-		path,
+	selected := make(
+		[]model.ActiveMetadataRow,
+		0,
 	)
 
-	if err != nil {
-		return nil, err
-	}
+	total := 0
 
-	queries := []string{
-		`PRAGMA journal_mode=WAL;`,
-		`PRAGMA synchronous=NORMAL;`,
-	}
+	for _, row := range rows {
 
-	for _, q := range queries {
-		if _, err := db.Exec(q); err != nil {
-			return nil, err
+		selected = append(
+			selected,
+			row,
+		)
+
+		total += row.RowCount
+
+		quotient := total / targetRows
+		remainder := total % targetRows
+
+		if quotient > 0 &&
+			remainder < maxTrailingRows {
+
+			return selected
 		}
 	}
 
-	return db, nil
+	return nil
+}
+
+func LoadTickerRows(
+	db *sql.DB,
+	metadataRows []model.ActiveMetadataRow,
+) ([]model.ParquetRow, error) {
+
+	var result []model.ParquetRow
+
+	for _, meta := range metadataRows {
+
+		expiryString := meta.ExpiryDate.Format(
+			"20060102",
+		)
+
+		table := fmt.Sprintf(
+			"options_%s",
+			expiryString,
+		)
+
+		query := fmt.Sprintf(`
+		SELECT
+			strike,
+			option_type,
+			window_start,
+			open,
+			high,
+			low,
+			close,
+			volume,
+			transactions
+		FROM %s
+		WHERE ticker = ?
+		ORDER BY
+			strike,
+			option_type,
+			window_start
+		`, table)
+
+		rows, err := db.Query(
+			query,
+			meta.Ticker,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+
+			var row model.ParquetRow
+
+			err := rows.Scan(
+				&row.Strike,
+				&row.OptionType,
+				&row.WindowStart,
+				&row.Open,
+				&row.High,
+				&row.Low,
+				&row.Close,
+				&row.Volume,
+				&row.Transactions,
+			)
+
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+
+			result = append(
+				result,
+				row,
+			)
+		}
+
+		rows.Close()
+	}
+
+	return result, nil
+}
+
+func GroupMetadataRowsByTicker(
+	rows []model.ActiveMetadataRow,
+) map[string][]model.ActiveMetadataRow {
+
+	result := make(
+		map[string][]model.ActiveMetadataRow,
+	)
+
+	for _, row := range rows {
+
+		result[row.Ticker] = append(
+			result[row.Ticker],
+			row,
+		)
+	}
+
+	return result
 }
 
 func EnsureMetadataTable(db *sql.DB) error {
@@ -148,7 +256,7 @@ func LoadCreatedRows(
 }
 
 func UpdateMetadataProcessed(
-	db *sql.DB,
+	tx *sql.Tx,
 	ticker string,
 	expiryDate time.Time,
 	parquetPath string,
@@ -166,7 +274,7 @@ func UpdateMetadataProcessed(
 		AND expiry_date = ?
 	`
 
-	_, err := db.Exec(
+	_, err := tx.Exec(
 		query,
 		parquetPath,
 		rowGroups,

@@ -20,7 +20,7 @@ func DiscoverExpiredTables(
 	)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("list expiry tables: %w", err)
 	}
 
 	for _, table := range tables {
@@ -36,7 +36,7 @@ func DiscoverExpiredTables(
 		)
 
 		if err != nil {
-			return err
+			return fmt.Errorf("parse expiry date: %w", err)
 		}
 
 		if !expiryDate.Before(today) {
@@ -53,7 +53,7 @@ func DiscoverExpiredTables(
 
 		rows, err := transientDB.Query(query)
 		if err != nil {
-			return err
+			return fmt.Errorf("query transient db: %w", err)
 		}
 
 		for rows.Next() {
@@ -68,7 +68,7 @@ func DiscoverExpiredTables(
 
 			if err != nil {
 				rows.Close()
-				return err
+				return fmt.Errorf("scan transient db rows: %w", err)
 			}
 
 			err = InsertMetadataRow(
@@ -86,7 +86,7 @@ func DiscoverExpiredTables(
 
 			if err != nil {
 				rows.Close()
-				return err
+				return fmt.Errorf("insert metadata row: %w", err)
 			}
 		}
 
@@ -109,7 +109,7 @@ func ListExpiryTables(
 
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query expiry tables: %w", err)
 	}
 	defer rows.Close()
 
@@ -121,11 +121,36 @@ func ListExpiryTables(
 
 		err := rows.Scan(&table)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan expiry tables: %w", err)
 		}
 
 		tables = append(tables, table)
 	}
 
 	return tables, rows.Err()
+}
+
+func OpenSQLiteDB(path string) (*sql.DB, error) {
+
+	db, err := sql.Open(
+		"sqlite",
+		path,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite db: %w", err)
+	}
+
+	queries := []string{
+		`PRAGMA journal_mode=WAL;`,
+		`PRAGMA synchronous=NORMAL;`,
+	}
+
+	for _, q := range queries {
+		if _, err := db.Exec(q); err != nil {
+			return nil, fmt.Errorf("execute pragma: %w", err)
+		}
+	}
+
+	return db, nil
 }
