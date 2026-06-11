@@ -2,6 +2,20 @@ package model
 
 import "time"
 
+type ParsedTicker struct {
+	Underlying string
+	ExpiryDate time.Time
+	OptionType bool
+	Strike     uint32
+}
+
+type CompactCandidate struct {
+	Ticker        string
+	ParquetPath   string
+	FirstExpiry   time.Time
+	RowGroupCount int
+}
+
 type CsvRow struct {
 	Strike      string
 	OptionType  string
@@ -30,13 +44,6 @@ type ParquetRow struct {
 	Transactions uint32 `parquet:"name=transactions, type=UINT32"`
 }
 
-type ParsedTicker struct {
-	Underlying string
-	ExpiryDate time.Time
-	OptionType bool
-	Strike     uint32
-}
-
 type ActiveMetadataRow struct {
 	Ticker     string
 	ExpiryDate time.Time
@@ -57,4 +64,17 @@ type ActiveParquetMetadataRow struct {
 	RowGroupCount int
 
 	CreatedAt string
+}
+
+type ArchivedMetadataRow struct {
+	Ticker     string
+	ExpiryDate time.Time
+	RowCount   int
+
+	ParquetPath   string
+	RowGroupCount int
+	StartRowGroup int
+
+	CreatedAt  string
+	ArchivedAt string
 }

@@ -65,19 +65,7 @@ func Run(cfg config.Config) error {
 	// Discover newly expired expiry tables
 	// -------------------------------------------------
 
-	// today := time.Now().UTC() // TODO: for testing use a fixed date
-
-	today := time.Date(
-		2024,
-		7,
-		1,
-		0,
-		0,
-		0,
-		0,
-		time.UTC,
-	)
-
+	today := time.Now().UTC() // TODO: for testing use a fixed date
 	err = DiscoverExpiredTables(
 		transientDB,
 		metadataDB,

@@ -14,6 +14,6 @@ const (
 	ScannerBufferMax     = 10 * 1024 * 1024
 
 	TargetRowsPerRowGroup  = 100_000
-	MaxTrailingRows        = 10_000
+	MaxTrailingRows        = 20_000
 	TargetRowGroupsPerFile = 100
 )

@@ -166,8 +166,37 @@ func EnsureMetadataTable(db *sql.DB) error {
 	`
 
 	_, err := db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("create active_metadata table: %w", err)
+	}
 
-	return err
+	query = `
+	CREATE TABLE IF NOT EXISTS archive_metadata (
+		ticker TEXT NOT NULL,
+		expiry_date DATE NOT NULL,
+
+		row_count INTEGER NOT NULL,
+
+		parquet_path TEXT NOT NULL,
+
+		start_row_group INTEGER NOT NULL,
+		row_group_count INTEGER NOT NULL,
+
+		created_at DATETIME NOT NULL,
+		archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	
+		PRIMARY KEY (
+			ticker,
+			expiry_date
+		)
+	);
+	`
+
+	if _, err = db.Exec(query); err != nil {
+		return fmt.Errorf("create archive_metadata table: %w", err)
+	}
+
+	return nil
 }
 
 func InsertMetadataRow(
