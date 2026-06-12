@@ -7,20 +7,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
-func ParseTicker(raw string) (model.ParsedTicker, error) {
+func ParseTicker(raw string) (config.ParsedTicker, error) {
 
 	// Example:
 	// O:SPY230327P00390000
 	if !strings.HasPrefix(raw, "O:") {
-		return model.ParsedTicker{}, errors.New("invalid option ticker")
+		return config.ParsedTicker{}, errors.New("invalid option ticker")
 	}
 
 	s := raw[2:]
 	if len(s) < 15 {
-		return model.ParsedTicker{}, errors.New("invalid ticker length")
+		return config.ParsedTicker{}, errors.New("invalid ticker length")
 	}
 
 	expiryStart := len(s) - 15
@@ -30,14 +30,14 @@ func ParseTicker(raw string) (model.ParsedTicker, error) {
 	strikeStr := s[expiryStart+7:]
 	strike, err := strconv.ParseUint(strikeStr, 10, 32)
 	if err != nil {
-		return model.ParsedTicker{}, fmt.Errorf("parse strike price: %w", err)
+		return config.ParsedTicker{}, fmt.Errorf("parse strike price: %w", err)
 	}
 	expiry, err := time.Parse("060102", expiryStr)
 	if err != nil {
-		return model.ParsedTicker{}, fmt.Errorf("parse expiry date: %w", err)
+		return config.ParsedTicker{}, fmt.Errorf("parse expiry date: %w", err)
 	}
 
-	return model.ParsedTicker{
+	return config.ParsedTicker{
 		Underlying: strings.ToUpper(underlying),
 		ExpiryDate: expiry,
 		OptionType: optionTypeChar == 'C',

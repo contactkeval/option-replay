@@ -3,13 +3,12 @@ package stage2_finalize
 import (
 	"strconv"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	"github.com/contactkeval/option-replay/internal/pipeline/util"
 )
 
-func ConvertRows(rows []model.CsvRow) []model.ParquetRow {
-
-	result := make([]model.ParquetRow, 0, len(rows))
+func ConvertRows(rows []config.CsvRow) []config.ParquetRow {
+	result := make([]config.ParquetRow, 0, len(rows))
 
 	for _, r := range rows {
 
@@ -19,7 +18,7 @@ func ConvertRows(rows []model.CsvRow) []model.ParquetRow {
 			32,
 		)
 
-		result = append(result, model.ParquetRow{
+		result = append(result, config.ParquetRow{
 			Strike:      uint32(strike), // strike is already in fixed-point format in the CSV, so we can directly convert it to uint32
 			OptionType:  util.ParseOptionType(r.OptionType),
 			WindowStart: util.NanosecondsToSeconds(r.WindowStart),

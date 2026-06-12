@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	_ "modernc.org/sqlite"
 )
 
 func SelectEligibleMetadataRows(
-	rows []model.ActiveMetadataRow,
+	rows []config.ActiveMetadataRow,
 	targetRows int,
 	maxTrailingRows int,
-) []model.ActiveMetadataRow {
+) []config.ActiveMetadataRow {
 
 	selected := make(
-		[]model.ActiveMetadataRow,
+		[]config.ActiveMetadataRow,
 		0,
 	)
 
@@ -46,10 +46,10 @@ func SelectEligibleMetadataRows(
 
 func LoadTickerRows(
 	db *sql.DB,
-	metadataRows []model.ActiveMetadataRow,
-) ([]model.ParquetRow, error) {
+	metadataRows []config.ActiveMetadataRow,
+) ([]config.ParquetRow, error) {
 
-	var result []model.ParquetRow
+	var result []config.ParquetRow
 
 	for _, meta := range metadataRows {
 
@@ -92,7 +92,7 @@ func LoadTickerRows(
 
 		for rows.Next() {
 
-			var row model.ParquetRow
+			var row config.ParquetRow
 
 			err := rows.Scan(
 				&row.Strike,
@@ -124,11 +124,11 @@ func LoadTickerRows(
 }
 
 func GroupMetadataRowsByTicker(
-	rows []model.ActiveMetadataRow,
-) map[string][]model.ActiveMetadataRow {
+	rows []config.ActiveMetadataRow,
+) map[string][]config.ActiveMetadataRow {
 
 	result := make(
-		map[string][]model.ActiveMetadataRow,
+		map[string][]config.ActiveMetadataRow,
 	)
 
 	for _, row := range rows {
@@ -201,7 +201,7 @@ func EnsureMetadataTable(db *sql.DB) error {
 
 func InsertMetadataRow(
 	db *sql.DB,
-	row model.ActiveMetadataRow,
+	row config.ActiveMetadataRow,
 ) error {
 
 	query := `
@@ -227,7 +227,7 @@ func InsertMetadataRow(
 
 func LoadCreatedRows(
 	db *sql.DB,
-) ([]model.ActiveMetadataRow, error) {
+) ([]config.ActiveMetadataRow, error) {
 
 	query := `
 	SELECT
@@ -248,12 +248,11 @@ func LoadCreatedRows(
 	}
 	defer rows.Close()
 
-	var result []model.ActiveMetadataRow
+	var result []config.ActiveMetadataRow
 
 	for rows.Next() {
 
-		var row model.ActiveMetadataRow
-
+		var row config.ActiveMetadataRow
 		var expiry string
 
 		err := rows.Scan(

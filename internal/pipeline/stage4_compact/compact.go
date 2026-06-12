@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	"github.com/parquet-go/parquet-go"
 )
 
@@ -100,7 +100,7 @@ func CompactParquetFiles(
 
 	defer out.Close()
 
-	writer := parquet.NewGenericWriter[model.ParquetRow](
+	writer := parquet.NewGenericWriter[config.ParquetRow](
 		out,
 	)
 

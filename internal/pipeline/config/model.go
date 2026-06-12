@@ -1,4 +1,4 @@
-package model
+package config
 
 import "time"
 
@@ -77,4 +77,10 @@ type ArchivedMetadataRow struct {
 
 	CreatedAt  string
 	ArchivedAt string
+}
+
+type TransientRow struct {
+	Ticker string
+
+	ParquetRow
 }

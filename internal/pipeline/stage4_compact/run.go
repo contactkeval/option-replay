@@ -8,7 +8,6 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
-	"github.com/contactkeval/option-replay/internal/pipeline/constants"
 )
 
 func Run(
@@ -52,7 +51,7 @@ func Run(
 
 		candidateGroups := SelectCompactCandidates(
 			rows,
-			constants.TargetRowGroupsPerFile,
+			config.TargetRowGroupsPerFile,
 		)
 
 		logger.Infof(

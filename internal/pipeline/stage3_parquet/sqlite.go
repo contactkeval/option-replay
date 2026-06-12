@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 func DiscoverExpiredTables(
@@ -73,7 +73,7 @@ func DiscoverExpiredTables(
 
 			err = InsertMetadataRow(
 				metadataDB,
-				model.ActiveMetadataRow{
+				config.ActiveMetadataRow{
 					Ticker: ticker,
 
 					ExpiryDate: expiryDate,

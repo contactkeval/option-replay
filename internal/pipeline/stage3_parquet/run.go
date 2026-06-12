@@ -7,7 +7,6 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
-	"github.com/contactkeval/option-replay/internal/pipeline/constants"
 )
 
 func Run(cfg config.Config) error {
@@ -111,8 +110,8 @@ func Run(cfg config.Config) error {
 
 			eligibleRows := SelectEligibleMetadataRows(
 				rows,
-				constants.TargetRowsPerRowGroup,
-				constants.MaxTrailingRows,
+				config.TargetRowsPerRowGroup,
+				config.MaxTrailingRows,
 			)
 
 			// ---------------------------------------------

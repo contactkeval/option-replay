@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	"github.com/contactkeval/option-replay/internal/logger"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 func InsertBars(
 	tx *sql.Tx,
 	expiry string,
-	bars []TransientRow,
+	bars []config.TransientRow,
 ) error {
 	table := tableName(expiry)
 

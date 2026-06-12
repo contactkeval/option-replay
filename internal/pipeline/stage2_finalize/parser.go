@@ -7,14 +7,12 @@ import (
 	"os"
 
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
-	"github.com/contactkeval/option-replay/internal/pipeline/transientdb"
 	"github.com/contactkeval/option-replay/internal/pipeline/util"
 )
 
 func ProcessRawFile(
 	path string,
-) (map[string][]transientdb.TransientRow, error) {
+) (map[string][]config.TransientRow, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -38,7 +36,7 @@ func ProcessRawFile(
 	}
 
 	result := make(
-		map[string][]transientdb.TransientRow,
+		map[string][]config.TransientRow,
 	)
 
 	for {
@@ -63,10 +61,10 @@ func ProcessRawFile(
 			"2006-01-02",
 		)
 
-		row := transientdb.TransientRow{
+		row := config.TransientRow{
 			Ticker: parsed.Underlying,
 
-			ParquetRow: model.ParquetRow{
+			ParquetRow: config.ParquetRow{
 				Strike: uint32(parsed.Strike),
 
 				OptionType: parsed.OptionType,

@@ -7,14 +7,13 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/compress/zstd"
 )
 
 type ParquetFileWriter struct {
 	file   *os.File
-	writer *parquet.GenericWriter[model.ParquetRow]
+	writer *parquet.GenericWriter[config.ParquetRow]
 }
 
 func NewParquetFileWriter(
@@ -36,7 +35,7 @@ func NewParquetFileWriter(
 		)
 	}
 
-	writer := parquet.NewGenericWriter[model.ParquetRow](
+	writer := parquet.NewGenericWriter[config.ParquetRow](
 		file,
 		parquet.Compression(&zstd.Codec{}),
 	)
@@ -48,7 +47,7 @@ func NewParquetFileWriter(
 }
 
 func (p *ParquetFileWriter) WriteRowGroup(
-	rows []model.ParquetRow,
+	rows []config.ParquetRow,
 ) error {
 
 	if _, err := p.writer.Write(rows); err != nil {

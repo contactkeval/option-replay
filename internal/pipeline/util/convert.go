@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/constants"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 func NanosecondsToSeconds(v uint64) uint32 {
@@ -13,7 +13,7 @@ func NanosecondsToSeconds(v uint64) uint32 {
 }
 
 func PriceToUint32(v float64) uint32 {
-	return uint32(math.Round(v * float64(constants.PriceScale)))
+	return uint32(math.Round(v * float64(config.PriceScale)))
 }
 
 func FormatOptionType(v bool) string {
@@ -73,7 +73,7 @@ func PriceStringToUint32(
 		panic(err)
 	}
 
-	return uint32(f * float64(constants.PriceScale))
+	return uint32(f * float64(config.PriceScale))
 }
 
 // Converts:

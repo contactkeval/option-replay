@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 type WriterEntry struct {
@@ -31,7 +31,7 @@ func NewWriterCache(
 }
 
 func (c *WriterCache) Write(
-	t model.ParsedTicker,
+	t config.ParsedTicker,
 	line string,
 ) error {
 

@@ -4,15 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
 )
-
-type TransientRow struct {
-	Ticker string
-
-	model.ParquetRow
-}
 
 func tableName(expiry string) string {
 	expiry = strings.ReplaceAll(expiry, "-", "")

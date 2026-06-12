@@ -1,16 +1,15 @@
 package stage3_parquet
 
 import (
-	"github.com/contactkeval/option-replay/internal/pipeline/constants"
-	"github.com/contactkeval/option-replay/internal/pipeline/model"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 type RowGroup struct {
-	Rows []model.ParquetRow
+	Rows []config.ParquetRow
 }
 
 func BuildPhysicalRowGroups(
-	rows []model.ParquetRow,
+	rows []config.ParquetRow,
 ) []RowGroup {
 
 	if len(rows) == 0 {
@@ -19,13 +18,13 @@ func BuildPhysicalRowGroups(
 
 	strikeBlocks := SplitStrikeBlocks(rows)
 
-	target := constants.TargetRowsPerRowGroup
-	maxTrailing := constants.MaxTrailingRows
+	target := config.TargetRowsPerRowGroup
+	maxTrailing := config.MaxTrailingRows
 
 	result := make([]RowGroup, 0)
 
 	current := make(
-		[]model.ParquetRow,
+		[]config.ParquetRow,
 		0,
 		target+maxTrailing,
 	)
@@ -96,7 +95,7 @@ func BuildPhysicalRowGroups(
 		// ---------------------------------
 
 		current = make(
-			[]model.ParquetRow,
+			[]config.ParquetRow,
 			0,
 			target+maxTrailing,
 		)
@@ -120,15 +119,15 @@ func BuildPhysicalRowGroups(
 }
 
 func SplitStrikeBlocks(
-	rows []model.ParquetRow,
-) [][]model.ParquetRow {
+	rows []config.ParquetRow,
+) [][]config.ParquetRow {
 
 	if len(rows) == 0 {
 		return nil
 	}
 
 	result := make(
-		[][]model.ParquetRow,
+		[][]config.ParquetRow,
 		0,
 	)
 
