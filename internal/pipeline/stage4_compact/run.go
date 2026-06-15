@@ -18,6 +18,17 @@ func Run(
 		"Stage 4 compact started",
 	)
 
+	err := RecoverCompactions(
+		cfg.ParquetRoot,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"recover compactions: %w",
+			err,
+		)
+	}
+
 	metadataPath := filepath.Join(
 		cfg.MetadataRoot,
 		"metadata.db",
