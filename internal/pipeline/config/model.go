@@ -31,6 +31,7 @@ type CsvRow struct {
 }
 
 type ParquetRow struct {
+	ExpiryDate  uint32 `parquet:"name=expiry_date, type=UINT32"`
 	Strike      uint32 `parquet:"name=strike, type=UINT32"`
 	OptionType  bool   `parquet:"name=option_type, type=BOOLEAN"`
 	WindowStart uint32 `parquet:"name=window_start, type=UINT32"`

@@ -56,6 +56,7 @@ func LoadTickerRows(
 		expiryString := meta.ExpiryDate.Format(
 			"20060102",
 		)
+		expiry := uint32((meta.ExpiryDate.Year() * 100000) + (int(meta.ExpiryDate.Month()) * 100) + meta.ExpiryDate.Day())
 
 		table := fmt.Sprintf(
 			"options_%s",
@@ -94,6 +95,7 @@ func LoadTickerRows(
 
 			var row config.ParquetRow
 
+			row.ExpiryDate = expiry
 			err := rows.Scan(
 				&row.Strike,
 				&row.OptionType,

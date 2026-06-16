@@ -59,7 +59,7 @@ func Run(cfg config.Config) error {
 			}
 
 			logger.Infof(
-				"processing raw file: %s",
+				"processing: %s",
 				path,
 			)
 
@@ -185,10 +185,10 @@ func ArchiveRawFile(
 		)
 	}
 
-	logger.Infof(
-		"archived raw file: %s",
-		targetPath,
-	)
+	// logger.Infof(
+	// 	"archived raw file: %s",
+	// 	targetPath,
+	// )
 
 	return nil
 }

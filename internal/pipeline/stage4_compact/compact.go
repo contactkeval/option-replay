@@ -98,53 +98,48 @@ func CompactParquetFiles(
 		return fmt.Errorf("create output file: %w", err)
 	}
 
-	defer out.Close()
-
 	writer := parquet.NewGenericWriter[config.ParquetRow](
 		out,
 	)
 
+	defer func() {
+		_ = writer.Close()
+		_ = out.Close()
+	}()
+
 	for _, path := range inputPaths {
 
-		f, err := os.Open(
-			path,
-		)
+		err := func() error {
 
-		if err != nil {
-			return fmt.Errorf("open input file: %w", err)
-		}
-
-		stat, err := f.Stat()
-
-		if err != nil {
-			f.Close()
-			return fmt.Errorf("get input file stats: %w", err)
-		}
-
-		pf, err := parquet.OpenFile(
-			f,
-			stat.Size(),
-		)
-
-		if err != nil {
-			f.Close()
-			return fmt.Errorf("open parquet file: %w", err)
-		}
-
-		for _, rg := range pf.RowGroups() {
-
-			_, err := writer.WriteRowGroup(
-				rg,
-			)
-
+			f, err := os.Open(path)
 			if err != nil {
-				f.Close()
-				return fmt.Errorf("write row group: %w", err)
+				return fmt.Errorf("open input file: %w", err)
 			}
-		}
+			defer f.Close()
 
-		f.Close()
+			stat, err := f.Stat()
+			if err != nil {
+				return fmt.Errorf("get input file stats: %w", err)
+			}
+
+			pf, err := parquet.OpenFile(f, stat.Size())
+			if err != nil {
+				return fmt.Errorf("open parquet file: %w", err)
+			}
+
+			for _, rg := range pf.RowGroups() {
+				if _, err := writer.WriteRowGroup(rg); err != nil {
+					return fmt.Errorf("write row group: %w", err)
+				}
+			}
+
+			return nil
+		}()
+
+		if err != nil {
+			return fmt.Errorf("process input file %s: %w", path, err)
+		}
 	}
 
-	return writer.Close()
+	return nil
 }
