@@ -66,8 +66,8 @@ func Run(cfg config.Config) error {
 
 	// today := time.Now().UTC() // TODO: for testing use a fixed date
 	today := time.Date(
-		2025,
-		time.January,
+		2026,
+		time.May,
 		1,
 		0,
 		0,
@@ -121,8 +121,8 @@ func Run(cfg config.Config) error {
 
 			eligibleRows := SelectEligibleMetadataRows(
 				rows,
-				config.TargetRowsPerRowGroup,
-				config.MaxTrailingRows,
+				config.MaxRowsPerRowGroup,
+				config.MaxShortRows,
 			)
 
 			// ---------------------------------------------

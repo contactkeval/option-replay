@@ -16,72 +16,58 @@ func BuildPhysicalRowGroups(
 		return nil
 	}
 
-	strikeBlocks := SplitStrikeBlocks(rows)
+	strikeBlocks := SplitStrikeBlocks(
+		rows,
+	)
 
-	target := config.TargetRowsPerRowGroup
-	maxTrailing := config.MaxTrailingRows
-
-	result := make([]RowGroup, 0)
+	result := make(
+		[]RowGroup,
+		0,
+	)
 
 	current := make(
 		[]config.ParquetRow,
 		0,
-		target+maxTrailing,
+		config.MaxRowsPerRowGroup,
 	)
 
-	remainingRows := len(rows)
+	currentRows := 0
 
 	for _, block := range strikeBlocks {
 
-		blockSize := len(block)
+		blockRows := len(block)
 
-		// ---------------------------------
-		// If current rowgroup is empty
-		// just add block.
-		// ---------------------------------
+		// first block always fits
 
-		if len(current) == 0 {
+		if currentRows == 0 {
 
-			current = append(current, block...)
-			remainingRows -= blockSize
+			current = append(
+				current,
+				block...,
+			)
 
-			continue
-		}
-
-		// ---------------------------------
-		// Always add strike block first.
-		// Strike-level overshoot is allowed.
-		// ---------------------------------
-
-		current = append(current, block...)
-		remainingRows -= blockSize
-
-		// ---------------------------------
-		// Still below target.
-		// keep accumulating.
-		// ---------------------------------
-
-		if len(current) < target {
-			continue
-		}
-
-		// ---------------------------------
-		// We crossed target.
-		// ---------------------------------
-
-		// CASE 1:
-		// tiny trailing rows remain.
-		// absorb them into current rowgroup.
-
-		if remainingRows > 0 &&
-			remainingRows <= maxTrailing {
+			currentRows += blockRows
 
 			continue
 		}
 
-		// ---------------------------------
-		// finalize current rowgroup
-		// ---------------------------------
+		// block still fits
+
+		if currentRows+blockRows <= config.MaxRowsPerRowGroup {
+
+			current = append(
+				current,
+				block...,
+			)
+
+			currentRows += blockRows
+
+			continue
+		}
+
+		// ----------------------------------
+		// strike would overflow rowgroup
+		// ----------------------------------
 
 		result = append(
 			result,
@@ -90,20 +76,19 @@ func BuildPhysicalRowGroups(
 			},
 		)
 
-		// ---------------------------------
-		// start new rowgroup
-		// ---------------------------------
-
 		current = make(
 			[]config.ParquetRow,
 			0,
-			target+maxTrailing,
+			config.MaxRowsPerRowGroup,
 		)
-	}
 
-	// ---------------------------------
-	// final partial rowgroup
-	// ---------------------------------
+		current = append(
+			current,
+			block...,
+		)
+
+		currentRows = blockRows
+	}
 
 	if len(current) > 0 {
 

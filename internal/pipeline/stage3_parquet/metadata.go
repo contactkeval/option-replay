@@ -11,36 +11,86 @@ import (
 
 func SelectEligibleMetadataRows(
 	rows []config.ActiveMetadataRow,
-	targetRows int,
-	maxTrailingRows int,
+	maxRowsPerRowGroup int,
+	maxShortRows int,
 ) []config.ActiveMetadataRow {
 
-	selected := make(
-		[]config.ActiveMetadataRow,
-		0,
-	)
+	if len(rows) == 0 {
+		return nil
+	}
 
-	total := 0
+	selected := []config.ActiveMetadataRow{
+		rows[0],
+	}
 
-	for _, row := range rows {
+	pendingRows := rows[0].RowCount
 
-		selected = append(
-			selected,
-			row,
-		)
+	for i := 1; i < len(rows); i++ {
 
-		total += row.RowCount
+		nextRows := rows[i].RowCount
 
-		quotient := total / targetRows
-		remainder := total % targetRows
+		// ------------------------------------
+		// Current parquet candidate capacity
+		// ------------------------------------
+		//
+		// Example:
+		// pendingRows=414k -> capacity=512k
+		// pendingRows=620k -> capacity=768k
+		//
+		capacity :=
+			((pendingRows + maxRowsPerRowGroup - 1) /
+				maxRowsPerRowGroup) *
+				maxRowsPerRowGroup
 
-		if quotient > 0 &&
-			remainder < maxTrailingRows {
+		// ------------------------------------
+		// Next expiry still fits
+		// ------------------------------------
+		if pendingRows+nextRows <= capacity {
+
+			selected = append(
+				selected,
+				rows[i],
+			)
+
+			pendingRows += nextRows
+
+			continue
+		}
+
+		// ------------------------------------
+		// Next expiry would overflow
+		// ------------------------------------
+
+		shortfall :=
+			capacity - pendingRows
+
+		// Candidate is sufficiently full.
+		//
+		// IMPORTANT:
+		// Only cut when:
+		// 1. next expiry would overflow
+		// 2. remaining space <= maxShortRows
+		//
+		if shortfall <= maxShortRows {
 
 			return selected
 		}
+
+		// ------------------------------------
+		// Candidate not full enough yet.
+		// Add next expiry and continue.
+		// ------------------------------------
+
+		selected = append(
+			selected,
+			rows[i],
+		)
+
+		pendingRows += nextRows
 	}
 
+	// No next expiry available.
+	// Can't safely create a parquet candidate.
 	return nil
 }
 

@@ -13,7 +13,7 @@ const (
 	ScannerBufferInitial = 64 * 1024
 	ScannerBufferMax     = 10 * 1024 * 1024
 
-	TargetRowsPerRowGroup  = 246_000
-	MaxTrailingRows        = 20_000
+	MaxRowsPerRowGroup     = 256_000
+	MaxShortRows           = 16_000
 	TargetRowGroupsPerFile = 100
 )
