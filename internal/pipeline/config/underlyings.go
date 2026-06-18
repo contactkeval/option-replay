@@ -2,7 +2,9 @@ package config
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -69,4 +71,24 @@ func IsAllowedUnderlying(
 ) bool {
 	_, ok := AllowedUnderlyings[strings.ToUpper(ticker)]
 	return ok
+}
+
+func (f *DXFloat) UnmarshalJSON(data []byte) error {
+
+	s := strings.TrimSpace(string(data))
+
+	if s == `"NaN"` || s == "null" {
+		*f = DXFloat(math.NaN())
+		return nil
+	}
+
+	var v float64
+
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	*f = DXFloat(v)
+
+	return nil
 }

@@ -1,4 +1,4 @@
-package stage2_finalize
+package stage2_ingest
 
 import (
 	"fmt"

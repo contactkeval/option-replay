@@ -85,3 +85,29 @@ type TransientRow struct {
 
 	ParquetRow
 }
+
+type DXFloat float64
+
+type Candle struct {
+	EventType   string `json:"eventType"`
+	EventSymbol string `json:"eventSymbol"`
+	EventTime   int64  `json:"eventTime"`
+	EventFlags  int32  `json:"eventFlags"`
+
+	Index    int64 `json:"index"`
+	Time     int64 `json:"time"`
+	Sequence int64 `json:"sequence"`
+	Count    int64 `json:"count"`
+
+	Open  float64 `json:"open"`
+	High  float64 `json:"high"`
+	Low   float64 `json:"low"`
+	Close float64 `json:"close"`
+
+	Volume        DXFloat `json:"volume"`
+	VWAP          DXFloat `json:"vwap"`
+	BidVolume     DXFloat `json:"bidVolume"`
+	AskVolume     DXFloat `json:"askVolume"`
+	ImpVolatility DXFloat `json:"impVolatility"`
+	OpenInterest  DXFloat `json:"openInterest"`
+}

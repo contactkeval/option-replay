@@ -217,8 +217,10 @@ MSFT
 COIN
 CVNA
 DJT
+DWAC
 GME
 HOOD
+MSTR
 TSLA
 
 ## Precious Metals / Hard Assets
@@ -255,14 +257,6 @@ SMCI
 SOUN
 TSLA
 
-## Retail Trader Favorites
-COIN
-CVNA
-DJT
-GME
-MSTR
-TSLA
-
 ## Semiconductor Designers / Fabless
 AMD
 ARM
@@ -279,11 +273,12 @@ MU
 SMCI
 SNDK
 TSM
+WDC
 
 ## Social Media / Advertising Platforms
+FB
 GOOG
 GOOGL
-META
 RDDT
 TTD
 
