@@ -3,11 +3,11 @@ package stage1_dxfeed
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
-
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
@@ -19,8 +19,7 @@ type FeedData struct {
 
 type Client struct {
 	conn *websocket.Conn
-
-	mu sync.Mutex
+	mu   sync.Mutex
 }
 
 func Connect(
@@ -33,14 +32,28 @@ func Connect(
 		url,
 		nil,
 	)
-
 	if err != nil {
 		return nil, err
 	}
+	conn.SetReadLimit(100 * 1024 * 1024)
 
 	return &Client{
 		conn: conn,
 	}, nil
+}
+
+func (c *Client) Close() error {
+
+	_, cancel := context.WithTimeout(
+		context.Background(),
+		5*time.Second,
+	)
+	defer cancel()
+
+	return c.conn.Close(
+		websocket.StatusNormalClosure,
+		"client shutdown",
+	)
 }
 
 func (c *Client) writeJSON(v any) error {
@@ -53,8 +66,14 @@ func (c *Client) writeJSON(v any) error {
 		return err
 	}
 
-	return c.conn.Write(
+	ctx, cancel := context.WithTimeout(
 		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	return c.conn.Write(
+		ctx,
 		websocket.MessageText,
 		b,
 	)
@@ -63,20 +82,15 @@ func (c *Client) writeJSON(v any) error {
 func (c *Client) Setup() error {
 
 	return c.writeJSON(map[string]any{
-		"type": "SETUP",
-
-		"channel": 0,
-
+		"type":                   "SETUP",
+		"channel":                0,
 		"keepaliveTimeout":       60,
 		"acceptKeepaliveTimeout": 60,
-
-		"version": "1.0.0",
+		"version":                "1.0.0",
 	})
 }
 
-func (c *Client) Auth(
-	token string,
-) error {
+func (c *Client) Auth(token string) error {
 
 	return c.writeJSON(map[string]any{
 		"type":    "AUTH",
@@ -91,42 +105,11 @@ func (c *Client) OpenFeedChannel() error {
 		"type":    "CHANNEL_REQUEST",
 		"channel": 1,
 		"service": "FEED",
-
 		"parameters": map[string]any{
 			"contract":  "AUTO",
-			"subFormat": "COMPACT", // other option is "LIST"
+			"subFormat": "LIST",
 		},
 	})
-}
-
-func (c *Client) StartKeepalive(
-	ctx context.Context,
-) {
-
-	go func() {
-
-		ticker := time.NewTicker(
-			30 * time.Second,
-		)
-
-		defer ticker.Stop()
-
-		for {
-
-			select {
-
-			case <-ctx.Done():
-				return
-
-			case <-ticker.C:
-
-				_ = c.writeJSON(map[string]any{
-					"type":    "KEEPALIVE",
-					"channel": 0,
-				})
-			}
-		}
-	}()
 }
 
 func (c *Client) SubscribeCandles(
@@ -152,9 +135,70 @@ func (c *Client) SubscribeCandles(
 	})
 }
 
-func (c *Client) ReadLoop(
+func (c *Client) StartKeepalive(
 	ctx context.Context,
-	handler func(config.Candle) error,
+) {
+
+	go func() {
+
+		ticker := time.NewTicker(
+			30 * time.Second,
+		)
+
+		defer ticker.Stop()
+
+		for {
+
+			select {
+
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+
+				if err := c.writeJSON(map[string]any{
+					"type":    "KEEPALIVE",
+					"channel": 0,
+				}); err != nil {
+					fmt.Printf("Failed to send keepalive: %v\n", err)
+				}
+			}
+		}
+	}()
+}
+
+func (c *Client) WaitForAuth(
+	ctx context.Context,
+) error {
+
+	for {
+
+		_, raw, err := c.conn.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to read from dxfeed: %w", err)
+		}
+
+		// fmt.Println(string(raw))
+
+		var msg struct {
+			Type  string `json:"type"`
+			State string `json:"state"`
+		}
+
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == "AUTH_STATE" &&
+			msg.State == "AUTHORIZED" {
+			return nil
+		}
+	}
+}
+
+func (c *Client) WaitForChannel(
+	ctx context.Context,
+	channel int,
 ) error {
 
 	for {
@@ -163,6 +207,38 @@ func (c *Client) ReadLoop(
 		if err != nil {
 			return err
 		}
+
+		fmt.Println(string(raw))
+
+		var msg struct {
+			Type    string `json:"type"`
+			Channel int    `json:"channel"`
+		}
+
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == "CHANNEL_OPENED" &&
+			msg.Channel == channel {
+			return nil
+		}
+	}
+}
+
+func (c *Client) ReadLoop(
+	ctx context.Context,
+	handler func(config.Candle) error,
+) error {
+
+	keepAliveCount := 0
+	for {
+
+		_, raw, err := c.conn.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to read from dxfeed: %w", err)
+		}
+		fmt.Println(string(raw)) // TODO: remove this after debugging (TEMP)
 
 		var envelope struct {
 			Type string `json:"type"`
@@ -175,22 +251,131 @@ func (c *Client) ReadLoop(
 		switch envelope.Type {
 
 		case "KEEPALIVE":
+			keepAliveCount++
+			if keepAliveCount >= 0 {
+				return nil
+			}
 			continue
 
+		case "ERROR":
+
+			var e struct {
+				Type    string `json:"type"`
+				Error   string `json:"error"`
+				Message string `json:"message"`
+			}
+
+			_ = json.Unmarshal(raw, &e)
+
+			return fmt.Errorf(
+				"dxfeed error: %s (%s)",
+				e.Error,
+				e.Message,
+			)
+
 		case "FEED_DATA":
+			keepAliveCount = 0
 
 			var msg FeedData
 
 			if err := json.Unmarshal(raw, &msg); err != nil {
-				return err
+				return fmt.Errorf("failed to unmarshal feed data: %w", err)
 			}
 
 			for _, candle := range msg.Data {
 
 				if err := handler(candle); err != nil {
-					return err
+					return fmt.Errorf("failed to handle candle: %w", err)
 				}
 			}
+
+		default:
+			fmt.Printf(
+				"UNHANDLED: %s\n",
+				string(raw),
+			)
 		}
 	}
+}
+
+func Run() error {
+
+	ctx := context.Background()
+
+	dxLinkURL := "wss://tasty-openapi-dxlink-md-ws.dxfeed.com/realtime"
+	dxToken := "dGFzdHksYXBpLCwxNzgxMzQ2NzQ5LDE3ODEyNjAzNDksVTQ1NWM4ODk0LWQxYTYtNDExYi05MGU1LTEwOTliYzRmMDRkMw.RRO7EM2B0S8HOS6Z9ICvfbNJt2M3qZYKLQfj1UNFlcg"
+
+	fromTime := time.Now().
+		Add(-24 * 120 * time.Hour).
+		UnixMilli()
+
+	client, err := Connect(
+		ctx,
+		dxLinkURL,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect to dxfeed: %w", err)
+	}
+
+	defer client.Close()
+
+	if err := client.Setup(); err != nil {
+		return fmt.Errorf("failed to setup dxfeed client: %w", err)
+	}
+
+	if err := client.Auth(dxToken); err != nil {
+		return fmt.Errorf("failed to authenticate with dxfeed: %w", err)
+	}
+
+	if err := client.WaitForAuth(ctx); err != nil {
+		return fmt.Errorf("failed to wait for authentication: %w", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if err := client.OpenFeedChannel(); err != nil {
+		return fmt.Errorf("failed to open feed channel: %w", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if err := client.WaitForChannel(ctx, 1); err != nil {
+		return fmt.Errorf("failed to wait for channel: %w", err)
+	}
+
+	client.StartKeepalive(ctx)
+
+	if err := client.SubscribeCandles(
+		[]string{
+			".SPY260731C735{=1d}",
+			".SPY260630C735{=1d}",
+			".SPY260529C735{=1d}",
+			".SPY260430C735{=1d}",
+		},
+		fromTime,
+	); err != nil {
+		return fmt.Errorf("failed to subscribe to candles: %w", err)
+	}
+
+	err = client.ReadLoop(
+		ctx,
+		func(c config.Candle) error {
+
+			fmt.Printf(
+				"%s | %s | O=%.2f H=%.2f L=%.2f C=%.2f\n",
+				time.UnixMilli(c.Time).Format(time.RFC3339),
+				c.EventSymbol,
+				c.Open,
+				c.High,
+				c.Low,
+				c.Close,
+			)
+
+			return nil
+		},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to read loop: %w", err)
+	}
+
+	return nil
 }

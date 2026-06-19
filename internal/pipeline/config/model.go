@@ -99,10 +99,10 @@ type Candle struct {
 	Sequence int64 `json:"sequence"`
 	Count    int64 `json:"count"`
 
-	Open  float64 `json:"open"`
-	High  float64 `json:"high"`
-	Low   float64 `json:"low"`
-	Close float64 `json:"close"`
+	Open  DXFloat `json:"open"`
+	High  DXFloat `json:"high"`
+	Low   DXFloat `json:"low"`
+	Close DXFloat `json:"close"`
 
 	Volume        DXFloat `json:"volume"`
 	VWAP          DXFloat `json:"vwap"`
