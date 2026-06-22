@@ -51,10 +51,10 @@ func (localFileDataProv *LocalFileDataProvider) GetATMOptionPrices(
 func (localFileDataProv *LocalFileDataProvider) GetContracts(
 	underlying string,
 	strike float64,
-	expiryDate, fromDate, toDate time.Time,
+	fromDate, toDate time.Time,
 ) ([]OptionContract, error) {
 	if localFileDataProv.secondary != nil {
-		return localFileDataProv.GetSecondary().GetContracts(underlying, strike, expiryDate, fromDate, toDate)
+		return localFileDataProv.GetSecondary().GetContracts(underlying, strike, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for localFileDataProvider")
 }

@@ -76,10 +76,10 @@ func (synthDataProv *synthDataProvider) GetATMOptionPrices(
 func (synthDataProv *synthDataProvider) GetContracts(
 	underlying string,
 	strike float64,
-	expiryDate, fromDate, toDate time.Time,
+	fromDate, toDate time.Time,
 ) ([]OptionContract, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetContracts(underlying, strike, expiryDate, fromDate, toDate)
+		return synthDataProv.secondary.GetContracts(underlying, strike, fromDate, toDate)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
 }

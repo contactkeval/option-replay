@@ -24,6 +24,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// stage1.Run()
+
 	// if err := stage2.Run(cfg); err != nil {
 	// 	log.Fatal(err)
 	// }

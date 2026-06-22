@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -208,7 +209,7 @@ func (c *Client) WaitForChannel(
 			return err
 		}
 
-		fmt.Println(string(raw))
+		// fmt.Println(string(raw))
 
 		var msg struct {
 			Type    string `json:"type"`
@@ -232,13 +233,21 @@ func (c *Client) ReadLoop(
 ) error {
 
 	keepAliveCount := 0
+	feedDataMessages := 0
+	candleCount := 0
+
 	for {
 
 		_, raw, err := c.conn.Read(ctx)
 		if err != nil {
+			fmt.Printf(
+				"FINAL STATS: feedData=%d candles=%d\n",
+				feedDataMessages,
+				candleCount,
+			)
 			return fmt.Errorf("failed to read from dxfeed: %w", err)
 		}
-		fmt.Println(string(raw)) // TODO: remove this after debugging (TEMP)
+		//fmt.Println(string(raw)) // TODO: remove this after debugging (TEMP)
 
 		var envelope struct {
 			Type string `json:"type"`
@@ -252,7 +261,7 @@ func (c *Client) ReadLoop(
 
 		case "KEEPALIVE":
 			keepAliveCount++
-			if keepAliveCount >= 0 {
+			if keepAliveCount >= 1 {
 				return nil
 			}
 			continue
@@ -275,7 +284,6 @@ func (c *Client) ReadLoop(
 
 		case "FEED_DATA":
 			keepAliveCount = 0
-
 			var msg FeedData
 
 			if err := json.Unmarshal(raw, &msg); err != nil {
@@ -288,6 +296,16 @@ func (c *Client) ReadLoop(
 					return fmt.Errorf("failed to handle candle: %w", err)
 				}
 			}
+			feedDataMessages++
+			candleCount += len(msg.Data)
+
+			if feedDataMessages%100 == 0 {
+				fmt.Printf(
+					"feedData=%d candles=%d\n",
+					feedDataMessages,
+					candleCount,
+				)
+			}
 
 		default:
 			fmt.Printf(
@@ -299,11 +317,15 @@ func (c *Client) ReadLoop(
 }
 
 func Run() error {
+	return LoadContractsToSQLite()
+}
+
+func Run2() error {
 
 	ctx := context.Background()
 
 	dxLinkURL := "wss://tasty-openapi-dxlink-md-ws.dxfeed.com/realtime"
-	dxToken := "dGFzdHksYXBpLCwxNzgxMzQ2NzQ5LDE3ODEyNjAzNDksVTQ1NWM4ODk0LWQxYTYtNDExYi05MGU1LTEwOTliYzRmMDRkMw.RRO7EM2B0S8HOS6Z9ICvfbNJt2M3qZYKLQfj1UNFlcg"
+	dxToken := os.Getenv("dxFeed_Token")
 
 	fromTime := time.Now().
 		Add(-24 * 120 * time.Hour).

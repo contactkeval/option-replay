@@ -152,11 +152,11 @@ func (polygonDataProv *PolygonDataProvider) GetATMOptionPrices(
 func (polygonDataProv *PolygonDataProvider) GetContracts(
 	underlying string,
 	strike float64,
-	expiryDate, fromDate, toDate time.Time,
+	fromDate, toDate time.Time,
 ) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
 	// This method is not implemented. // TODO: implement using options snapshot or secondary provider if available.
-	return polygonDataProv.GetSecondary().GetContracts(underlying, strike, expiryDate, fromDate, toDate)
+	return polygonDataProv.GetSecondary().GetContracts(underlying, strike, fromDate, toDate)
 }
 
 // GetBars retrieves historical bar data (OHLCV) for a specified underlying ticker symbol
