@@ -242,6 +242,7 @@ func (massiveDataProv *MassiveDataProvider) GetContracts(
 	underlying string,
 	strike float64,
 	fromDate, toDate time.Time,
+	expired bool,
 ) ([]OptionContract, error) {
 
 	logger.Tracef(
@@ -280,7 +281,7 @@ func (massiveDataProv *MassiveDataProvider) GetContracts(
 		}
 	}
 
-	query.Set("expired", "true")
+	query.Set("expired", fmt.Sprintf("%t", expired))
 	query.Set("limit", "1000")
 	query.Set("apiKey", massiveDataProv.APIKey)
 
@@ -566,7 +567,7 @@ func (massiveDataProv *MassiveDataProvider) GetRelevantExpiries(
 	for _, strike := range roundedStrikes {
 		logger.Tracef("fetching contracts for strike %.2f", strike)
 		contracts, err := massiveDataProv.GetContracts(
-			symbol, strike, fromDate, toDate,
+			symbol, strike, fromDate, toDate, false,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("fetch contracts strike %.2f: %w", strike, err)
@@ -687,7 +688,7 @@ func (massiveDataProv *MassiveDataProvider) FindNearestStrike(
 	var strikeList []float64
 	// Fetch all contracts for the underlying, expiry date as of open date as trading date and collect strikes
 	strike := 0.0 // zero means to fetch all strikes
-	optionContracts, err := massiveDataProv.GetContracts(underlying, strike, openDate, openDate)
+	optionContracts, err := massiveDataProv.GetContracts(underlying, strike, openDate, openDate, false)
 	if err != nil {
 		return asOfPrice
 	}
@@ -769,7 +770,7 @@ func (massiveDataProv *MassiveDataProvider) GetStrikeIntervals(
 	expiryDate time.Time,
 ) []float64 {
 
-	contractList, err := massiveDataProv.GetContracts(underlying, 0.0, expiryDate, expiryDate)
+	contractList, err := massiveDataProv.GetContracts(underlying, 0.0, expiryDate, expiryDate, false)
 	if err != nil || len(contractList) == 0 {
 		return nil
 	}

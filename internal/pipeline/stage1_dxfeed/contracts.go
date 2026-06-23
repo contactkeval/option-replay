@@ -57,9 +57,6 @@ func LoadContractsToSQLite() error {
 	totalContracts := 0
 	totalUnderlyings := 0
 
-	fromDate := time.Now().AddDate(-1, 0, 0)
-	toDate := time.Now()
-
 	for underlying := range config.AllowedUnderlyings {
 
 		totalUnderlyings++
@@ -67,8 +64,9 @@ func LoadContractsToSQLite() error {
 		contracts, err := provider.GetContracts(
 			underlying,
 			0, // all strikes
-			fromDate,
-			toDate,
+			time.Time{},
+			time.Time{},
+			false,
 		)
 
 		if err != nil {

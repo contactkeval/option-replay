@@ -153,10 +153,11 @@ func (polygonDataProv *PolygonDataProvider) GetContracts(
 	underlying string,
 	strike float64,
 	fromDate, toDate time.Time,
+	expired bool,
 ) ([]OptionContract, error) {
 	// Polygon does not provide an endpoint to list option contracts by strike.
 	// This method is not implemented. // TODO: implement using options snapshot or secondary provider if available.
-	return polygonDataProv.GetSecondary().GetContracts(underlying, strike, fromDate, toDate)
+	return polygonDataProv.GetSecondary().GetContracts(underlying, strike, fromDate, toDate, expired)
 }
 
 // GetBars retrieves historical bar data (OHLCV) for a specified underlying ticker symbol

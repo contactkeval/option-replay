@@ -347,3 +347,8 @@ MSFT
 NVDA
 TSM
 WMT
+
+## Next in waiting
+EWZ
+SPCX
+WMB

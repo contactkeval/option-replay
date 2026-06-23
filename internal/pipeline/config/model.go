@@ -94,10 +94,11 @@ type Candle struct {
 	EventTime   int64  `json:"eventTime"`
 	EventFlags  int32  `json:"eventFlags"`
 
-	Index    int64 `json:"index"`
-	Time     int64 `json:"time"`
-	Sequence int64 `json:"sequence"`
-	Count    int64 `json:"count"`
+	Index     int64   `json:"index"`
+	Time      int64   `json:"time"`
+	Sequence  int64   `json:"sequence"`
+	BidVolume DXFloat `json:"bidVolume"`
+	AskVolume DXFloat `json:"askVolume"`
 
 	Open  DXFloat `json:"open"`
 	High  DXFloat `json:"high"`
@@ -105,9 +106,8 @@ type Candle struct {
 	Close DXFloat `json:"close"`
 
 	Volume        DXFloat `json:"volume"`
+	Count         int64   `json:"count"`
 	VWAP          DXFloat `json:"vwap"`
-	BidVolume     DXFloat `json:"bidVolume"`
-	AskVolume     DXFloat `json:"askVolume"`
 	ImpVolatility DXFloat `json:"impVolatility"`
 	OpenInterest  DXFloat `json:"openInterest"`
 }

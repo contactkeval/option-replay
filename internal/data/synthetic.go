@@ -77,9 +77,10 @@ func (synthDataProv *synthDataProvider) GetContracts(
 	underlying string,
 	strike float64,
 	fromDate, toDate time.Time,
+	expired bool,
 ) ([]OptionContract, error) {
 	if synthDataProv.secondary != nil {
-		return synthDataProv.secondary.GetContracts(underlying, strike, fromDate, toDate)
+		return synthDataProv.secondary.GetContracts(underlying, strike, fromDate, toDate, expired)
 	}
 	return nil, fmt.Errorf("GetContracts not implemented for SyntheticProvider")
 }
