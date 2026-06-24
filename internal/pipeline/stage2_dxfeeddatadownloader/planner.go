@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	BatchSize = 250
+	BatchSize = 100
 )
 
 type Contract struct {
@@ -210,12 +210,12 @@ func (m *MetadataDB) PersistBatchPlan(
 
 func BuildRunPlan(
 	db *MetadataDB,
-) error {
+) (int64, error) {
 
 	nextRunNo,
 		err := db.GetNextRunNo()
 	if err != nil {
-		return err
+		return nextRunNo, err
 	}
 
 	groupNo :=
@@ -231,7 +231,7 @@ func BuildRunPlan(
 		groupNo,
 	)
 	if err != nil {
-		return err
+		return nextRunNo, err
 	}
 
 	fmt.Printf(
@@ -284,7 +284,7 @@ func BuildRunPlan(
 		len(batches),
 	)
 	if err != nil {
-		return err
+		return nextRunNo, err
 	}
 
 	fmt.Printf(
@@ -298,14 +298,14 @@ func BuildRunPlan(
 			batches,
 		)
 	if err != nil {
-		return err
+		return nextRunNo, err
 	}
 
 	fmt.Println(
 		"Batch plan persisted",
 	)
 
-	return nil
+	return nextRunNo, nil
 }
 
 func (m *MetadataDB) GetNextRunNo() (

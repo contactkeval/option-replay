@@ -3,7 +3,6 @@ package stage2_dxfeeddatadownloader
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -17,16 +16,25 @@ func Run(cfg config.Config) error {
 		"metadata.db",
 	)
 
-	db, err := OpenMetadataDB(
+	metadataDB, err := OpenMetadataDB(
 		metadataDBPath,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open metadata DB: %w", err)
 	}
-	defer db.Close()
+	defer metadataDB.Close()
 
-	return BuildRunPlan(
-		db,
+	runNo, err := BuildRunPlan(
+		metadataDB,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to build run plan: %w", err)
+	}
+
+	return DownloadRun(
+		metadataDB,
+		runNo,
 	)
 }
 
@@ -55,7 +63,7 @@ func (m *MetadataDB) GetBatchContracts(
 		batchNo,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query batch contracts: %w", err)
 	}
 	defer rows.Close()
 
@@ -75,7 +83,7 @@ func (m *MetadataDB) GetBatchContracts(
 			&c.GroupNo,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan contract: %w", err)
 		}
 
 		c.Expiry, err = time.Parse(
@@ -83,7 +91,7 @@ func (m *MetadataDB) GetBatchContracts(
 			expiry,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse expiry: %w", err)
 		}
 
 		contracts = append(
@@ -93,7 +101,7 @@ func (m *MetadataDB) GetBatchContracts(
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to iterate over batch contracts: %w", err)
 	}
 
 	return contracts, nil
@@ -111,14 +119,14 @@ func DownloadBatch(
 			batchNo,
 		)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get batch contracts: %w", err)
 	}
 
-	fmt.Printf(
-		"Batch %d contracts=%d\n",
-		batchNo,
-		len(contracts),
-	)
+	// fmt.Printf(
+	// 	"Batch %d contracts=%d\n",
+	// 	batchNo,
+	// 	len(contracts),
+	// )
 
 	if len(contracts) == 0 {
 		return nil
@@ -162,44 +170,40 @@ func DownloadBatch(
 
 	client, err := Connect(
 		ctx,
-		"wss://tasty-openapi-dxlink-md-ws.dxfeed.com/realtime",
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to DXFeed: %w", err)
 	}
 	defer client.Close()
 
 	if err := client.Setup(); err != nil {
-		return err
+		return fmt.Errorf("failed to setup DXFeed client: %w", err)
 	}
 
-	if err := client.Auth(
-		os.Getenv("dxFeed_Token"),
-	); err != nil {
-		return err
+	if err := client.Auth(); err != nil {
+		return fmt.Errorf("failed to authenticate with DXFeed: %w", err)
 	}
 
 	if err := client.WaitForAuth(
 		ctx,
 	); err != nil {
-		return err
+		return fmt.Errorf("failed to wait for authentication: %w", err)
 	}
 
 	if err := client.OpenFeedChannel(); err != nil {
-		return err
+		return fmt.Errorf("failed to open feed channel: %w", err)
 	}
 
 	if err := client.WaitForChannel(
 		ctx,
-		1,
 	); err != nil {
-		return err
+		return fmt.Errorf("failed to wait for channel: %w", err)
 	}
 
 	fromTime :=
 		time.Now().
 			Add(
-				-7 * 24 * time.Hour,
+				-66 * 24 * time.Hour,
 			).
 			UnixMilli()
 
@@ -207,7 +211,7 @@ func DownloadBatch(
 		symbols,
 		fromTime,
 	); err != nil {
-		return err
+		return fmt.Errorf("failed to subscribe to candles: %w", err)
 	}
 
 	var candleCount int64
@@ -230,7 +234,7 @@ func DownloadBatch(
 		)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to update batch start time: %w", err)
 	}
 
 	err = client.ReadLoop(
@@ -285,7 +289,7 @@ func DownloadBatch(
 				)
 
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to insert candle: %w", err)
 			}
 
 			candleCount++
@@ -322,12 +326,13 @@ func DownloadBatch(
 			err,
 		)
 
-		return err
+		return fmt.Errorf("failed to update batch end time: %w", err)
 	}
 
 	fmt.Printf(
-		"Batch %d downloaded candles=%d\n",
+		"Batch %d, contracts %d, downloaded candles=%d\n",
 		batchNo,
+		len(contracts),
 		candleCount,
 	)
 

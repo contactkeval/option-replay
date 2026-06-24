@@ -121,6 +121,32 @@ func (m *MetadataDB) createTables() error {
 		`CREATE INDEX IF NOT EXISTS idx_batch_contracts_run_batch
 
 			ON batch_contracts(runNo, batchNo)`,
+
+		`CREATE TABLE IF NOT EXISTS candle_staging (
+
+			serialNo INTEGER NOT NULL,
+
+			candleTime INTEGER NOT NULL,
+
+			open REAL NOT NULL,
+			high REAL NOT NULL,
+			low REAL NOT NULL,
+			close REAL NOT NULL,
+
+			volume REAL,
+
+			runNo INTEGER NOT NULL,
+			batchNo INTEGER NOT NULL,
+
+			PRIMARY KEY (
+				serialNo,
+				candleTime
+			)
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS
+			idx_candle_staging_run_batch
+			ON candle_staging(runNo,batchNo)`,
 	}
 
 	for _, stmt := range stmts {
