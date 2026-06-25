@@ -24,63 +24,24 @@ type Batch struct {
 	Contracts []Contract
 }
 
-func (m *MetadataDB) GetContractsForRun(
-	groupNo int,
-) ([]Contract, error) {
+func (m *MetadataDB) GetContractsForRun() (
+	[]Contract,
+	error,
+) {
 
-	rows, err := m.db.Query(`
-		SELECT
-			serialNo,
-			underlying,
-			expiry,
-			type,
-			strike,
-			groupNo
-		FROM contracts
-		WHERE
-			groupNo = ?
-			OR expiry <= date('now', '+30 day')
-	`,
-		groupNo,
-	)
-	if err != nil {
-		return nil, err
+	now := time.Now()
+
+	switch now.Weekday() {
+
+	case time.Saturday,
+		time.Sunday:
+
+		return m.GetWeekendContracts()
+
+	default:
+
+		return m.GetWeekdayContracts()
 	}
-	defer rows.Close()
-
-	var contracts []Contract
-
-	for rows.Next() {
-
-		var c Contract
-		var expiry string
-
-		err := rows.Scan(
-			&c.SerialNo,
-			&c.Underlying,
-			&expiry,
-			&c.Type,
-			&c.Strike,
-			&c.GroupNo,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		c.Expiry, _ =
-			time.Parse(
-				"2006-01-02",
-				expiry,
-			)
-
-		contracts =
-			append(
-				contracts,
-				c,
-			)
-	}
-
-	return contracts, nil
 }
 
 func CreateBatches(
@@ -123,7 +84,6 @@ func CreateBatches(
 	return batches
 }
 func (m *MetadataDB) CreateRun(
-	groupNo int,
 	contractCount int,
 	batchCount int,
 ) (int64, error) {
@@ -137,7 +97,7 @@ func (m *MetadataDB) CreateRun(
 		)
 		VALUES (?, ?, ?, ?)
 	`,
-		groupNo,
+		-1,
 		time.Now().Format(
 			time.RFC3339,
 		),
@@ -218,18 +178,12 @@ func BuildRunPlan(
 		return nextRunNo, err
 	}
 
-	groupNo :=
-		int(nextRunNo % 4)
-
 	fmt.Printf(
-		"Next run=%d group=%d\n",
+		"Next run=%d\n",
 		nextRunNo,
-		groupNo,
 	)
 
-	contracts, err := db.GetContractsForRun(
-		groupNo,
-	)
+	contracts, err := db.GetContractsForRun()
 	if err != nil {
 		return nextRunNo, err
 	}
@@ -279,7 +233,6 @@ func BuildRunPlan(
 
 	runNo,
 		err := db.CreateRun(
-		groupNo,
 		len(contracts),
 		len(batches),
 	)
