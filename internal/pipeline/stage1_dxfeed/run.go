@@ -316,8 +316,8 @@ func (c *Client) ReadLoop(
 	}
 }
 
-func Run() error {
-	return LoadContractsToSQLite()
+func Run(cfg config.Config) error {
+	return LoadContractsToSQLite(cfg)
 }
 
 func Run2() error {

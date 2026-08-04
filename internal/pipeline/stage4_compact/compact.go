@@ -30,52 +30,33 @@ func RenamePending(
 }
 
 func SelectCompactCandidates(
-	rows []CompactCandidate,
+	rows []config.CompactCandidate,
 	targetRowGroups int,
-) [][]CompactCandidate {
+) [][]config.CompactCandidate {
 
 	grouped := make(
-		map[string][]CompactCandidate,
+		map[string][]config.CompactCandidate,
 	)
 
 	for _, row := range rows {
-
-		grouped[row.Ticker] = append(
-			grouped[row.Ticker],
-			row,
-		)
+		grouped[row.Ticker] = append(grouped[row.Ticker], row)
 	}
 
 	result := make(
-		[][]CompactCandidate,
+		[][]config.CompactCandidate,
 		0,
 	)
 
 	for _, tickerRows := range grouped {
-
-		current := make(
-			[]CompactCandidate,
-			0,
-		)
-
+		current := make([]config.CompactCandidate, 0)
 		currentGroups := 0
 
 		for _, row := range tickerRows {
-
-			current = append(
-				current,
-				row,
-			)
-
+			current = append(current, row)
 			currentGroups += row.RowGroupCount
 
 			if currentGroups >= targetRowGroups {
-
-				result = append(
-					result,
-					current,
-				)
-
+				result = append(result, current)
 				current = nil
 				currentGroups = 0
 			}

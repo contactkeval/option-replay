@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/contactkeval/option-replay/internal/db"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
@@ -293,7 +294,7 @@ func (c *DXFeedClient) ReadLoop(
 }
 
 func ToDXFeedSymbol(
-	contract Contract,
+	contract db.Contract,
 ) string {
 
 	optionType := "C"
