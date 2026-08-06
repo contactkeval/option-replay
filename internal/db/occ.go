@@ -12,16 +12,24 @@ const (
 	ImportStatusFailed    = "failed"
 )
 
-func (db *DB) StartImport(fileName string) (int64, error) {
+func (db *DB) StartImport(
+	fileName string,
+	fileDate time.Time,
+	downloadType string,
+) (int64, error) {
 	res, err := db.Exec(`
 		INSERT INTO occ_imports (
 			file_name,
+			file_date,
+			download_type,
 			started_at,
 			status
 		)
-		VALUES (?, ?, ?)
+		VALUES (?, ?, ?, ?, ?)
 	`,
 		fileName,
+		fileDate.Format("2006-01-02"),
+		downloadType,
 		time.Now().Format(time.RFC3339),
 		ImportStatusRunning,
 	)
@@ -41,7 +49,10 @@ func (db *DB) CompleteImport(
 		SET
 			ended_at = ?,
 			records_read = ?,
+			processed = ?,
+			ignored = ?,
 			inserted = ?,
+			existing = ?,
 			deleted = ?,
 			updated = ?,
 			skipped = ?,
@@ -51,7 +62,10 @@ func (db *DB) CompleteImport(
 	`,
 		stats.EndedAt.Format(time.RFC3339),
 		stats.RecordsRead,
+		stats.Processed,
+		stats.Ignored,
 		stats.Inserted,
+		stats.Existing,
 		stats.Deleted,
 		stats.Updated,
 		stats.Skipped,
@@ -59,7 +73,6 @@ func (db *DB) CompleteImport(
 		ImportStatusCompleted,
 		importID,
 	)
-
 	if err != nil {
 		return fmt.Errorf("complete import: %w", err)
 	}
@@ -71,12 +84,20 @@ func (db *DB) FailImport(
 	importID int64,
 	stats ImportStatistics,
 ) error {
+	endedAt := stats.EndedAt
+	if endedAt.IsZero() {
+		endedAt = time.Now()
+	}
+
 	_, err := db.Exec(`
 		UPDATE occ_imports
 		SET
 			ended_at = ?,
 			records_read = ?,
+			processed = ?,
+			ignored = ?,
 			inserted = ?,
+			existing = ?,
 			deleted = ?,
 			updated = ?,
 			skipped = ?,
@@ -84,9 +105,12 @@ func (db *DB) FailImport(
 			status = ?
 		WHERE id = ?
 	`,
-		stats.EndedAt.Format(time.RFC3339),
+		endedAt.Format(time.RFC3339),
 		stats.RecordsRead,
+		stats.Processed,
+		stats.Ignored,
 		stats.Inserted,
+		stats.Existing,
 		stats.Deleted,
 		stats.Updated,
 		stats.Skipped,
@@ -94,7 +118,6 @@ func (db *DB) FailImport(
 		ImportStatusFailed,
 		importID,
 	)
-
 	if err != nil {
 		return fmt.Errorf("fail import: %w", err)
 	}
@@ -106,14 +129,14 @@ func (db *DB) HandleOCCAdd(
 	tx *sql.Tx,
 	record OCCRecord,
 	groupNo int,
-) error {
+) (bool, error) {
 	return db.insertOCCContractTx(tx, record, groupNo)
 }
 
 func (db *DB) HandleOCCDelete(
 	tx *sql.Tx,
 	record OCCRecord,
-) error {
+) (bool, error) {
 	return db.deleteContractTx(
 		tx,
 		record.Underlying,
@@ -127,26 +150,32 @@ func (db *DB) HandleOCCModify(
 	tx *sql.Tx,
 	record OCCRecord,
 	groupNo int,
-) error {
-	if err := db.deleteContractTx(
+) (bool, error) {
+	deleted, err := db.deleteContractTx(
 		tx,
 		record.Underlying,
 		record.ExpiryDate,
 		record.Strike,
 		record.Type,
-	); err != nil {
-		return err
+	)
+	if err != nil {
+		return false, err
 	}
 
-	return db.insertOCCContractTx(tx, record, groupNo)
+	inserted, err := db.insertOCCContractTx(tx, record, groupNo)
+	if err != nil {
+		return false, err
+	}
+
+	return deleted || inserted, nil
 }
 
 func (db *DB) insertOCCContractTx(
 	tx *sql.Tx,
 	record OCCRecord,
 	groupNo int,
-) error {
-	_, err := tx.Exec(`
+) (bool, error) {
+	res, err := tx.Exec(`
 		INSERT OR IGNORE INTO contracts (
 			underlying,
 			expiry,
@@ -164,8 +193,16 @@ func (db *DB) insertOCCContractTx(
 		groupNo,
 		record.ActivityDate.Format("2006-01-02"),
 	)
+	if err != nil {
+		return false, err
+	}
 
-	return err
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n == 1, nil
 }
 
 func (db *DB) deleteContractTx(
@@ -174,8 +211,8 @@ func (db *DB) deleteContractTx(
 	expiry time.Time,
 	strike float64,
 	contractType string,
-) error {
-	_, err := tx.Exec(`
+) (bool, error) {
+	res, err := tx.Exec(`
 		DELETE FROM contracts
 		WHERE
 			underlying = ?
@@ -188,6 +225,14 @@ func (db *DB) deleteContractTx(
 		strike,
 		contractType,
 	)
+	if err != nil {
+		return false, err
+	}
 
-	return err
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
 }

@@ -217,16 +217,22 @@ func ensureTransientTables(db *sql.DB) error {
 }
 
 func ensureOCCTables(db *sql.DB) error {
-	return execStatements(db, []string{`
+	if err := execStatements(db, []string{`
 		CREATE TABLE IF NOT EXISTS occ_imports (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 			file_name TEXT NOT NULL,
+			file_date TEXT,
+			download_type TEXT,
+
 			started_at TEXT NOT NULL,
 			ended_at TEXT,
 
 			records_read INTEGER NOT NULL DEFAULT 0,
+			processed INTEGER NOT NULL DEFAULT 0,
+			ignored INTEGER NOT NULL DEFAULT 0,
 			inserted INTEGER NOT NULL DEFAULT 0,
+			existing INTEGER NOT NULL DEFAULT 0,
 			deleted INTEGER NOT NULL DEFAULT 0,
 			updated INTEGER NOT NULL DEFAULT 0,
 			skipped INTEGER NOT NULL DEFAULT 0,
@@ -234,7 +240,22 @@ func ensureOCCTables(db *sql.DB) error {
 
 			status TEXT NOT NULL
 		)
-	`})
+	`}); err != nil {
+		return err
+	}
+
+	// Additive columns for databases created before the enriched audit schema.
+	for _, stmt := range []string{
+		`ALTER TABLE occ_imports ADD COLUMN file_date TEXT`,
+		`ALTER TABLE occ_imports ADD COLUMN download_type TEXT`,
+		`ALTER TABLE occ_imports ADD COLUMN processed INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE occ_imports ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE occ_imports ADD COLUMN existing INTEGER NOT NULL DEFAULT 0`,
+	} {
+		_, _ = db.Exec(stmt)
+	}
+
+	return nil
 }
 
 func expiryTableName(expiry string) string {

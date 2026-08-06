@@ -13,13 +13,18 @@ type Contract struct {
 
 type ImportStatistics struct {
 	FileName     string
+	FileDate     time.Time
+	DownloadType string
 	StartedAt    time.Time
 	EndedAt      time.Time
 	RecordsRead  int
+	Processed    int
+	Ignored      int
 	Inserted     int
+	Existing     int // add records that were already in contracts
 	Deleted      int
 	Updated      int
-	Skipped      int
+	Skipped      int // retained for older call sites; prefer Ignored
 	Errors       int
 }
 

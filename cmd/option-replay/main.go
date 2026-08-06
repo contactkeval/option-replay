@@ -201,6 +201,29 @@ func resolveConfigPath(input string) string {
 //  - add logging middleware for request tracing
 //  - consider adding authentication/authorization for secure access
 //  - add configuration options for REST server (port, timeouts, etc.)
+//  - No error should be silently ignored.  If an error is returned then it must be wrapped.
 
+// ---------------------------------------------------------------------------------------
+// Looking Ahead
 
-// No error should be silently ignored.  If an error is returned then it must be wrapped. 
+// After v1.0, I'd enjoy helping with:
+
+// Comprehensive unit and integration tests
+// Benchmark suite (go test -bench)
+// Performance profiling
+// Documentation (code documentation as well as flow chart, wiki and maintaining open API docs)
+// Transaction fencing and processing (session management, idempotency, retries, etc.)
+// Recoverability (fail safe)
+// GitHub Actions (lint, test, build)
+// Logging/tracing information
+// Release process
+// A small terminal dashboard for monitoring runs
+
+// Consistent coding style:
+// 	naming
+// 	formatting
+// 	logging
+// 	SQL style
+// 	error handling
+// 	transaction handling
+// ---------------------------------------------------------------------------------------

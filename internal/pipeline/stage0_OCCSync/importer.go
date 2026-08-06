@@ -2,33 +2,35 @@ package stage0_occ
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/logger"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 type Importer struct {
 	database *db.DB
-	groupNo  int
 }
 
-func NewImporter(database *db.DB, groupNo int) *Importer {
-	return &Importer{
-		database: database,
-		groupNo:  groupNo,
-	}
+func NewImporter(database *db.DB) *Importer {
+	return &Importer{database: database}
 }
 
 func (i *Importer) ImportFile(
 	fileName string,
-	records []db.OCCRecord,
+	fileDate time.Time,
+	downloadType string,
 ) (db.ImportStatistics, error) {
 	stats := db.ImportStatistics{
-		FileName:  fileName,
-		StartedAt: time.Now(),
+		FileName:     fileName,
+		FileDate:     fileDate,
+		DownloadType: downloadType,
+		StartedAt:    time.Now(),
 	}
 
-	importID, err := i.database.StartImport(fileName)
+	importID, err := i.database.StartImport(fileName, fileDate, downloadType)
 	if err != nil {
 		return stats, err
 	}
@@ -39,35 +41,77 @@ func (i *Importer) ImportFile(
 	}
 	defer tx.Rollback()
 
-	for _, record := range records {
-		stats.RecordsRead++
+	err = ReadFile(
+		fileName,
+		func(record db.OCCRecord) error {
+			stats.RecordsRead++
 
-		var actionErr error
+			if !config.IsAllowedUnderlying(record.Underlying) {
+				stats.Ignored++
+				return nil
+			}
 
-		switch record.Action {
-		case ActionAdd:
-			actionErr = i.database.HandleOCCAdd(tx, record, i.groupNo)
-			if actionErr == nil {
-				stats.Inserted++
-			}
-		case ActionDelete:
-			actionErr = i.database.HandleOCCDelete(tx, record)
-			if actionErr == nil {
-				stats.Deleted++
-			}
-		case ActionModify:
-			actionErr = i.database.HandleOCCModify(tx, record, i.groupNo)
-			if actionErr == nil {
-				stats.Updated++
-			}
-		default:
-			stats.Skipped++
-			continue
-		}
+			stats.Processed++
 
-		if actionErr != nil {
+			groupNo := GroupNoForExpiry(record.ExpiryDate)
+
+			var (
+				applied   bool
+				actionErr error
+			)
+
+			switch record.Action {
+			case ActionAdd:
+				applied, actionErr = i.database.HandleOCCAdd(tx, record, groupNo)
+				if actionErr == nil {
+					if applied {
+						stats.Inserted++
+					} else {
+						stats.Existing++
+					}
+				}
+			case ActionDelete:
+				applied, actionErr = i.database.HandleOCCDelete(tx, record)
+				if actionErr == nil && applied {
+					stats.Deleted++
+				}
+			case ActionModify:
+				applied, actionErr = i.database.HandleOCCModify(tx, record, groupNo)
+				if actionErr == nil && applied {
+					stats.Updated++
+				}
+			default:
+				stats.Ignored++
+				stats.Processed--
+				return nil
+			}
+
+			if actionErr != nil {
+				stats.Errors++
+				logger.Warnf(
+					"OCC %s %s %s %.3f %s: %v",
+					record.Action,
+					record.Underlying,
+					record.ExpiryDate.Format("2006-01-02"),
+					record.Strike,
+					record.Type,
+					actionErr,
+				)
+			}
+
+			return nil
+		},
+		func(lineNo int, line string, parseErr error) error {
+			stats.RecordsRead++
 			stats.Errors++
-		}
+			logger.Warnf("line %d: %v", lineNo, parseErr)
+			return nil
+		},
+	)
+	if err != nil {
+		stats.EndedAt = time.Now()
+		_ = i.database.FailImport(importID, stats)
+		return stats, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -83,4 +127,22 @@ func (i *Importer) ImportFile(
 	}
 
 	return stats, nil
+}
+
+func FormatStats(s db.ImportStatistics) string {
+	return fmt.Sprintf(
+		"%s type=%s fileDate=%s read=%d processed=%d ignored=%d inserted=%d existing=%d deleted=%d updated=%d errors=%d duration=%s",
+		filepath.Base(s.FileName),
+		s.DownloadType,
+		s.FileDate.Format("2006-01-02"),
+		s.RecordsRead,
+		s.Processed,
+		s.Ignored,
+		s.Inserted,
+		s.Existing,
+		s.Deleted,
+		s.Updated,
+		s.Errors,
+		s.EndedAt.Sub(s.StartedAt).Round(time.Millisecond),
+	)
 }

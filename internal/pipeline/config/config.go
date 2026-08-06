@@ -7,6 +7,7 @@ type Config struct {
 	RawRoot        string
 	SQLiteRoot     string
 	TempRoot       string
+	OCCDataRoot    string
 
 	// Deleted as the parameters are now defined as constants in internal/pipeline/constants/constants.go
 	// MaxOpenFiles        int
@@ -23,6 +24,7 @@ func Load() Config {
 		RawRoot:        "G:\\data\\rawdata\\pending",
 		SQLiteRoot:     "G:\\data\\sqLite",
 		TempRoot:       "G:\\data\\temp",
+		OCCDataRoot:    "G:\\data\\OCCData",
 
 		// Deleted as the parameters are now defined as constants in internal/pipeline/constants/constants.go
 		// MaxOpenFiles:        128,
