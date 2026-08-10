@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ func (db *DB) InsertContractIgnore(
 	groupNo int,
 	firstSeenDate time.Time,
 ) error {
+	seen := firstSeenDate.Format("2006-01-02")
 	query := `
 		INSERT OR IGNORE INTO contracts (
 			underlying,
@@ -22,9 +24,10 @@ func (db *DB) InsertContractIgnore(
 			strike,
 			type,
 			groupNo,
-			firstSeenDate
+			firstSeenDate,
+			lastDownloadedDate
 		)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := tx.Exec(
@@ -34,7 +37,8 @@ func (db *DB) InsertContractIgnore(
 		strike,
 		contractType,
 		groupNo,
-		firstSeenDate.Format("2006-01-02"),
+		seen,
+		seen,
 	)
 
 	return err
@@ -45,6 +49,7 @@ func (db *DB) GetDistinctExpiries() ([]time.Time, error) {
 		SELECT DISTINCT expiry
 		FROM contracts
 		WHERE expiry < date('now')
+			AND archived = 0
 		ORDER BY expiry DESC
 	`)
 	if err != nil {
@@ -86,9 +91,14 @@ func (db *DB) GetContractsByExpiries(
 			expiry,
 			type,
 			strike,
-			groupNo
+			groupNo,
+			barCount,
+			lastDownloadedDate,
+			downloadAttempts,
+			archived
 		FROM contracts
-		WHERE expiry IN (
+		WHERE archived = 0
+			AND expiry IN (
 	`
 
 	args := make([]any, 0, len(expiries))
@@ -122,12 +132,42 @@ func (db *DB) GetContractsByGroupNo(
 			expiry,
 			type,
 			strike,
-			groupNo
+			groupNo,
+			barCount,
+			lastDownloadedDate,
+			downloadAttempts,
+			archived
 		FROM contracts
 		WHERE
-			expiry > date('now', '+1 month')
+			archived = 0
+			AND expiry > date('now', '+1 month')
 			AND groupNo = ?
 	`, groupNo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanContracts(rows)
+}
+
+// ListActiveContracts returns non-archived contracts with fetch metadata.
+func (db *DB) ListActiveContracts() ([]Contract, error) {
+	rows, err := db.Query(`
+		SELECT
+			serialNo,
+			underlying,
+			expiry,
+			type,
+			strike,
+			groupNo,
+			barCount,
+			lastDownloadedDate,
+			downloadAttempts,
+			archived
+		FROM contracts
+		WHERE archived = 0
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +187,11 @@ func (db *DB) GetBatchContracts(
 			c.expiry,
 			c.type,
 			c.strike,
-			c.groupNo
+			c.groupNo,
+			c.barCount,
+			c.lastDownloadedDate,
+			c.downloadAttempts,
+			c.archived
 		FROM batch_contracts bc
 		JOIN contracts c
 			ON c.serialNo = bc.serialNo
@@ -175,12 +219,77 @@ func (db *DB) CountContracts() (int, error) {
 	return count, err
 }
 
+func (db *DB) GetRunBatchCount(runNo int64) (int, error) {
+	var count int
+
+	err := db.QueryRow(`
+		SELECT batchCount
+		FROM runs
+		WHERE runNo = ?
+	`, runNo).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("query run batch count: %w", err)
+	}
+
+	return count, nil
+}
+
+// RecordContractFetch updates bar metadata after a successful download.
+// Expired contracts are archived once downloadAttempts reaches 3.
+func (db *DB) RecordContractFetch(
+	serialNo int64,
+	barCount int,
+	fetchDate time.Time,
+) error {
+	_, err := db.Exec(`
+		UPDATE contracts
+		SET
+			barCount = ?,
+			lastDownloadedDate = ?,
+			downloadAttempts = downloadAttempts + 1,
+			archived = CASE
+				WHEN expiry < date(?)
+					AND downloadAttempts + 1 >= 3
+				THEN 1
+				ELSE archived
+			END
+		WHERE serialNo = ?
+	`,
+		barCount,
+		fetchDate.Format("2006-01-02"),
+		fetchDate.Format("2006-01-02"),
+		serialNo,
+	)
+	if err != nil {
+		return fmt.Errorf("record contract fetch: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) CountCandlesForSerial(serialNo int64) (int, error) {
+	var count int
+
+	err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM candle_staging
+		WHERE serialNo = ?
+	`, serialNo).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count candles: %w", err)
+	}
+
+	return count, nil
+}
+
 func scanContracts(rows *sql.Rows) ([]Contract, error) {
 	var contracts []Contract
 
 	for rows.Next() {
 		var c Contract
 		var expiry string
+		var lastDownloaded sql.NullString
+		var archived int
 
 		if err := rows.Scan(
 			&c.SerialNo,
@@ -189,6 +298,10 @@ func scanContracts(rows *sql.Rows) ([]Contract, error) {
 			&c.Type,
 			&c.Strike,
 			&c.GroupNo,
+			&c.BarCount,
+			&lastDownloaded,
+			&c.DownloadAttempts,
+			&archived,
 		); err != nil {
 			return nil, err
 		}
@@ -196,11 +309,36 @@ func scanContracts(rows *sql.Rows) ([]Contract, error) {
 		var err error
 		c.Expiry, err = time.Parse("2006-01-02", expiry)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse expiry %q for serial %d: %w", expiry, c.SerialNo, err)
 		}
+
+		if lastDownloaded.Valid {
+			if parsed, ok := parseContractDate(lastDownloaded.String); ok {
+				c.LastDownloadedDate = parsed
+			}
+		}
+
+		c.Archived = archived != 0
 
 		contracts = append(contracts, c)
 	}
 
 	return contracts, rows.Err()
+}
+
+// parseContractDate parses yyyy-mm-dd (optionally with a time suffix).
+// Returns ok=false for empty or malformed values instead of panicking.
+func parseContractDate(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	if len(raw) >= 10 {
+		raw = raw[:10]
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }

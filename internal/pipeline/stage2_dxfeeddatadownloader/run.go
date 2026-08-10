@@ -25,7 +25,7 @@ func Run(cfg config.Config) error {
 	}
 	defer metadataDB.Close()
 
-	runNo, err := BuildRunPlan(metadataDB)
+	runNo, err := BuildRunPlan(metadataDB, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to build run plan: %w", err)
 	}
@@ -126,7 +126,31 @@ func DownloadBatch(
 			batchNo,
 			err,
 		)
-		return fmt.Errorf("failed to update batch end time: %w", err)
+		return fmt.Errorf("batch %d read loop: %w", batchNo, err)
+	}
+
+	fetchDate := time.Now()
+	for _, contract := range contracts {
+		barCount, countErr := metadataDB.CountCandlesForSerial(contract.SerialNo)
+		if countErr != nil {
+			return fmt.Errorf(
+				"count candles for serial %d: %w",
+				contract.SerialNo,
+				countErr,
+			)
+		}
+
+		if err := metadataDB.RecordContractFetch(
+			contract.SerialNo,
+			barCount,
+			fetchDate,
+		); err != nil {
+			return fmt.Errorf(
+				"record fetch for serial %d: %w",
+				contract.SerialNo,
+				err,
+			)
+		}
 	}
 
 	fmt.Printf(

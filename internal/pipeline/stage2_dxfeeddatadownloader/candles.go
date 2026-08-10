@@ -11,7 +11,12 @@ func DownloadRun(
 	metadataDB *db.DB,
 	runNo int64,
 ) error {
-	for batchNo := 1; batchNo <= 11; batchNo++ {
+	batchCount, err := metadataDB.GetRunBatchCount(runNo)
+	if err != nil {
+		return fmt.Errorf("failed to get batch count: %w", err)
+	}
+
+	for batchNo := 1; batchNo <= batchCount; batchNo++ {
 		err := DownloadBatch(metadataDB, runNo, batchNo)
 		if err != nil {
 			fmt.Printf(

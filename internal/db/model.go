@@ -3,12 +3,16 @@ package db
 import "time"
 
 type Contract struct {
-	SerialNo   int64
-	Underlying string
-	Expiry     time.Time
-	Type       string
-	Strike     float64
-	GroupNo    int
+	SerialNo           int64
+	Underlying         string
+	Expiry             time.Time
+	Type               string
+	Strike             float64
+	GroupNo            int
+	BarCount           int
+	LastDownloadedDate time.Time // zero if never downloaded
+	DownloadAttempts   int
+	Archived           bool
 }
 
 type ImportStatistics struct {

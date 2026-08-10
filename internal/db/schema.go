@@ -49,7 +49,7 @@ func execStatements(db *sql.DB, stmts []string) error {
 }
 
 func ensureContractsTables(db *sql.DB) error {
-	return execStatements(db, []string{`
+	if err := execStatements(db, []string{`
 		CREATE TABLE IF NOT EXISTS contracts (
 			serialNo INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -64,6 +64,8 @@ func ensureContractsTables(db *sql.DB) error {
 			lastDownloadedDate TEXT,
 
 			downloadAttempts INTEGER NOT NULL DEFAULT 0,
+			barCount INTEGER NOT NULL DEFAULT 0,
+			archived INTEGER NOT NULL DEFAULT 0,
 
 			UNIQUE (
 				underlying,
@@ -72,7 +74,45 @@ func ensureContractsTables(db *sql.DB) error {
 				strike
 			)
 		)
-	`})
+	`}); err != nil {
+		return err
+	}
+
+	// Additive columns for databases created before fetch-selection metadata.
+	for _, stmt := range []string{
+		`ALTER TABLE contracts ADD COLUMN barCount INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE contracts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+	} {
+		_, _ = db.Exec(stmt)
+	}
+
+	// Seed / repair lastDownloadedDate from firstSeenDate when missing or malformed.
+	// Expected format is yyyy-mm-dd (length 10). Year-only values break selection scans.
+	if _, err := db.Exec(`
+		UPDATE contracts
+		SET lastDownloadedDate = firstSeenDate
+		WHERE lastDownloadedDate IS NULL
+			OR TRIM(lastDownloadedDate) = ''
+			OR length(TRIM(lastDownloadedDate)) != 10
+			OR date(lastDownloadedDate) IS NULL
+	`); err != nil {
+		return fmt.Errorf("backfill lastDownloadedDate: %w", err)
+	}
+
+	for _, stmt := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_contracts_archived_expiry
+			ON contracts(archived, expiry)`,
+		`CREATE INDEX IF NOT EXISTS idx_contracts_expiry_bar
+			ON contracts(expiry, barCount)`,
+		`CREATE INDEX IF NOT EXISTS idx_contracts_far_fetch
+			ON contracts(archived, expiry, lastDownloadedDate, barCount)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("create contracts index: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func ensureDownloadTables(db *sql.DB) error {

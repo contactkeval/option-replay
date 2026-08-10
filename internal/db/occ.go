@@ -175,6 +175,7 @@ func (db *DB) insertOCCContractTx(
 	record OCCRecord,
 	groupNo int,
 ) (bool, error) {
+	seen := record.ActivityDate.Format("2006-01-02")
 	res, err := tx.Exec(`
 		INSERT OR IGNORE INTO contracts (
 			underlying,
@@ -182,16 +183,18 @@ func (db *DB) insertOCCContractTx(
 			strike,
 			type,
 			groupNo,
-			firstSeenDate
+			firstSeenDate,
+			lastDownloadedDate
 		)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`,
 		record.Underlying,
 		record.ExpiryDate.Format("2006-01-02"),
 		record.Strike,
 		record.Type,
 		groupNo,
-		record.ActivityDate.Format("2006-01-02"),
+		seen,
+		seen,
 	)
 	if err != nil {
 		return false, err
