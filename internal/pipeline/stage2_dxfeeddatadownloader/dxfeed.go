@@ -3,16 +3,22 @@ package stage2_dxfeeddatadownloader
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/contactkeval/option-replay/internal/db"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
+	"github.com/gorilla/websocket"
 )
+
+const dxFeedWSURL = "wss://tasty-openapi-dxlink-md-ws.dxfeed.com/realtime"
 
 type FeedData struct {
 	Type    string          `json:"type"`
@@ -21,45 +27,51 @@ type FeedData struct {
 }
 
 type DXFeedClient struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	conn  *websocket.Conn
+	token string
+	mu    sync.Mutex
 }
 
-func Connect(
-	ctx context.Context,
-) (*DXFeedClient, error) {
+func Connect(ctx context.Context) (*DXFeedClient, error) {
+	auth, err := resolveDxLinkAuth()
+	if err != nil {
+		return nil, err
+	}
 
-	const wsURL = "wss://tasty-openapi-dxlink-md-ws.dxfeed.com/realtime"
-	conn, _, err := websocket.Dial(
-		ctx,
-		wsURL,
-		nil,
+	fmt.Printf("DXFeed connecting %s\n", auth.wsURL)
+	fmt.Printf(
+		"DXFeed AUTH token length=%d prefix=%s suffix=%s\n",
+		len(auth.token),
+		tokenPrefix(auth.token, 6),
+		tokenSuffix(auth.token, 6),
 	)
+
+	headers := http.Header{}
+	headers.Set("User-Agent", "option-replay/1.0")
+	headers.Set("Origin", tastyOrigin(auth.wsURL))
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	conn, _, err := dialer.DialContext(ctx, auth.wsURL, headers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to DXFeed: %w", err)
 	}
+	conn.SetReadLimit(100 * 1024 * 1024)
 
-	conn.SetReadLimit(
-		100 * 1024 * 1024,
-	)
-
-	return &DXFeedClient{
-		conn: conn,
-	}, nil
+	return &DXFeedClient{conn: conn, token: auth.token}, nil
 }
 
 func (c *DXFeedClient) Close() error {
-
-	return c.conn.Close(
-		websocket.StatusNormalClosure,
-		"client shutdown",
+	_ = c.conn.WriteMessage(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "client shutdown"),
 	)
+	return c.conn.Close()
 }
 
-func (c *DXFeedClient) writeJSON(
-	v any,
-) error {
-
+func (c *DXFeedClient) writeJSON(v any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -68,241 +80,520 @@ func (c *DXFeedClient) writeJSON(
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		10*time.Second,
-	)
-	defer cancel()
+	if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, b)
+}
 
-	return c.conn.Write(
-		ctx,
-		websocket.MessageText,
-		b,
-	)
+func (c *DXFeedClient) writeRaw(raw string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, []byte(raw))
 }
 
 func (c *DXFeedClient) Setup() error {
-
-	return c.writeJSON(map[string]any{
-		"type":                   "SETUP",
-		"channel":                0,
-		"keepaliveTimeout":       60,
-		"acceptKeepaliveTimeout": 60,
-		"version":                "1.0.0",
-	})
+	const setupJSON = `{"type":"SETUP","channel":0,"keepaliveTimeout":60,"acceptKeepaliveTimeout":60,"version":"1.0.0"}`
+	return c.writeRaw(setupJSON)
 }
 
-func (c *DXFeedClient) Auth() error {
-
-	return c.writeJSON(map[string]any{
-		"type":    "AUTH",
-		"channel": 0,
-		"token":   os.Getenv("dxFeed_Token"),
+func (c *DXFeedClient) Auth(token string) error {
+	payload, err := json.Marshal(struct {
+		Type    string `json:"type"`
+		Channel int    `json:"channel"`
+		Token   string `json:"token"`
+	}{
+		Type:    "AUTH",
+		Channel: 0,
+		Token:   token,
 	})
+	if err != nil {
+		return err
+	}
+	return c.writeRaw(string(payload))
 }
 
-func (c *DXFeedClient) OpenFeedChannel() error {
-
-	return c.writeJSON(map[string]any{
-		"type":    "CHANNEL_REQUEST",
-		"channel": 1,
-		"service": "FEED",
-		"parameters": map[string]any{
-			"contract":  "AUTO",
-			"subFormat": "LIST",
-		},
-	})
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
-func (c *DXFeedClient) SubscribeCandles(
-	symbols []string,
-	fromTime int64,
-) error {
+func dxFeedURL() string {
+	url := firstEnv("dxlink_url", "DXLINK_URL", "dxFeed_URL", "DXFEED_URL")
+	if url == "" {
+		return dxFeedWSURL
+	}
+	return url
+}
 
-	add :=
-		make(
-			[]map[string]any,
-			0,
-			len(symbols),
-		)
+func dxFeedToken() (string, error) {
+	token := firstEnv("dxlink_token", "DXLINK_TOKEN", "dxFeed_Token", "DXFEED_TOKEN")
+	token = strings.Trim(token, `"'`)
+	token = strings.TrimSpace(token)
+	token = strings.TrimPrefix(token, "\ufeff")
+	if token == "" {
+		return "", fmt.Errorf("environment variable dxlink_token (or dxFeed_Token) is empty")
+	}
+	return token, nil
+}
 
-	for _, symbol := range symbols {
+func tastyAPIBase(wsURL string) string {
+	if strings.Contains(strings.ToLower(wsURL), "cert") {
+		return "https://api.cert.tastyworks.com"
+	}
+	return "https://api.tastytrade.com"
+}
 
-		add = append(
-			add,
-			map[string]any{
-				"symbol":   symbol,
-				"type":     "Candle",
-				"fromTime": fromTime,
-			},
-		)
+func tastyOrigin(wsURL string) string {
+	if strings.Contains(strings.ToLower(wsURL), "cert") {
+		return "https://api.cert.tastyworks.com"
+	}
+	return "https://api.tastytrade.com"
+}
+
+type dxLinkAuth struct {
+	token string
+	wsURL string
+}
+
+func resolveDxLinkAuth() (dxLinkAuth, error) {
+	token, err := dxFeedToken()
+	if err != nil {
+		return dxLinkAuth{}, err
+	}
+	wsURL := dxFeedURL()
+
+	quoteToken, quoteURL, ok := fetchQuoteToken(token, wsURL)
+	if !ok {
+		fmt.Println("DXFeed using env token as AUTH token")
+		return dxLinkAuth{token: token, wsURL: wsURL}, nil
 	}
 
-	return c.writeJSON(
-		map[string]any{
-			"type":    "FEED_SUBSCRIPTION",
-			"channel": 1,
-			"add":     add,
-		},
+	if quoteURL != "" {
+		wsURL = quoteURL
+	}
+	fmt.Printf(
+		"DXFeed exchanged session token for quote token length=%d prefix=%s suffix=%s\n",
+		len(quoteToken),
+		tokenPrefix(quoteToken, 6),
+		tokenSuffix(quoteToken, 6),
 	)
+	return dxLinkAuth{token: quoteToken, wsURL: wsURL}, nil
 }
 
-func (c *DXFeedClient) WaitForAuth(
-	ctx context.Context,
-) error {
-
-	for {
-
-		_, raw, err :=
-			c.conn.Read(ctx)
-
-		if err != nil {
-			return fmt.Errorf("failed to read from DXFeed: %w", err)
-		}
-
-		var msg struct {
-			Type  string `json:"type"`
-			State string `json:"state"`
-		}
-
-		if json.Unmarshal(
-			raw,
-			&msg,
-		) != nil {
-			continue
-		}
-
-		if msg.Type == "AUTH_STATE" &&
-			msg.State == "AUTHORIZED" {
-
-			return nil
-		}
+func fetchQuoteToken(bearerToken, wsURL string) (string, string, bool) {
+	apiURL := tastyAPIBase(wsURL) + "/api-quote-tokens"
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", "", false
 	}
-}
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	req.Header.Set("User-Agent", "option-replay/1.0")
 
-func (c *DXFeedClient) WaitForChannel(
-	ctx context.Context,
-) error {
-
-	for {
-
-		_, raw, err :=
-			c.conn.Read(ctx)
-
-		if err != nil {
-			return fmt.Errorf("failed to read from DXFeed: %w", err)
-		}
-
-		var msg struct {
-			Type    string `json:"type"`
-			Channel int    `json:"channel"`
-		}
-
-		if json.Unmarshal(
-			raw,
-			&msg,
-		) != nil {
-			continue
-		}
-
-		if msg.Type == "CHANNEL_OPENED" &&
-			msg.Channel == 1 {
-
-			return nil
-		}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("DXFeed quote-token fetch failed: %v\n", err)
+		return "", "", false
 	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("DXFeed quote-token fetch HTTP %d\n", resp.StatusCode)
+		return "", "", false
+	}
+
+	var result struct {
+		Data struct {
+			Token     string `json:"token"`
+			DxLinkURL string `json:"dxlink-url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", "", false
+	}
+	if strings.TrimSpace(result.Data.Token) == "" {
+		return "", "", false
+	}
+
+	return result.Data.Token, result.Data.DxLinkURL, true
 }
 
-func (c *DXFeedClient) ReadLoop(
-	ctx context.Context,
-	handler func(config.Candle) error,
-) error {
+func parseDXFeedError(raw []byte) error {
+	var e struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(raw, &e)
+	if e.Error == "" && e.Message == "" {
+		return fmt.Errorf("dxfeed error: %s", raw)
+	}
+	return fmt.Errorf("dxfeed error: %s (%s)", e.Error, e.Message)
+}
 
+func (c *DXFeedClient) readEnvelope(ctx context.Context) (string, []byte, error) {
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = c.conn.SetReadDeadline(deadline)
+	}
+
+	_, raw, err := c.conn.ReadMessage()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read from DXFeed: %w", err)
+	}
+
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return "", raw, nil
+	}
+	return envelope.Type, raw, nil
+}
+
+// Handshake matches the Postman flow: SETUP (version 1.0.0), then AUTH.
+func (c *DXFeedClient) Handshake(ctx context.Context) error {
+	if c.token == "" {
+		return fmt.Errorf("dxlink token is empty")
+	}
+
+	if err := c.Setup(); err != nil {
+		return fmt.Errorf("failed to setup DXFeed client: %w", err)
+	}
+	fmt.Println("DXFeed handshake >> SETUP")
+
+	if err := c.waitUntilReadyForAuth(ctx); err != nil {
+		return err
+	}
+
+	if err := c.Auth(c.token); err != nil {
+		return fmt.Errorf("failed to authenticate with DXFeed: %w", err)
+	}
+	fmt.Println("DXFeed handshake >> AUTH")
+
+	return c.waitForAuthorized(ctx)
+}
+
+func tokenPrefix(token string, n int) string {
+	if len(token) <= n {
+		return token
+	}
+	return token[:n]
+}
+
+func tokenSuffix(token string, n int) string {
+	if len(token) <= n {
+		return token
+	}
+	return token[len(token)-n:]
+}
+
+func (c *DXFeedClient) waitUntilReadyForAuth(ctx context.Context) error {
 	for {
-
-		_, raw, err :=
-			c.conn.Read(ctx)
-
+		msgType, raw, err := c.readEnvelope(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to read from DXFeed: %w", err)
+			return fmt.Errorf("failed to complete DXFeed handshake: %w", err)
 		}
+		fmt.Printf("DXFeed handshake << %s\n", raw)
 
-		var envelope struct {
-			Type string `json:"type"`
-		}
-
-		if json.Unmarshal(
-			raw,
-			&envelope,
-		) != nil {
-
-			continue
-		}
-
-		// fmt.Println("raw:", string(raw))
-		// fmt.Printf(
-		// 	"MESSAGE TYPE: %s\n",
-		// 	envelope.Type,
-		// )
-
-		switch envelope.Type {
-
-		case "KEEPALIVE":
-
-			return nil
-
+		switch msgType {
+		case "AUTH_STATE":
+			var msg struct {
+				State string `json:"state"`
+			}
+			if json.Unmarshal(raw, &msg) != nil {
+				continue
+			}
+			if msg.State == "UNAUTHORIZED" || msg.State == "AUTHORIZED" {
+				return nil
+			}
 		case "ERROR":
-
 			var e struct {
-				Error   string `json:"error"`
-				Message string `json:"message"`
+				Error string `json:"error"`
 			}
-
-			_ = json.Unmarshal(
-				raw,
-				&e,
-			)
-
-			return fmt.Errorf(
-				"dxfeed error: %s (%s)",
-				e.Error,
-				e.Message,
-			)
-
-		case "FEED_DATA":
-
-			var msg FeedData
-
-			if err := json.Unmarshal(
-				raw,
-				&msg,
-			); err != nil {
-
-				return fmt.Errorf("failed to unmarshal FEED_DATA: %w", err)
+			_ = json.Unmarshal(raw, &e)
+			if e.Error == "UNAUTHORIZED" {
+				continue
 			}
+			return parseDXFeedError(raw)
+		}
+	}
+}
 
-			for _, candle := range msg.Data {
+func (c *DXFeedClient) waitForAuthorized(ctx context.Context) error {
+	for {
+		msgType, raw, err := c.readEnvelope(ctx)
+		if err != nil {
+			return fmt.Errorf("authentication failed (check dxFeed_Token): %w", err)
+		}
+		fmt.Printf("DXFeed handshake << %s\n", raw)
 
-				if err :=
-					handler(candle); err != nil {
+		switch msgType {
+		case "ERROR":
+			return parseDXFeedError(raw)
+		case "AUTH":
+			continue
+		case "AUTH_STATE":
+			var msg struct {
+				State string `json:"state"`
+			}
+			if json.Unmarshal(raw, &msg) != nil {
+				continue
+			}
+			if msg.State == "AUTHORIZED" {
+				return nil
+			}
+			if msg.State == "UNAUTHORIZED" {
+				return fmt.Errorf("dxfeed authentication failed: UNAUTHORIZED")
+			}
+		}
+	}
+}
 
-					return fmt.Errorf("failed to handle candle: %w", err)
+func (c *DXFeedClient) StartKeepalive(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := c.writeJSON(map[string]any{
+					"type":    "KEEPALIVE",
+					"channel": 0,
+				}); err != nil {
+					return
 				}
 			}
 		}
+	}()
+}
+
+func (c *DXFeedClient) OpenFeedChannel() error {
+	const channelJSON = `{"type":"CHANNEL_REQUEST","channel":1,"service":"FEED","parameters":{"contract":"AUTO","subFormat":"LIST"}}`
+	return c.writeRaw(channelJSON)
+}
+
+func (c *DXFeedClient) SubscribeCandles(symbols []string, fromTime int64) error {
+	add := make([]map[string]any, 0, len(symbols))
+	for _, symbol := range symbols {
+		add = append(add, map[string]any{
+			"symbol":   symbol,
+			"type":     "Candle",
+			"fromTime": fromTime,
+		})
+	}
+
+	return c.writeJSON(map[string]any{
+		"type":    "FEED_SUBSCRIPTION",
+		"channel": 1,
+		"add":     add,
+	})
+}
+
+func (c *DXFeedClient) UnsubscribeCandles(symbols []string) error {
+	remove := make([]map[string]any, 0, len(symbols))
+	for _, symbol := range symbols {
+		remove = append(remove, map[string]any{
+			"symbol": symbol,
+			"type":   "Candle",
+		})
+	}
+
+	return c.writeJSON(map[string]any{
+		"type":    "FEED_SUBSCRIPTION",
+		"channel": 1,
+		"remove":  remove,
+	})
+}
+
+func chunkSymbols(symbols []string, size int) [][]string {
+	if size <= 0 {
+		size = len(symbols)
+	}
+	if len(symbols) == 0 {
+		return nil
+	}
+	chunks := make([][]string, 0, (len(symbols)+size-1)/size)
+	for i := 0; i < len(symbols); i += size {
+		end := i + size
+		if end > len(symbols) {
+			end = len(symbols)
+		}
+		chunks = append(chunks, symbols[i:end])
+	}
+	return chunks
+}
+
+func (c *DXFeedClient) WaitForChannel(ctx context.Context) error {
+	for {
+		msgType, raw, err := c.readEnvelope(ctx)
+		if err != nil {
+			return err
+		}
+
+		switch msgType {
+		case "ERROR":
+			return parseDXFeedError(raw)
+		case "CHANNEL_REQUEST":
+			continue
+		case "CHANNEL_OPENED":
+			var msg struct {
+				Channel int `json:"channel"`
+			}
+			if json.Unmarshal(raw, &msg) != nil {
+				continue
+			}
+			if msg.Channel == 1 {
+				return nil
+			}
+		}
 	}
 }
 
-func ToDXFeedSymbol(
-	contract db.Contract,
-) string {
+const (
+	dxSnapshotEnd  = 0x08
+	dxSnapshotSnip = 0x10
+)
 
+func (c *DXFeedClient) ReadLoop(
+	ctx context.Context,
+	symbols []string,
+	handler func(config.Candle) error,
+) (alive bool, err error) {
+	const noDataWait = 45 * time.Second
+	const idleAfterData = 20 * time.Second
+
+	pending := make(map[string]struct{}, len(symbols))
+	for _, symbol := range symbols {
+		pending[symbol] = struct{}{}
+	}
+
+	received := false
+	var feedMessages, candleCount int
+
+	if err := c.conn.SetReadDeadline(time.Now().Add(noDataWait)); err != nil {
+		return false, err
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+
+		msgType, raw, err := c.readEnvelope(ctx)
+		if err != nil {
+			if received && isReadTimeout(err) {
+				fmt.Printf(
+					"DXFeed chunk idle after %d feed messages, %d candles\n",
+					feedMessages,
+					candleCount,
+				)
+				return false, nil
+			}
+			if isReadTimeout(err) {
+				return false, fmt.Errorf("no candle data received after %s", noDataWait)
+			}
+			if received {
+				fmt.Printf(
+					"DXFeed chunk ended after %d feed messages, %d candles: %v\n",
+					feedMessages,
+					candleCount,
+					err,
+				)
+				return false, nil
+			}
+			return false, err
+		}
+
+		switch msgType {
+		case "KEEPALIVE":
+			_ = c.writeJSON(map[string]any{
+				"type":    "KEEPALIVE",
+				"channel": 0,
+			})
+
+		case "FEED_CONFIG":
+			fmt.Printf("DXFeed << FEED_CONFIG %s\n", raw)
+
+		case "ERROR":
+			return false, parseDXFeedError(raw)
+
+		case "FEED_DATA":
+			var msg FeedData
+			if err := json.Unmarshal(raw, &msg); err != nil {
+				return false, fmt.Errorf("failed to unmarshal FEED_DATA: %w", err)
+			}
+
+			received = true
+			if err := c.conn.SetReadDeadline(time.Now().Add(idleAfterData)); err != nil {
+				return false, err
+			}
+			feedMessages++
+			for _, candle := range msg.Data {
+				if err := handler(candle); err != nil {
+					return false, fmt.Errorf("failed to handle candle: %w", err)
+				}
+				candleCount++
+				if candle.EventFlags&(dxSnapshotEnd|dxSnapshotSnip) != 0 {
+					delete(pending, candle.EventSymbol)
+				}
+			}
+			if feedMessages == 1 || feedMessages%50 == 0 {
+				fmt.Printf(
+					"DXFeed FEED_DATA messages=%d candles=%d pending=%d last=%s\n",
+					feedMessages,
+					candleCount,
+					len(pending),
+					candleEventSymbol(msg),
+				)
+			}
+			if len(pending) == 0 {
+				fmt.Printf(
+					"DXFeed chunk snapshot complete messages=%d candles=%d\n",
+					feedMessages,
+					candleCount,
+				)
+				_ = c.conn.SetReadDeadline(time.Time{})
+				return true, nil
+			}
+
+		default:
+			if msgType != "" {
+				fmt.Printf("DXFeed << %s\n", msgType)
+			}
+		}
+	}
+}
+
+func candleEventSymbol(msg FeedData) string {
+	if len(msg.Data) == 0 {
+		return ""
+	}
+	return msg.Data[0].EventSymbol
+}
+
+func isReadTimeout(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline")
+}
+
+func ToDXFeedSymbol(contract db.Contract) string {
 	optionType := "C"
-
-	if strings.EqualFold(
-		contract.Type,
-		"put",
-	) {
+	if strings.EqualFold(contract.Type, "put") {
 		optionType = "P"
 	}
 

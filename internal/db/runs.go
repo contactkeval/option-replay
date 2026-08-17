@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -19,6 +20,23 @@ func (db *DB) GetNextRunNo() (int64, error) {
 	`).Scan(&nextRunNo)
 
 	return nextRunNo, err
+}
+
+func (db *DB) GetLatestRunNo() (int64, error) {
+	var runNo sql.NullInt64
+
+	err := db.QueryRow(`
+		SELECT MAX(runNo)
+		FROM runs
+	`).Scan(&runNo)
+	if err != nil {
+		return 0, fmt.Errorf("query latest run: %w", err)
+	}
+	if !runNo.Valid || runNo.Int64 == 0 {
+		return 0, fmt.Errorf("no runs found")
+	}
+
+	return runNo.Int64, nil
 }
 
 func (db *DB) CreateRun(

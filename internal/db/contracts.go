@@ -235,16 +235,17 @@ func (db *DB) GetRunBatchCount(runNo int64) (int, error) {
 }
 
 // RecordContractFetch updates bar metadata after a successful download.
+// newBars is added to the existing barCount (new candle_staging inserts only).
 // Expired contracts are archived once downloadAttempts reaches 3.
 func (db *DB) RecordContractFetch(
 	serialNo int64,
-	barCount int,
+	newBars int,
 	fetchDate time.Time,
 ) error {
 	_, err := db.Exec(`
 		UPDATE contracts
 		SET
-			barCount = ?,
+			barCount = barCount + ?,
 			lastDownloadedDate = ?,
 			downloadAttempts = downloadAttempts + 1,
 			archived = CASE
@@ -255,7 +256,7 @@ func (db *DB) RecordContractFetch(
 			END
 		WHERE serialNo = ?
 	`,
-		barCount,
+		newBars,
 		fetchDate.Format("2006-01-02"),
 		fetchDate.Format("2006-01-02"),
 		serialNo,

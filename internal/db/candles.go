@@ -11,8 +11,8 @@ func (db *DB) InsertCandleStaging(
 	candle config.Candle,
 	runNo int64,
 	batchNo int,
-) error {
-	_, err := db.Exec(`
+) (bool, error) {
+	res, err := db.Exec(`
 		INSERT OR IGNORE INTO candle_staging (
 			serialNo,
 			candleTime,
@@ -36,10 +36,14 @@ func (db *DB) InsertCandleStaging(
 		runNo,
 		batchNo,
 	)
-
 	if err != nil {
-		return fmt.Errorf("insert candle staging: %w", err)
+		return false, fmt.Errorf("insert candle staging: %w", err)
 	}
 
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("insert candle staging rows affected: %w", err)
+	}
+
+	return n == 1, nil
 }

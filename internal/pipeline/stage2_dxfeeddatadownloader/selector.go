@@ -12,8 +12,8 @@
 //  2. Expired batch (size = expiredCount/5):
 //     - SQL: yesterday expiries ORDER BY barCount ASC LIMIT n
 //     - Gap from expiry < yesterday:
-//       oldest-expiry slice, then highest-bar slice in the date band
-//       (maxOldestExpiry+1 … yesterday-1)
+//     oldest-expiry slice, then highest-bar slice in the date band
+//     (maxOldestExpiry+1 … yesterday-1)
 //
 //  3. Far batch (size = farCount/15) from stale lastFetch:
 //     - SQL: oldest lastFetch slice; record max lastFetch
@@ -36,6 +36,12 @@ import (
 // MaxGroupSize is the soft upper bound used to size download groups.
 // Group count is (selected/MaxGroupSize)+1 so each group stays at most this size.
 const MaxGroupSize = 500
+
+// MaxCandleSubscribe is the max symbols per DXLink Candle FEED_SUBSCRIPTION.
+const MaxCandleSubscribe = 100
+
+// DownloadWorkers is the number of parallel DXLink sessions.
+const DownloadWorkers = 4
 
 // StaleFetchDays is how old lastFetchDate must be for far-expiry eligibility.
 const StaleFetchDays = 15
@@ -68,7 +74,7 @@ func SelectContractsForFetch(
 //  2. If slots remain, split the remainder in half:
 //     a. oldest expiry (expiry < yesterday), barCount descending
 //     b. highest barCount in the date band after (a)'s max expiry through
-//        yesterday-1 (inclusive) — date-band partitioning, no serial excludes
+//     yesterday-1 (inclusive) — date-band partitioning, no serial excludes
 func selectExpiredContracts(
 	database *db.DB,
 	runDate time.Time,

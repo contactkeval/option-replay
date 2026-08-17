@@ -10,14 +10,16 @@ import (
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
-func Run(cfg config.Config) error {
-	metadataDBPath := filepath.Join(
-		cfg.MetadataRoot,
-		"metadata.db",
-	)
+func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
+	if dbPath == "" {
+		dbPath = filepath.Join(
+			cfg.MetadataRoot,
+			"metadata.db",
+		)
+	}
 
 	metadataDB, err := db.Open(db.Options{
-		Path:    metadataDBPath,
+		Path:    dbPath,
 		Schemas: db.SchemaMetadata,
 	})
 	if err != nil {
@@ -25,140 +27,91 @@ func Run(cfg config.Config) error {
 	}
 	defer metadataDB.Close()
 
-	runNo, err := BuildRunPlan(metadataDB, time.Now())
+	runNo, batchNos, err := ResolveDownloadTarget(metadataDB, runNo, batchNo)
 	if err != nil {
-		return fmt.Errorf("failed to build run plan: %w", err)
+		return fmt.Errorf("failed to resolve download target: %w", err)
 	}
 
-	return DownloadRun(metadataDB, runNo)
+	from := time.Now().AddDate(-2, 0, 0)
+	fmt.Printf(
+		"Downloading run=%d batches=%v from=%s\n",
+		runNo,
+		batchNos,
+		from.Format("2006-01-02"),
+	)
+
+	return DownloadRun(metadataDB, runNo, batchNos)
 }
 
-func DownloadBatch(
-	metadataDB *db.DB,
-	runNo int64,
-	batchNo int,
-) error {
-	contracts, err := metadataDB.GetBatchContracts(runNo, batchNo)
-	if err != nil {
-		return fmt.Errorf("failed to get batch contracts: %w", err)
-	}
-
-	if len(contracts) == 0 {
-		return nil
-	}
-
-	symbols := make([]string, 0, len(contracts))
-	symbolToSerial := make(map[string]int64, len(contracts))
-
-	for _, contract := range contracts {
-		symbol := ToDXFeedSymbol(contract)
-		if symbol == "" {
-			continue
-		}
-
-		symbols = append(symbols, symbol)
-		symbolToSerial[symbol] = contract.SerialNo
-	}
-
-	ctx := context.Background()
-
+func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
 	client, err := Connect(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to DXFeed: %w", err)
-	}
-	defer client.Close()
-
-	if err := client.Setup(); err != nil {
-		return fmt.Errorf("failed to setup DXFeed client: %w", err)
+		return nil, fmt.Errorf("failed to connect to DXFeed: %w", err)
 	}
 
-	if err := client.Auth(); err != nil {
-		return fmt.Errorf("failed to authenticate with DXFeed: %w", err)
+	if err := client.Handshake(ctx); err != nil {
+		_ = client.Close()
+		return nil, err
 	}
 
-	if err := client.WaitForAuth(ctx); err != nil {
-		return fmt.Errorf("failed to wait for authentication: %w", err)
-	}
+	client.StartKeepalive(ctx)
 
 	if err := client.OpenFeedChannel(); err != nil {
-		return fmt.Errorf("failed to open feed channel: %w", err)
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to open feed channel: %w", err)
 	}
 
 	if err := client.WaitForChannel(ctx); err != nil {
-		return fmt.Errorf("failed to wait for channel: %w", err)
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to wait for channel: %w", err)
 	}
 
-	fromTime := time.Now().Add(-66 * 24 * time.Hour).UnixMilli()
+	return client, nil
+}
 
-	if err := client.SubscribeCandles(symbols, fromTime); err != nil {
-		return fmt.Errorf("failed to subscribe to candles: %w", err)
+func readChunk(
+	ctx context.Context,
+	client *DXFeedClient,
+	metadataDB *db.DB,
+	runNo int64,
+	batchNo int,
+	chunkNo int,
+	chunk []string,
+	symbolToSerial map[string]int64,
+	fromTime int64,
+	insertedBySerial map[int64]int64,
+) (int64, bool, error) {
+	if err := client.SubscribeCandles(chunk, fromTime); err != nil {
+		return 0, false, fmt.Errorf("failed to subscribe to candles: %w", err)
 	}
+	fmt.Printf("Batch %d chunk %d subscribed, sample=%s\n", batchNo, chunkNo, chunk[0])
 
-	var candleCount int64
-
-	startTime := time.Now().Format(time.RFC3339)
-
-	if err := metadataDB.UpdateBatchStartTime(runNo, batchNo, startTime); err != nil {
-		return err
-	}
-
-	err = client.ReadLoop(ctx, func(candle config.Candle) error {
+	var inserted int64
+	alive, err := client.ReadLoop(ctx, chunk, func(candle config.Candle) error {
 		serialNo, ok := symbolToSerial[candle.EventSymbol]
 		if !ok {
 			return nil
 		}
 
-		if err := metadataDB.InsertCandleStaging(serialNo, candle, runNo, batchNo); err != nil {
+		ok, err := metadataDB.InsertCandleStaging(serialNo, candle, runNo, batchNo)
+		if err != nil {
 			return err
 		}
+		if !ok {
+			return nil
+		}
 
-		candleCount++
+		insertedBySerial[serialNo]++
+		inserted++
 		return nil
 	})
-
-	endTime := time.Now().Format(time.RFC3339)
-
-	_ = metadataDB.UpdateBatchEndTime(runNo, batchNo, endTime, candleCount)
-
 	if err != nil {
-		fmt.Printf(
-			"Batch %d ended with error: %v\n",
-			batchNo,
-			err,
-		)
-		return fmt.Errorf("batch %d read loop: %w", batchNo, err)
+		return inserted, false, err
 	}
 
-	fetchDate := time.Now()
-	for _, contract := range contracts {
-		barCount, countErr := metadataDB.CountCandlesForSerial(contract.SerialNo)
-		if countErr != nil {
-			return fmt.Errorf(
-				"count candles for serial %d: %w",
-				contract.SerialNo,
-				countErr,
-			)
-		}
-
-		if err := metadataDB.RecordContractFetch(
-			contract.SerialNo,
-			barCount,
-			fetchDate,
-		); err != nil {
-			return fmt.Errorf(
-				"record fetch for serial %d: %w",
-				contract.SerialNo,
-				err,
-			)
-		}
+	if alive {
+		_ = client.UnsubscribeCandles(chunk)
 	}
 
-	fmt.Printf(
-		"Batch %d, contracts %d, downloaded candles=%d\n",
-		batchNo,
-		len(contracts),
-		candleCount,
-	)
-
-	return nil
+	return inserted, alive, nil
 }

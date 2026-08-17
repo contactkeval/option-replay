@@ -227,3 +227,5 @@ func resolveConfigPath(input string) string {
 // 	error handling
 // 	transaction handling
 // ---------------------------------------------------------------------------------------
+
+//https://api.massive.com/v2/aggs/ticker/O:SPXW260807C07750000/range/1/minute/2026-08-07/2026-08-10?adjusted=true&sort=asc&limit=5000&apiKey=bHkHZvzoQauBG0B1fAgiR4gOuuxXz2Md
