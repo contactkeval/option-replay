@@ -8,6 +8,7 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
+	"github.com/contactkeval/option-replay/internal/pipeline/util"
 )
 
 func (db *DB) EnsureExpiryTable(
@@ -227,7 +228,7 @@ func (db *DB) LoadTickerBars(
 
 	for _, meta := range metadataRows {
 		expiryString := meta.ExpiryDate.Format("20060102")
-		expiry := uint32((meta.ExpiryDate.Year()*100000) + (int(meta.ExpiryDate.Month())*100) + meta.ExpiryDate.Day())
+		expiry := util.EncodeExpiryDate(meta.ExpiryDate)
 
 		table := fmt.Sprintf("options_%s", expiryString)
 

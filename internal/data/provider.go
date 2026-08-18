@@ -63,6 +63,14 @@ func GetMassiveDataProvider() Provider {
 	return NewMassiveDataProvider(os.Getenv("POLYGON_API_KEY"))
 }
 
+func GetParquetDataProvider(secondary Provider) Provider {
+	prov, err := NewParquetDataProviderFromConfig(secondary)
+	if err != nil {
+		return secondary
+	}
+	return prov
+}
+
 // --------------------------------------------------------------------------------------------
 // Helper functions
 // --------------------------------------------------------------------------------------------

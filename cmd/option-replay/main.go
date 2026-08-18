@@ -91,15 +91,25 @@ func runBacktest(engine *engine.Engine, cfg *engine.Config) {
 // It checks for the MASSIVE_API_KEY environment variable and returns a MassiveDataProvider
 // if the key is available, otherwise it returns a SyntheticProvider as a fallback.
 func buildProvider() data.Provider {
+	var secondary data.Provider
 	if apiKey := os.Getenv("MASSIVE_API_KEY"); apiKey != "" {
 		logger.Infof("massive provider enabled")
-		// return data.NewMassiveDataProvider(apiKey)
-		return data.NewLocalFileDataProvider(
+		secondary = data.NewLocalFileDataProvider(
 			"input/data",
-			data.NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY")))
+			data.NewMassiveDataProvider(apiKey),
+		)
+	} else {
+		logger.Infof("synthetic provider enabled")
+		secondary = data.NewSyntheticProvider()
 	}
-	logger.Infof("synthetic provider enabled")
-	return data.NewSyntheticProvider()
+
+	parquetProv, err := data.NewParquetDataProviderFromConfig(secondary)
+	if err != nil {
+		logger.Infof("parquet provider unavailable: %v", err)
+		return secondary
+	}
+	logger.Infof("parquet provider enabled")
+	return parquetProv
 }
 
 // loadConfig reads and parses a configuration file from the specified path.
