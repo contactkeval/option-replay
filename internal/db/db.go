@@ -48,12 +48,17 @@ func Open(opts Options) (*DB, error) {
 }
 
 func configure(db *sql.DB) error {
+	// One connection avoids SQLITE_BUSY from the sql pool opening
+	// multiple writers against the same SQLite file.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
 	pragmas := []string{
 		`PRAGMA journal_mode=WAL;`,
 		`PRAGMA synchronous=NORMAL;`,
 		`PRAGMA temp_store=MEMORY;`,
 		`PRAGMA foreign_keys=ON;`,
-		`PRAGMA busy_timeout=5000;`,
+		`PRAGMA busy_timeout=30000;`,
 	}
 
 	for _, pragma := range pragmas {

@@ -51,6 +51,25 @@ func TestInsertCandleStaging_CountsNewInsertsOnly(t *testing.T) {
 	}
 }
 
+func TestInsertCandleStagingBatch(t *testing.T) {
+	database := openDBTest(t)
+	rows := []CandleStagingRow{
+		{SerialNo: 1, Candle: config.Candle{Time: 1, Open: 1, High: 1, Low: 1, Close: 1}, RunNo: 1, BatchNo: 1},
+		{SerialNo: 1, Candle: config.Candle{Time: 2, Open: 1, High: 1, Low: 1, Close: 1}, RunNo: 1, BatchNo: 1},
+		{SerialNo: 1, Candle: config.Candle{Time: 1, Open: 1, High: 1, Low: 1, Close: 1}, RunNo: 1, BatchNo: 1},
+	}
+	n, perSerial, err := database.InsertCandleStagingBatch(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2 new rows, got %d", n)
+	}
+	if perSerial[1] != 2 {
+		t.Fatalf("want 2 for serial 1, got %d", perSerial[1])
+	}
+}
+
 func TestGetLatestRunNo(t *testing.T) {
 	database := openDBTest(t)
 

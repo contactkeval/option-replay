@@ -86,25 +86,47 @@ func readChunk(
 	}
 	fmt.Printf("Batch %d chunk %d subscribed, sample=%s\n", batchNo, chunkNo, chunk[0])
 
+	const flushSize = 250
+
+	buf := make([]db.CandleStagingRow, 0, flushSize)
 	var inserted int64
+
+	flush := func() error {
+		if len(buf) == 0 {
+			return nil
+		}
+		n, perSerial, err := metadataDB.InsertCandleStagingBatch(buf)
+		if err != nil {
+			return err
+		}
+		inserted += n
+		for serial, count := range perSerial {
+			insertedBySerial[serial] += count
+		}
+		buf = buf[:0]
+		return nil
+	}
+
 	alive, err := client.ReadLoop(ctx, chunk, func(candle config.Candle) error {
 		serialNo, ok := symbolToSerial[candle.EventSymbol]
 		if !ok {
 			return nil
 		}
 
-		ok, err := metadataDB.InsertCandleStaging(serialNo, candle, runNo, batchNo)
-		if err != nil {
-			return err
+		buf = append(buf, db.CandleStagingRow{
+			SerialNo: serialNo,
+			Candle:   candle,
+			RunNo:    runNo,
+			BatchNo:  batchNo,
+		})
+		if len(buf) >= flushSize {
+			return flush()
 		}
-		if !ok {
-			return nil
-		}
-
-		insertedBySerial[serialNo]++
-		inserted++
 		return nil
 	})
+	if flushErr := flush(); flushErr != nil && err == nil {
+		err = flushErr
+	}
 	if err != nil {
 		return inserted, false, err
 	}
