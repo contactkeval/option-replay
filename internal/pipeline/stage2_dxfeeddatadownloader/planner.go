@@ -37,8 +37,7 @@ func CreateBatches(contracts []db.Contract) []db.Batch {
 
 // BuildRunPlan selects contracts for runDate, sorts them for grouping, creates
 // batches, and persists the run + batch_contracts plan in the metadata DB.
-// Returns the next run number that was reserved before creation (for logging);
-// the persisted run id is printed and used by DownloadRun via GetNextRunNo flow.
+// Returns the persisted run id.
 func BuildRunPlan(database *db.DB, runDate time.Time) (int64, error) {
 	nextRunNo, err := database.GetNextRunNo()
 	if err != nil {
@@ -68,10 +67,10 @@ func BuildRunPlan(database *db.DB, runDate time.Time) (int64, error) {
 	fmt.Printf("Created run: %d\n", runNo)
 
 	if err := database.PersistBatchPlan(runNo, batches); err != nil {
-		return nextRunNo, err
+		return runNo, err
 	}
 
 	fmt.Println("Batch plan persisted")
 
-	return nextRunNo, nil
+	return runNo, nil
 }

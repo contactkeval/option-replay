@@ -44,6 +44,16 @@ func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
 }
 
 func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
+	client, err := connectAndHandshake(ctx)
+	if err != nil && isUnauthorizedErr(err) && canRefreshTastyOAuth() {
+		fmt.Println("DXFeed AUTH expired; refreshing Tastyworks tokens")
+		invalidateDxLinkAuth()
+		return connectAndHandshake(ctx)
+	}
+	return client, err
+}
+
+func connectAndHandshake(ctx context.Context) (*DXFeedClient, error) {
 	client, err := Connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to DXFeed: %w", err)

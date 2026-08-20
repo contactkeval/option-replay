@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -162,70 +161,6 @@ func tastyOrigin(wsURL string) string {
 type dxLinkAuth struct {
 	token string
 	wsURL string
-}
-
-func resolveDxLinkAuth() (dxLinkAuth, error) {
-	token, err := dxFeedToken()
-	if err != nil {
-		return dxLinkAuth{}, err
-	}
-	wsURL := dxFeedURL()
-
-	quoteToken, quoteURL, ok := fetchQuoteToken(token, wsURL)
-	if !ok {
-		fmt.Println("DXFeed using env token as AUTH token")
-		return dxLinkAuth{token: token, wsURL: wsURL}, nil
-	}
-
-	if quoteURL != "" {
-		wsURL = quoteURL
-	}
-	fmt.Printf(
-		"DXFeed exchanged session token for quote token length=%d prefix=%s suffix=%s\n",
-		len(quoteToken),
-		tokenPrefix(quoteToken, 6),
-		tokenSuffix(quoteToken, 6),
-	)
-	return dxLinkAuth{token: quoteToken, wsURL: wsURL}, nil
-}
-
-func fetchQuoteToken(bearerToken, wsURL string) (string, string, bool) {
-	apiURL := tastyAPIBase(wsURL) + "/api-quote-tokens"
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", "", false
-	}
-	req.Header.Set("Authorization", "Bearer "+bearerToken)
-	req.Header.Set("User-Agent", "option-replay/1.0")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("DXFeed quote-token fetch failed: %v\n", err)
-		return "", "", false
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("DXFeed quote-token fetch HTTP %d\n", resp.StatusCode)
-		return "", "", false
-	}
-
-	var result struct {
-		Data struct {
-			Token     string `json:"token"`
-			DxLinkURL string `json:"dxlink-url"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", "", false
-	}
-	if strings.TrimSpace(result.Data.Token) == "" {
-		return "", "", false
-	}
-
-	return result.Data.Token, result.Data.DxLinkURL, true
 }
 
 func parseDXFeedError(raw []byte) error {
