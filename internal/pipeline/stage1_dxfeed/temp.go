@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
@@ -52,8 +53,8 @@ func Run3() {
 	}
 
 	symbols = symbols[:250]
-	fmt.Printf(
-		"Loaded %d symbols\n",
+	logger.Infof(
+		"Loaded %d symbols",
 		len(symbols),
 	)
 
@@ -129,7 +130,7 @@ func Run3() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Waiting for data...")
+	logger.Infof("Waiting for data...")
 
 	err = client.ReadLoop(
 		ctx,
@@ -152,8 +153,8 @@ func Run3() {
 			}
 
 			if len(received)%100 == 0 {
-				fmt.Printf(
-					"Received symbols: %d\n",
+				logger.Debugf(
+					"Received symbols: %d",
 					len(received),
 				)
 				// flush periodically so file isn't lost if process dies
@@ -169,21 +170,11 @@ func Run3() {
 	)
 
 	if err != nil {
-		fmt.Println("ReadLoop ended:", err)
+		logger.Warnf("ReadLoop ended: %v", err)
 	}
 
-	fmt.Println()
-	fmt.Println("========== SUMMARY ==========")
-
-	fmt.Printf(
-		"Subscribed Symbols : %d\n",
-		len(requested),
-	)
-
-	fmt.Printf(
-		"Returned Symbols   : %d\n",
-		len(received),
-	)
+	logger.Infof("Subscribed Symbols : %d", len(requested))
+	logger.Infof("Returned Symbols   : %d", len(received))
 
 	missing := 0
 
@@ -194,8 +185,8 @@ func Run3() {
 		}
 	}
 
-	fmt.Printf(
-		"Missing Symbols    : %d\n",
+	logger.Infof(
+		"Missing Symbols    : %d",
 		missing,
 	)
 }

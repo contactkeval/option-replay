@@ -14,7 +14,6 @@ type DataRecord struct {
 	LastDate  time.Time `csv:"last_date"`
 }
 
-
 func (localFileDataProv *LocalFileDataProvider) EnsureLocalData(symbol string, startDate, endDate time.Time) error {
 	records, err := localFileDataProv.loadManifest()
 	if err != nil {

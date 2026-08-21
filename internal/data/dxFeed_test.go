@@ -1,7 +1,6 @@
 package data
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -61,11 +60,11 @@ func TestDxFeed_FetchSpecificWindow(t *testing.T) {
 	}
 
 	// 7. Output results
-	fmt.Printf("Successfully retrieved %d bars.\n", len(bars))
+	t.Logf("Successfully retrieved %d bars.", len(bars))
 	for i, bar := range bars {
 		// Print first 2 and last 2 for brevity
 		if i < 2 || i >= len(bars)-2 {
-			fmt.Printf("[%d] Time: %s | Close: %.2f\n", i, bar.Date.In(est).Format("15:04:05"), bar.Close)
+			t.Logf("[%d] Time: %s | Close: %.2f", i, bar.Date.In(est).Format("15:04:05"), bar.Close)
 		}
 	}
 }

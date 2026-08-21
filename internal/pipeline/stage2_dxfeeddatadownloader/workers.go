@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 type chunkJob struct {
@@ -38,8 +39,8 @@ func downloadWithPool(
 	}
 
 	fromTime := time.Now().AddDate(-2, 0, 0).UnixMilli()
-	fmt.Printf(
-		"Download pool: %d workers, %d chunks of up to %d symbols\n",
+	logger.Infof(
+		"Download pool: %d workers, %d chunks of up to %d symbols",
 		DownloadWorkers,
 		len(jobs),
 		MaxCandleSubscribe,
@@ -112,8 +113,8 @@ func downloadWithPool(
 				)
 			}
 		}
-		fmt.Printf(
-			"Batch %d, contracts %d, downloaded candles=%d\n",
+		logger.Infof(
+			"Batch %d, contracts %d, downloaded candles=%d",
 			batchNo,
 			len(p.contracts),
 			p.candles,
@@ -160,8 +161,8 @@ func buildDownloadJobs(
 		}
 
 		chunks := chunkSymbols(symbols, MaxCandleSubscribe)
-		fmt.Printf(
-			"Batch %d: %d contracts in %d chunks of up to %d\n",
+		logger.Infof(
+			"Batch %d: %d contracts in %d chunks of up to %d",
 			batchNo,
 			len(symbols),
 			len(chunks),
@@ -214,8 +215,8 @@ func runDownloadWorker(
 		}
 
 		if client == nil {
-			fmt.Printf(
-				"[worker %d] opening session (SETUP/AUTH/CHANNEL_REQUEST)\n",
+			logger.Infof(
+				"worker %d opening session (SETUP/AUTH/CHANNEL_REQUEST)",
 				workerID,
 			)
 			c, err := openDXFeed(ctx)
@@ -225,11 +226,11 @@ func runDownloadWorker(
 			}
 			client = c
 		} else {
-			fmt.Printf("[worker %d] reusing session\n", workerID)
+			logger.Debugf("worker %d reusing session", workerID)
 		}
 
-		fmt.Printf(
-			"[worker %d] batch %d chunk %d/%d (%d symbols)\n",
+		logger.Infof(
+			"worker %d batch %d chunk %d/%d (%d symbols)",
 			workerID,
 			job.batchNo,
 			job.chunkNo,
@@ -265,7 +266,7 @@ func runDownloadWorker(
 			return
 		}
 		if !alive {
-			fmt.Printf("[worker %d] session closed after chunk; will reconnect\n", workerID)
+			logger.Warnf("worker %d session closed after chunk; will reconnect", workerID)
 			closeClient()
 		}
 	}

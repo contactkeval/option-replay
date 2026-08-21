@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	"github.com/gorilla/websocket"
 )
@@ -37,9 +38,9 @@ func Connect(ctx context.Context) (*DXFeedClient, error) {
 		return nil, err
 	}
 
-	fmt.Printf("DXFeed connecting %s\n", auth.wsURL)
-	fmt.Printf(
-		"DXFeed AUTH token length=%d prefix=%s suffix=%s\n",
+	logger.Infof("DXFeed connecting %s", auth.wsURL)
+	logger.Tracef(
+		"DXFeed AUTH token length=%d prefix=%s suffix=%s",
 		len(auth.token),
 		tokenPrefix(auth.token, 6),
 		tokenSuffix(auth.token, 6),
@@ -203,7 +204,7 @@ func (c *DXFeedClient) Handshake(ctx context.Context) error {
 	if err := c.Setup(); err != nil {
 		return fmt.Errorf("failed to setup DXFeed client: %w", err)
 	}
-	fmt.Println("DXFeed handshake >> SETUP")
+	logger.Debugf("DXFeed handshake >> SETUP")
 
 	if err := c.waitUntilReadyForAuth(ctx); err != nil {
 		return err
@@ -212,7 +213,7 @@ func (c *DXFeedClient) Handshake(ctx context.Context) error {
 	if err := c.Auth(c.token); err != nil {
 		return fmt.Errorf("failed to authenticate with DXFeed: %w", err)
 	}
-	fmt.Println("DXFeed handshake >> AUTH")
+	logger.Debugf("DXFeed handshake >> AUTH")
 
 	return c.waitForAuthorized(ctx)
 }
@@ -237,7 +238,7 @@ func (c *DXFeedClient) waitUntilReadyForAuth(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to complete DXFeed handshake: %w", err)
 		}
-		fmt.Printf("DXFeed handshake << %s\n", raw)
+		logger.Tracef("DXFeed handshake << %s", raw)
 
 		switch msgType {
 		case "AUTH_STATE":
@@ -269,7 +270,7 @@ func (c *DXFeedClient) waitForAuthorized(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("authentication failed (check dxFeed_Token): %w", err)
 		}
-		fmt.Printf("DXFeed handshake << %s\n", raw)
+		logger.Tracef("DXFeed handshake << %s", raw)
 
 		switch msgType {
 		case "ERROR":
@@ -429,8 +430,8 @@ func (c *DXFeedClient) ReadLoop(
 		msgType, raw, err := c.readEnvelope(ctx)
 		if err != nil {
 			if received && isReadTimeout(err) {
-				fmt.Printf(
-					"DXFeed chunk idle after %d feed messages, %d candles\n",
+				logger.Warnf(
+					"DXFeed chunk idle after %d feed messages, %d candles",
 					feedMessages,
 					candleCount,
 				)
@@ -440,8 +441,8 @@ func (c *DXFeedClient) ReadLoop(
 				return false, fmt.Errorf("no candle data received after %s", noDataWait)
 			}
 			if received {
-				fmt.Printf(
-					"DXFeed chunk ended after %d feed messages, %d candles: %v\n",
+				logger.Warnf(
+					"DXFeed chunk ended after %d feed messages, %d candles: %v",
 					feedMessages,
 					candleCount,
 					err,
@@ -459,7 +460,7 @@ func (c *DXFeedClient) ReadLoop(
 			})
 
 		case "FEED_CONFIG":
-			fmt.Printf("DXFeed << FEED_CONFIG %s\n", raw)
+			logger.Tracef("DXFeed << FEED_CONFIG %s", raw)
 
 		case "ERROR":
 			return false, parseDXFeedError(raw)
@@ -485,8 +486,8 @@ func (c *DXFeedClient) ReadLoop(
 				}
 			}
 			if feedMessages == 1 || feedMessages%50 == 0 {
-				fmt.Printf(
-					"DXFeed FEED_DATA messages=%d candles=%d pending=%d last=%s\n",
+				logger.Debugf(
+					"DXFeed FEED_DATA messages=%d candles=%d pending=%d last=%s",
 					feedMessages,
 					candleCount,
 					len(pending),
@@ -494,8 +495,8 @@ func (c *DXFeedClient) ReadLoop(
 				)
 			}
 			if len(pending) == 0 {
-				fmt.Printf(
-					"DXFeed chunk snapshot complete messages=%d candles=%d\n",
+				logger.Debugf(
+					"DXFeed chunk snapshot complete messages=%d candles=%d",
 					feedMessages,
 					candleCount,
 				)
@@ -505,7 +506,7 @@ func (c *DXFeedClient) ReadLoop(
 
 		default:
 			if msgType != "" {
-				fmt.Printf("DXFeed << %s\n", msgType)
+				logger.Tracef("DXFeed << %s", msgType)
 			}
 		}
 	}

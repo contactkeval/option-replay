@@ -62,8 +62,8 @@ func main() {
 	}
 	defer database.Close()
 
-	fmt.Printf("metadata DB: %s\n", dbPath)
-	fmt.Printf("run date:    %s\n", runDate.Format("2006-01-02"))
+	logger.Infof("metadata DB: %s", dbPath)
+	logger.Infof("run date:    %s", runDate.Format("2006-01-02"))
 
 	if *dryRun {
 		if err := printSelection(database, runDate); err != nil {
@@ -77,7 +77,7 @@ func main() {
 		logger.Fatalf("build run plan: %v", err)
 	}
 
-	fmt.Printf("run plan ready: runNo=%d\n", runNo)
+	logger.Infof("run plan ready: runNo=%d", runNo)
 }
 
 // printSelection runs selection without persisting and prints group sizes plus
@@ -91,12 +91,12 @@ func printSelection(database *db.DB, runDate time.Time) error {
 	stage2.SortContractsForGrouping(contracts)
 	batches := stage2.CreateBatches(contracts)
 
-	fmt.Printf("Selected contracts: %d\n", len(contracts))
-	fmt.Printf("Groups: %d\n", len(batches))
+	logger.Infof("Selected contracts: %d", len(contracts))
+	logger.Infof("Groups: %d", len(batches))
 
 	for _, batch := range batches {
-		fmt.Printf(
-			"  group %d: %d contracts\n",
+		logger.Infof(
+			"  group %d: %d contracts",
 			batch.BatchNo,
 			len(batch.Contracts),
 		)
@@ -110,15 +110,15 @@ func printSelection(database *db.DB, runDate time.Time) error {
 		return nil
 	}
 
-	fmt.Println("Sample (sorted for grouping):")
+	logger.Infof("Sample (sorted for grouping):")
 	for i := 0; i < limit; i++ {
 		c := contracts[i]
 		lastFetch := "-"
 		if !c.LastDownloadedDate.IsZero() {
 			lastFetch = c.LastDownloadedDate.Format("2006-01-02")
 		}
-		fmt.Printf(
-			"  %d. %s %s %s %.2f bars=%d lastFetch=%s\n",
+		logger.Debugf(
+			"  %d. %s %s %s %.2f bars=%d lastFetch=%s",
 			i+1,
 			c.Underlying,
 			c.Expiry.Format("2006-01-02"),

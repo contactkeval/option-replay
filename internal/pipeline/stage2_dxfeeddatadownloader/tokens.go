@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 const defaultTastyRESTBase = "https://api.tastyworks.com"
@@ -68,7 +70,7 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 		if tastyAuthCache.quoteURL != "" {
 			wsURL = tastyAuthCache.quoteURL
 		}
-		fmt.Println("DXFeed using cached quote token")
+		logger.Debugf("DXFeed using cached quote token")
 		return dxLinkAuth{token: tastyAuthCache.quoteToken, wsURL: wsURL}, nil
 	}
 
@@ -89,8 +91,8 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 		if quoteURL != "" {
 			wsURL = quoteURL
 		}
-		fmt.Printf(
-			"DXFeed refreshed quote token length=%d prefix=%s suffix=%s expires=%s\n",
+		logger.Infof(
+			"DXFeed refreshed quote token length=%d prefix=%s suffix=%s expires=%s",
 			len(quoteToken),
 			tokenPrefix(quoteToken, 6),
 			tokenSuffix(quoteToken, 6),
@@ -106,7 +108,7 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 			err,
 		)
 	}
-	fmt.Println("DXFeed using env token as AUTH token")
+	logger.Warnf("DXFeed using env token as AUTH token")
 	return dxLinkAuth{token: token, wsURL: wsURL}, nil
 }
 
@@ -122,7 +124,7 @@ func ensureTastyAccessTokenLocked() (string, error) {
 
 	tastyAuthCache.accessToken = accessToken
 	tastyAuthCache.accessExpiry = expiresAt
-	fmt.Printf("DXFeed refreshed Tastyworks access token expires=%s\n", expiresAt.Format(time.RFC3339))
+	logger.Infof("DXFeed refreshed Tastyworks access token expires=%s", expiresAt.Format(time.RFC3339))
 	return accessToken, nil
 }
 

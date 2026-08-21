@@ -1,10 +1,10 @@
 package stage2_dxfeeddatadownloader
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/logger"
 )
 
 // CreateBatches assigns already-sorted contracts to download groups.
@@ -44,33 +44,33 @@ func BuildRunPlan(database *db.DB, runDate time.Time) (int64, error) {
 		return nextRunNo, err
 	}
 
-	fmt.Printf("Next run=%d\n", nextRunNo)
+	logger.Infof("Next run=%d", nextRunNo)
 
 	contracts, err := GetContractsForRun(database, runDate)
 	if err != nil {
 		return nextRunNo, err
 	}
 
-	fmt.Printf("Selected contracts: %d\n", len(contracts))
+	logger.Infof("Selected contracts: %d", len(contracts))
 
 	SortContractsForGrouping(contracts)
 
 	batches := CreateBatches(contracts)
 
-	fmt.Printf("Created batches: %d\n", len(batches))
+	logger.Infof("Created batches: %d", len(batches))
 
 	runNo, err := database.CreateRun(len(contracts), len(batches))
 	if err != nil {
 		return nextRunNo, err
 	}
 
-	fmt.Printf("Created run: %d\n", runNo)
+	logger.Infof("Created run: %d", runNo)
 
 	if err := database.PersistBatchPlan(runNo, batches); err != nil {
 		return runNo, err
 	}
 
-	fmt.Println("Batch plan persisted")
+	logger.Infof("Batch plan persisted")
 
 	return runNo, nil
 }

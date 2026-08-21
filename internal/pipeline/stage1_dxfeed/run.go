@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
@@ -161,7 +162,7 @@ func (c *Client) StartKeepalive(
 					"type":    "KEEPALIVE",
 					"channel": 0,
 				}); err != nil {
-					fmt.Printf("Failed to send keepalive: %v\n", err)
+					logger.Warnf("Failed to send keepalive: %v", err)
 				}
 			}
 		}
@@ -179,7 +180,7 @@ func (c *Client) WaitForAuth(
 			return fmt.Errorf("failed to read from dxfeed: %w", err)
 		}
 
-		// fmt.Println(string(raw))
+		logger.Tracef("%s", raw)
 
 		var msg struct {
 			Type  string `json:"type"`
@@ -209,7 +210,7 @@ func (c *Client) WaitForChannel(
 			return err
 		}
 
-		// fmt.Println(string(raw))
+		logger.Tracef("%s", raw)
 
 		var msg struct {
 			Type    string `json:"type"`
@@ -240,14 +241,14 @@ func (c *Client) ReadLoop(
 
 		_, raw, err := c.conn.Read(ctx)
 		if err != nil {
-			fmt.Printf(
-				"FINAL STATS: feedData=%d candles=%d\n",
+			logger.Infof(
+				"FINAL STATS: feedData=%d candles=%d",
 				feedDataMessages,
 				candleCount,
 			)
 			return fmt.Errorf("failed to read from dxfeed: %w", err)
 		}
-		//fmt.Println(string(raw)) // TODO: remove this after debugging (TEMP)
+		// logger.Tracef("%s", raw) // TODO: remove this after debugging (TEMP)
 
 		var envelope struct {
 			Type string `json:"type"`
@@ -300,16 +301,16 @@ func (c *Client) ReadLoop(
 			candleCount += len(msg.Data)
 
 			if feedDataMessages%100 == 0 {
-				fmt.Printf(
-					"feedData=%d candles=%d\n",
+				logger.Debugf(
+					"feedData=%d candles=%d",
 					feedDataMessages,
 					candleCount,
 				)
 			}
 
 		default:
-			fmt.Printf(
-				"UNHANDLED: %s\n",
+			logger.Tracef(
+				"UNHANDLED: %s",
 				string(raw),
 			)
 		}
@@ -381,8 +382,8 @@ func Run2() error {
 		ctx,
 		func(c config.Candle) error {
 
-			fmt.Printf(
-				"%s | %s | O=%.2f H=%.2f L=%.2f C=%.2f\n",
+			logger.Tracef(
+				"%s | %s | O=%.2f H=%.2f L=%.2f C=%.2f",
 				time.UnixMilli(c.Time).Format(time.RFC3339),
 				c.EventSymbol,
 				c.Open,

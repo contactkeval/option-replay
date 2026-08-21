@@ -1,13 +1,13 @@
 package stage1_dxfeed
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/data"
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
@@ -40,11 +40,11 @@ func LoadContractsToSQLite(cfg config.Config) error {
 			false,
 		)
 		if err != nil {
-			fmt.Printf("FAILED %s: %v\n", underlying, err)
+			logger.Errorf("FAILED %s: %v", underlying, err)
 			continue
 		}
 
-		fmt.Printf("%-10s -> %6d contracts\n", underlying, len(contracts))
+		logger.Infof("%-10s -> %6d contracts", underlying, len(contracts))
 
 		tx, err := database.Begin()
 		if err != nil {
@@ -78,11 +78,9 @@ func LoadContractsToSQLite(cfg config.Config) error {
 		return err
 	}
 
-	fmt.Println()
-	fmt.Println("========== SUMMARY ==========")
-	fmt.Printf("Underlyings processed : %d\n", totalUnderlyings)
-	fmt.Printf("Contracts returned    : %d\n", totalContracts)
-	fmt.Printf("Unique contracts      : %d\n", uniqueContracts)
+	logger.Infof("Underlyings processed : %d", totalUnderlyings)
+	logger.Infof("Contracts returned    : %d", totalContracts)
+	logger.Infof("Unique contracts      : %d", uniqueContracts)
 
 	return nil
 }

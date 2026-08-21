@@ -79,7 +79,7 @@ func (localFileDataProv *LocalFileDataProvider) GetBars(
 	if err != nil {
 		dir, err := os.Getwd()
 		if err != nil {
-			fmt.Println("Error:", err)
+			logger.Errorf("Error: %v", err)
 			return nil, fmt.Errorf("local file not found: %w", err)
 		}
 		logger.Infof("Current directory: %s", dir)

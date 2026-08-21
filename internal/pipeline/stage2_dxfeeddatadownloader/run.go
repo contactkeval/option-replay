@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/logger"
 	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
@@ -33,8 +34,8 @@ func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
 	}
 
 	from := time.Now().AddDate(-2, 0, 0)
-	fmt.Printf(
-		"Downloading run=%d batches=%v from=%s\n",
+	logger.Infof(
+		"Downloading run=%d batches=%v from=%s",
 		runNo,
 		batchNos,
 		from.Format("2006-01-02"),
@@ -46,7 +47,7 @@ func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
 func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
 	client, err := connectAndHandshake(ctx)
 	if err != nil && isUnauthorizedErr(err) && canRefreshTastyOAuth() {
-		fmt.Println("DXFeed AUTH expired; refreshing Tastyworks tokens")
+		logger.Warnf("DXFeed AUTH expired; refreshing Tastyworks tokens")
 		invalidateDxLinkAuth()
 		return connectAndHandshake(ctx)
 	}
@@ -94,7 +95,7 @@ func readChunk(
 	if err := client.SubscribeCandles(chunk, fromTime); err != nil {
 		return 0, false, fmt.Errorf("failed to subscribe to candles: %w", err)
 	}
-	fmt.Printf("Batch %d chunk %d subscribed, sample=%s\n", batchNo, chunkNo, chunk[0])
+	logger.Debugf("Batch %d chunk %d subscribed, sample=%s", batchNo, chunkNo, chunk[0])
 
 	const flushSize = 250
 
