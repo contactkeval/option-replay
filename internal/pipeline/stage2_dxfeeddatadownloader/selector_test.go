@@ -6,7 +6,92 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
+
+func TestToDXFeedSymbol_Spot(t *testing.T) {
+	got := ToDXFeedSymbol(db.Contract{
+		Underlying: "SPY",
+		Type:       db.ContractTypeSpot,
+		Strike:     0,
+		Expiry:     db.SpotContractExpiry,
+	})
+	if got != "SPY{=m}" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestGetContractsForRun_AddsSpotsWhenStale(t *testing.T) {
+	database := openTestDB(t)
+	config.AllowedUnderlyings = map[string]struct{}{
+		"SPY": {},
+		"QQQ": {},
+		"IWM": {},
+	}
+	t.Cleanup(func() { config.AllowedUnderlyings = map[string]struct{}{} })
+
+	runDate := date(2026, 8, 6)
+	for i := int64(1); i <= 25; i++ {
+		insertContract(t, database, i, "A", date(2026, 7, 1), int(i), date(2026, 1, 1))
+	}
+	for i := int64(100); i < 160; i++ {
+		insertContract(t, database, i, "Y", date(2026, 12, 1), int(i), date(2026, 1, 1))
+	}
+
+	selected, err := GetContractsForRun(database, runDate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var spotCount int
+	for _, c := range selected {
+		if db.IsSpotContract(c) {
+			spotCount++
+		}
+	}
+	if spotCount != 3 {
+		t.Fatalf("spotCount=%d want 3 selected=%d", spotCount, len(selected))
+	}
+}
+
+func TestGetContractsForRun_SkipsSpotsWhenFresh(t *testing.T) {
+	database := openTestDB(t)
+	config.AllowedUnderlyings = map[string]struct{}{
+		"SPY": {},
+		"QQQ": {},
+	}
+	t.Cleanup(func() { config.AllowedUnderlyings = map[string]struct{}{} })
+
+	if err := database.EnsureSpotContracts([]string{"SPY", "QQQ"}); err != nil {
+		t.Fatal(err)
+	}
+	spots, err := database.ListSpotContracts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spySerial int64
+	for _, c := range spots {
+		if c.Underlying == "SPY" {
+			spySerial = c.SerialNo
+		}
+	}
+	fresh := time.Now().UTC().Add(-time.Hour)
+	if _, err := database.InsertCandleStaging(spySerial, config.Candle{
+		Time: fresh.UnixMilli(), Open: 1, High: 1, Low: 1, Close: 1,
+	}, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	selected, err := GetContractsForRun(database, date(2026, 8, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range selected {
+		if db.IsSpotContract(c) {
+			t.Fatalf("did not expect spot contract when fresh: %+v", c)
+		}
+	}
+}
 
 func TestSelectContractsForFetch_SkipsNearExpiry(t *testing.T) {
 	database := openTestDB(t)

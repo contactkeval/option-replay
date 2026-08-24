@@ -29,6 +29,10 @@ func parseFloat(s string) float64 {
 // as a CSV row using RFC3339 for the timestamp, prices formatted to two decimal places, and
 // volume formatted as an integer. Any error encountered while fetching or writing is returned.
 func (localFileDataProv *LocalFileDataProvider) fetchAndAppend(symbol string, startDate, endDate time.Time) error {
+	if err := localFileDataProv.ensureDataDir(); err != nil {
+		return err
+	}
+
 	// 1. Fetch from secondary provider (e.g. massive)
 	newData, err := localFileDataProv.GetSecondary().GetBars(symbol, startDate, endDate, 1, "minute")
 	if err != nil {
@@ -105,6 +109,10 @@ func (localFileDataProv *LocalFileDataProvider) loadManifest() (map[string]DataR
 
 // saveManifest overwrites the manifest file with the updated data.
 func (localFileDataProv *LocalFileDataProvider) saveManifest(records map[string]DataRecord) error {
+	if err := localFileDataProv.ensureDataDir(); err != nil {
+		return err
+	}
+
 	file, err := os.Create(localFileDataProv.getManifestPath())
 	if err != nil {
 		return err
@@ -140,4 +148,9 @@ func (localFileDataProv *LocalFileDataProvider) getSymbolPath(symbol string) str
 	filename := fmt.Sprintf("%s.csv", strings.ToUpper(safeSymbol))
 
 	return filepath.Join(localFileDataProv.dir, localFileDataProv.GetSecondary().GetName(), filename)
+}
+
+func (localFileDataProv *LocalFileDataProvider) ensureDataDir() error {
+	dir := filepath.Dir(localFileDataProv.getManifestPath())
+	return os.MkdirAll(dir, 0o755)
 }

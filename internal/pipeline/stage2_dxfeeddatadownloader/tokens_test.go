@@ -102,6 +102,43 @@ func TestResolveDxLinkAuth_OAuthThenQuoteToken(t *testing.T) {
 	}
 }
 
+func TestFormatOAuthHTTPError_InvalidGrant(t *testing.T) {
+	err := formatOAuthHTTPError(400, []byte(`{"error_code":"invalid_grant","error_description":"Grant revoked"}`))
+	if !isInvalidGrantErr(err) {
+		t.Fatalf("expected invalid_grant detection, got %v", err)
+	}
+}
+
+func TestResolveDxLinkAuth_OAuthInvalidGrantFallsBackToEnvToken(t *testing.T) {
+	invalidateDxLinkAuth()
+	t.Cleanup(invalidateDxLinkAuth)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error_code":"invalid_grant","error_description":"Grant revoked"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	t.Setenv("TT_API_BASE", server.URL)
+	t.Setenv("TT_REFRESH_TOKEN", "revoked")
+	t.Setenv("TT_CLIENT_SECRET", "secret")
+	t.Setenv("dxlink_token", "env-quote-token")
+	t.Setenv("dxFeed_Token", "")
+	t.Setenv("DXFEED_TOKEN", "")
+
+	auth, err := resolveDxLinkAuth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth.token != "env-quote-token" {
+		t.Fatalf("token %q", auth.token)
+	}
+}
+
 func TestTastyRESTBase(t *testing.T) {
 	t.Setenv("TT_API_BASE", "")
 	t.Setenv("TASTY_API_BASE", "")

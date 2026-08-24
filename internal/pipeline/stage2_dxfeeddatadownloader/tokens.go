@@ -77,6 +77,16 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 	if canRefreshTastyOAuth() {
 		accessToken, err := ensureTastyAccessTokenLocked()
 		if err != nil {
+			if isInvalidGrantErr(err) {
+				logger.Warnf("Tastyworks OAuth grant revoked or invalid; trying dxlink_token fallback: %v", err)
+				if auth, fallbackErr := authFromEnvToken(wsURL); fallbackErr == nil {
+					return auth, nil
+				}
+				return dxLinkAuth{}, fmt.Errorf(
+					"%w; create a new OAuth grant in the Tastytrade developer portal and update TT_REFRESH_TOKEN (or set dxlink_token)",
+					err,
+				)
+			}
 			return dxLinkAuth{}, err
 		}
 
@@ -101,6 +111,10 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 		return dxLinkAuth{token: quoteToken, wsURL: wsURL}, nil
 	}
 
+	return authFromEnvToken(wsURL)
+}
+
+func authFromEnvToken(wsURL string) (dxLinkAuth, error) {
 	token, err := dxFeedToken()
 	if err != nil {
 		return dxLinkAuth{}, fmt.Errorf(
@@ -157,7 +171,7 @@ func refreshTastyAccessToken() (string, time.Time, error) {
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", time.Time{}, fmt.Errorf("oauth/token HTTP %d: %s", resp.StatusCode, truncateBody(body))
+		return "", time.Time{}, fmt.Errorf("%w", formatOAuthHTTPError(resp.StatusCode, body))
 	}
 
 	accessToken, expiresIn, err := parseOAuthToken(body)
@@ -258,6 +272,36 @@ func parseQuoteToken(body []byte) (string, string, time.Time, error) {
 		}
 	}
 	return token, dxLinkURL, expiresAt, nil
+}
+
+func formatOAuthHTTPError(status int, body []byte) error {
+	msg := truncateBody(body)
+	var payload struct {
+		Error            string `json:"error"`
+		ErrorCode        string `json:"error_code"`
+		ErrorDescription string `json:"error_description"`
+	}
+	_ = json.Unmarshal(body, &payload)
+	code := strings.TrimSpace(payload.ErrorCode)
+	if code == "" {
+		code = strings.TrimSpace(payload.Error)
+	}
+	if code == "invalid_grant" || strings.Contains(strings.ToLower(payload.ErrorDescription), "grant revoked") {
+		return fmt.Errorf(
+			"oauth/token HTTP %d: invalid_grant (refresh token revoked or expired): %s",
+			status,
+			msg,
+		)
+	}
+	return fmt.Errorf("oauth/token HTTP %d: %s", status, msg)
+}
+
+func isInvalidGrantErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "invalid_grant") || strings.Contains(msg, "grant revoked")
 }
 
 func truncateBody(body []byte) string {

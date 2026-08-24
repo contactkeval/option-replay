@@ -31,6 +31,7 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/db"
 	"github.com/contactkeval/option-replay/internal/logger"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 // MaxGroupSize is the soft upper bound used to size download groups.
@@ -45,6 +46,14 @@ const DownloadWorkers = 4
 
 // StaleFetchDays is how old lastFetchDate must be for far-expiry eligibility.
 const StaleFetchDays = 15
+
+// SpotFreshnessProbe is the underlying used to decide whether spot minutes
+// need a full refresh for all allowed underlyings.
+const SpotFreshnessProbe = "SPY"
+
+// SpotFreshnessMaxAge triggers a full allowed-underlying spot download when the
+// newest SPY spot bar in candle_staging is older than this duration.
+const SpotFreshnessMaxAge = 30 * 24 * time.Hour
 
 // SelectContractsForFetch builds the combined fetch set using SQL pool counts
 // and ranked LIMIT slices. Near-expiry contracts are never selected.
@@ -273,15 +282,78 @@ func GroupCount(selectedCount int) int {
 }
 
 // GetContractsForRun selects contracts for the given run date using SQL-backed
-// pool queries and ranked slices.
+// pool queries and ranked slices. When SPY spot bars in candle_staging are
+// missing or older than SpotFreshnessMaxAge, all allowed underlyings are added
+// as spot contracts so dxFeed downloads them in the same run batches.
 func GetContractsForRun(database *db.DB, runDate time.Time) ([]db.Contract, error) {
 	selected, err := SelectContractsForFetch(database, runDate)
 	if err != nil {
 		return nil, err
 	}
 
+	selected, err = appendSpotContractsIfStale(database, selected)
+	if err != nil {
+		return nil, err
+	}
+
 	logger.Infof("contract pools: selected=%d", len(selected))
 	return selected, nil
+}
+
+func appendSpotContractsIfStale(
+	database *db.DB,
+	selected []db.Contract,
+) ([]db.Contract, error) {
+	symbols := make([]string, 0, len(config.AllowedUnderlyings))
+	for symbol := range config.AllowedUnderlyings {
+		symbols = append(symbols, symbol)
+	}
+	if len(symbols) == 0 {
+		logger.Warnf("no allowed underlyings loaded; skipping spot freshness check")
+		return selected, nil
+	}
+
+	if err := database.EnsureSpotContracts(symbols); err != nil {
+		return nil, fmt.Errorf("ensure spot contracts: %w", err)
+	}
+
+	stale, last, err := database.SpotBarsStale(SpotFreshnessProbe, SpotFreshnessMaxAge)
+	if err != nil {
+		return nil, fmt.Errorf("spot freshness check: %w", err)
+	}
+	if !stale {
+		logger.Infof(
+			"spot minutes fresh: %s last=%s (within 1 month)",
+			SpotFreshnessProbe,
+			last.Format(time.RFC3339),
+		)
+		return selected, nil
+	}
+
+	if last.IsZero() {
+		logger.Infof(
+			"spot minutes missing for %s; adding %d allowed underlyings to run",
+			SpotFreshnessProbe,
+			len(symbols),
+		)
+	} else {
+		logger.Infof(
+			"spot minutes stale: %s last=%s; adding %d allowed underlyings to run",
+			SpotFreshnessProbe,
+			last.Format(time.RFC3339),
+			len(symbols),
+		)
+	}
+
+	spots, err := database.ListSpotContracts()
+	if err != nil {
+		return nil, fmt.Errorf("list spot contracts: %w", err)
+	}
+	if len(spots) == 0 {
+		return selected, fmt.Errorf("no spot contracts available after ensure")
+	}
+
+	return append(selected, spots...), nil
 }
 
 // truncateDate returns the UTC calendar date of t with time set to midnight.

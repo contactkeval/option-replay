@@ -18,6 +18,9 @@ const contractSelectCols = `
 	archived
 `
 
+// optionContractsFilter excludes underlying spot rows from option selection.
+const optionContractsFilter = `AND type != 'spot'`
+
 // CountExpiredContracts returns contracts with expiry before runDate.
 func (db *DB) CountExpiredContracts(runDate time.Time) (int, error) {
 	var count int
@@ -25,6 +28,7 @@ func (db *DB) CountExpiredContracts(runDate time.Time) (int, error) {
 		SELECT COUNT(*)
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry < ?
 	`, formatDate(runDate)).Scan(&count)
 	return count, err
@@ -37,6 +41,7 @@ func (db *DB) CountFarExpiryContracts(runDate time.Time) (int, error) {
 		SELECT COUNT(*)
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry > date(?, '+1 month')
 	`, formatDate(runDate)).Scan(&count)
 	return count, err
@@ -49,6 +54,7 @@ func (db *DB) CountExpiredOnDate(expiry time.Time) (int, error) {
 		SELECT COUNT(*)
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry = ?
 	`, formatDate(expiry)).Scan(&count)
 	return count, err
@@ -68,6 +74,7 @@ func (db *DB) SelectExpiredPreviousDay(
 		SELECT`+contractSelectCols+`
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry = ?
 		ORDER BY barCount ASC, serialNo ASC
 		LIMIT ?
@@ -94,6 +101,7 @@ func (db *DB) SelectExpiredOldestExpiry(
 		SELECT`+contractSelectCols+`
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry < ?
 		ORDER BY expiry ASC, barCount DESC, serialNo ASC
 		LIMIT ?
@@ -126,6 +134,7 @@ func (db *DB) SelectExpiredHighestBar(
 		SELECT`+contractSelectCols+`
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry >= ?
 			AND expiry <= ?
 		ORDER BY barCount DESC, serialNo ASC
@@ -154,6 +163,7 @@ func (db *DB) SelectFarOldestFetch(
 		SELECT`+contractSelectCols+`
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry > date(?, '+1 month')
 			AND (
 				lastDownloadedDate IS NULL
@@ -200,6 +210,7 @@ func (db *DB) SelectFarHighestBarAfterFetch(
 		SELECT`+contractSelectCols+`
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry > date(?, '+1 month')
 			AND lastDownloadedDate IS NOT NULL
 			AND TRIM(lastDownloadedDate) != ''
@@ -243,6 +254,7 @@ func (db *DB) SelectFarLeastBarAfterFetch(
 		SELECT`+contractSelectCols+`
 		FROM contracts
 		WHERE archived = 0
+			`+optionContractsFilter+`
 			AND expiry > date(?, '+1 month')
 			AND lastDownloadedDate IS NOT NULL
 			AND TRIM(lastDownloadedDate) != ''

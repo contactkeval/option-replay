@@ -18,7 +18,8 @@ import (
 	stage2b "github.com/contactkeval/option-replay/internal/pipeline/stage2_dxfeeddatadownloader"
 )
 
-// Command pipeline syncs OCC contracts, builds a run/batch plan, then
+// Command pipeline syncs OCC contracts, builds a run/batch plan (including
+// all allowed underlyings as spot symbols when SPY spot bars are stale), then
 // downloads DXFeed candles for that plan.
 //
 //	go run ./cmd/pipeline
@@ -221,6 +222,7 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Usage: pipeline [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "1) Sync OCC contracts\n")
 		fmt.Fprintf(os.Stderr, "2) Create a run/batch plan\n")
+		fmt.Fprintf(os.Stderr, "   (adds all allowed underlyings as spot if SPY bars are stale)\n")
 		fmt.Fprintf(os.Stderr, "3) Download DXFeed candles for that run\n\n")
 		flag.PrintDefaults()
 	}

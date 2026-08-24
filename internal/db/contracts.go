@@ -249,7 +249,8 @@ func (db *DB) RecordContractFetch(
 			lastDownloadedDate = ?,
 			downloadAttempts = downloadAttempts + 1,
 			archived = CASE
-				WHEN expiry < date(?)
+				WHEN type != 'spot'
+					AND expiry < date(?)
 					AND downloadAttempts + 1 >= 3
 				THEN 1
 				ELSE archived

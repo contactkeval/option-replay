@@ -528,6 +528,10 @@ func isReadTimeout(err error) bool {
 }
 
 func ToDXFeedSymbol(contract db.Contract) string {
+	if db.IsSpotContract(contract) {
+		return fmt.Sprintf("%s{=m}", contract.Underlying)
+	}
+
 	optionType := "C"
 	if strings.EqualFold(contract.Type, "put") {
 		optionType = "P"
