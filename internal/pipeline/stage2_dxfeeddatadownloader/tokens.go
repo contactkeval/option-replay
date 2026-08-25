@@ -16,12 +16,13 @@ import (
 const defaultTastyRESTBase = "https://api.tastyworks.com"
 
 type dxLinkAuthCache struct {
-	mu           sync.Mutex
-	accessToken  string
-	accessExpiry time.Time
-	quoteToken   string
-	quoteURL     string
-	quoteExpiry  time.Time
+	mu             sync.Mutex
+	accessToken    string
+	accessExpiry   time.Time
+	quoteToken     string
+	quoteURL       string
+	quoteExpiry    time.Time
+	oauthGrantDead bool // invalid_grant; needs a new TT_REFRESH_TOKEN
 }
 
 var tastyAuthCache dxLinkAuthCache
@@ -39,7 +40,11 @@ func tastyRESTBase() string {
 }
 
 func canRefreshTastyOAuth() bool {
-	return firstEnv("TT_REFRESH_TOKEN") != "" && firstEnv("TT_CLIENT_SECRET") != ""
+	tastyAuthCache.mu.Lock()
+	defer tastyAuthCache.mu.Unlock()
+	return !tastyAuthCache.oauthGrantDead &&
+		firstEnv("TT_REFRESH_TOKEN") != "" &&
+		firstEnv("TT_CLIENT_SECRET") != ""
 }
 
 func invalidateDxLinkAuth() {
@@ -50,6 +55,24 @@ func invalidateDxLinkAuth() {
 	tastyAuthCache.quoteToken = ""
 	tastyAuthCache.quoteURL = ""
 	tastyAuthCache.quoteExpiry = time.Time{}
+}
+
+// resetDxLinkAuthState clears cached tokens and the revoked-grant latch (tests).
+func resetDxLinkAuthState() {
+	tastyAuthCache.mu.Lock()
+	defer tastyAuthCache.mu.Unlock()
+	tastyAuthCache.accessToken = ""
+	tastyAuthCache.accessExpiry = time.Time{}
+	tastyAuthCache.quoteToken = ""
+	tastyAuthCache.quoteURL = ""
+	tastyAuthCache.quoteExpiry = time.Time{}
+	tastyAuthCache.oauthGrantDead = false
+}
+
+func oauthGrantIsDead() bool {
+	tastyAuthCache.mu.Lock()
+	defer tastyAuthCache.mu.Unlock()
+	return tastyAuthCache.oauthGrantDead
 }
 
 func resolveDxLinkAuth() (dxLinkAuth, error) {
@@ -74,18 +97,16 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 		return dxLinkAuth{token: tastyAuthCache.quoteToken, wsURL: wsURL}, nil
 	}
 
-	if canRefreshTastyOAuth() {
+	if tastyAuthCache.oauthGrantDead {
+		return dxLinkAuth{}, revokedGrantError(nil)
+	}
+
+	if firstEnv("TT_REFRESH_TOKEN") != "" && firstEnv("TT_CLIENT_SECRET") != "" {
 		accessToken, err := ensureTastyAccessTokenLocked()
 		if err != nil {
 			if isInvalidGrantErr(err) {
-				logger.Warnf("Tastyworks OAuth grant revoked or invalid; trying dxlink_token fallback: %v", err)
-				if auth, fallbackErr := authFromEnvToken(wsURL); fallbackErr == nil {
-					return auth, nil
-				}
-				return dxLinkAuth{}, fmt.Errorf(
-					"%w; create a new OAuth grant in the Tastytrade developer portal and update TT_REFRESH_TOKEN (or set dxlink_token)",
-					err,
-				)
+				tastyAuthCache.oauthGrantDead = true
+				return dxLinkAuth{}, revokedGrantError(err)
 			}
 			return dxLinkAuth{}, err
 		}
@@ -111,18 +132,30 @@ func resolveDxLinkAuthLocked(force bool) (dxLinkAuth, error) {
 		return dxLinkAuth{token: quoteToken, wsURL: wsURL}, nil
 	}
 
-	return authFromEnvToken(wsURL)
+	auth, err := authFromEnvToken(wsURL)
+	if err != nil {
+		return dxLinkAuth{}, err
+	}
+	return auth, nil
+}
+
+func revokedGrantError(cause error) error {
+	msg := "TT_REFRESH_TOKEN grant is revoked/invalid; create a new personal OAuth grant at https://developer.tastytrade.com and update TT_REFRESH_TOKEN (keep TT_CLIENT_SECRET). A stale dxlink_token cannot be refreshed without a valid grant."
+	if cause == nil {
+		return fmt.Errorf("%s", msg)
+	}
+	return fmt.Errorf("%w; %s", cause, msg)
 }
 
 func authFromEnvToken(wsURL string) (dxLinkAuth, error) {
 	token, err := dxFeedToken()
 	if err != nil {
 		return dxLinkAuth{}, fmt.Errorf(
-			"%w; set TT_REFRESH_TOKEN and TT_CLIENT_SECRET to refresh an expired dxLink token",
+			"%w; set TT_REFRESH_TOKEN and TT_CLIENT_SECRET to refresh dxLink quote tokens",
 			err,
 		)
 	}
-	logger.Warnf("DXFeed using env token as AUTH token")
+	logger.Warnf("DXFeed using env token as AUTH token (no OAuth refresh credentials)")
 	return dxLinkAuth{token: token, wsURL: wsURL}, nil
 }
 

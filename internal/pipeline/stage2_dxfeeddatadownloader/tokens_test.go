@@ -34,8 +34,8 @@ func TestParseQuoteTokenWrapped(t *testing.T) {
 }
 
 func TestResolveDxLinkAuth_OAuthThenQuoteToken(t *testing.T) {
-	invalidateDxLinkAuth()
-	t.Cleanup(invalidateDxLinkAuth)
+	resetDxLinkAuthState()
+	t.Cleanup(resetDxLinkAuthState)
 
 	var sawOAuth, sawQuote bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -109,9 +109,9 @@ func TestFormatOAuthHTTPError_InvalidGrant(t *testing.T) {
 	}
 }
 
-func TestResolveDxLinkAuth_OAuthInvalidGrantFallsBackToEnvToken(t *testing.T) {
-	invalidateDxLinkAuth()
-	t.Cleanup(invalidateDxLinkAuth)
+func TestResolveDxLinkAuth_OAuthInvalidGrantFailsFast(t *testing.T) {
+	resetDxLinkAuthState()
+	t.Cleanup(resetDxLinkAuthState)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth/token" {
@@ -126,16 +126,23 @@ func TestResolveDxLinkAuth_OAuthInvalidGrantFallsBackToEnvToken(t *testing.T) {
 	t.Setenv("TT_API_BASE", server.URL)
 	t.Setenv("TT_REFRESH_TOKEN", "revoked")
 	t.Setenv("TT_CLIENT_SECRET", "secret")
-	t.Setenv("dxlink_token", "env-quote-token")
-	t.Setenv("dxFeed_Token", "")
-	t.Setenv("DXFEED_TOKEN", "")
+	t.Setenv("dxlink_token", "stale-env-token")
 
-	auth, err := resolveDxLinkAuth()
-	if err != nil {
-		t.Fatal(err)
+	_, err := resolveDxLinkAuth()
+	if err == nil {
+		t.Fatal("expected revoked grant error")
 	}
-	if auth.token != "env-quote-token" {
-		t.Fatalf("token %q", auth.token)
+	if !isInvalidGrantErr(err) && !strings.Contains(err.Error(), "developer.tastytrade.com") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if canRefreshTastyOAuth() {
+		t.Fatal("oauth should be marked dead after invalid_grant")
+	}
+
+	// Second call must not hit oauth again; still fail with the same guidance.
+	_, err = resolveDxLinkAuth()
+	if err == nil {
+		t.Fatal("expected revoked grant error on retry")
 	}
 }
 

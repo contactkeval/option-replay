@@ -46,12 +46,17 @@ func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
 
 func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
 	client, err := connectAndHandshake(ctx)
-	if err != nil && isUnauthorizedErr(err) && canRefreshTastyOAuth() {
-		logger.Warnf("DXFeed AUTH expired; refreshing Tastyworks tokens")
-		invalidateDxLinkAuth()
-		return connectAndHandshake(ctx)
+	if err == nil {
+		return client, nil
 	}
-	return client, err
+	// Only retry when OAuth can still mint a new quote token. A revoked grant
+	// or env-token fallback cannot be healed by another handshake attempt.
+	if !isUnauthorizedErr(err) || !canRefreshTastyOAuth() || oauthGrantIsDead() {
+		return nil, err
+	}
+	logger.Warnf("DXFeed AUTH expired; refreshing Tastyworks quote token")
+	invalidateDxLinkAuth()
+	return connectAndHandshake(ctx)
 }
 
 func connectAndHandshake(ctx context.Context) (*DXFeedClient, error) {

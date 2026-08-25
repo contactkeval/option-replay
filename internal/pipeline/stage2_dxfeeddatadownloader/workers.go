@@ -91,15 +91,37 @@ func downloadWithPool(
 	close(jobCh)
 	wg.Wait()
 
-	if firstErr != nil {
-		return firstErr
+	// Always persist endTime/candleCount for work already done. Previously this
+	// ran only after a fully clean pool exit, so auth/chunk failures left
+	// startTime set and endTime/candleCount NULL.
+	if err := finalizeBatchProgress(metadataDB, runNo, batchNos, progress); err != nil {
+		if firstErr == nil {
+			return err
+		}
+		logger.Errorf("finalize batch progress after download error: %v", err)
 	}
 
+	return firstErr
+}
+
+func finalizeBatchProgress(
+	metadataDB *db.DB,
+	runNo int64,
+	batchNos []int,
+	progress map[int]*batchProgress,
+) error {
 	fetchDate := time.Now()
 	endTime := fetchDate.Format(time.RFC3339)
+
 	for _, batchNo := range batchNos {
 		p := progress[batchNo]
-		_ = metadataDB.UpdateBatchEndTime(runNo, batchNo, endTime, p.candles)
+		if p == nil {
+			continue
+		}
+
+		if err := metadataDB.UpdateBatchEndTime(runNo, batchNo, endTime, p.candles); err != nil {
+			return err
+		}
 		for _, contract := range p.contracts {
 			if err := metadataDB.RecordContractFetch(
 				contract.SerialNo,
