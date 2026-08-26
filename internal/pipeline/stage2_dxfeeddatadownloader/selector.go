@@ -44,6 +44,22 @@ const MaxCandleSubscribe = 100
 // DownloadWorkers is the number of parallel DXLink sessions.
 const DownloadWorkers = 4
 
+// ConnectAttempts is how many times a worker retries opening a DXLink session
+// before failing the whole download pool.
+const ConnectAttempts = 5
+
+// ChunkAttempts is how many times a worker retries an incomplete/idle chunk.
+const ChunkAttempts = 3
+
+// BatchesPerWave is how many batches to download on one connection cycle
+// before disconnecting and cooling down. DXLink appears to throttle long-lived
+// sessions after sustained volume.
+const BatchesPerWave = 20
+
+// WaveCooldown is how long to wait after finishing a wave before reconnecting
+// for the next set of batches.
+const WaveCooldown = 10 * time.Minute
+
 // StaleFetchDays is how old lastFetchDate must be for far-expiry eligibility.
 const StaleFetchDays = 15
 

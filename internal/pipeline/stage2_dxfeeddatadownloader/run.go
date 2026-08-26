@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
@@ -45,8 +46,22 @@ func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
 }
 
 func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
-	client, err := connectAndHandshake(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Serialize dials: concurrent DXLink handshakes from the same IP often
+	// time out while siblings succeed.
+	dxFeedDialMu.Lock()
+	defer dxFeedDialMu.Unlock()
+
+	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := connectAndHandshake(dialCtx)
 	if err == nil {
+		// Keepalive/channel lifetime should follow the worker ctx, not dial timeout.
+		client.StartKeepalive(ctx)
 		return client, nil
 	}
 	// Only retry when OAuth can still mint a new quote token. A revoked grant
@@ -56,7 +71,40 @@ func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
 	}
 	logger.Warnf("DXFeed AUTH expired; refreshing Tastyworks quote token")
 	invalidateDxLinkAuth()
-	return connectAndHandshake(ctx)
+
+	dialCtx2, cancel2 := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel2()
+	client, err = connectAndHandshake(dialCtx2)
+	if err != nil {
+		return nil, err
+	}
+	client.StartKeepalive(ctx)
+	return client, nil
+}
+
+var dxFeedDialMu sync.Mutex
+
+func openDXFeedWithRetry(ctx context.Context, attempts int) (*DXFeedClient, error) {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for i := 1; i <= attempts; i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		client, err := openDXFeed(ctx)
+		if err == nil {
+			return client, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		logger.Warnf("DXFeed connect attempt %d/%d failed: %v", i, attempts, err)
+		time.Sleep(time.Duration(i) * 3 * time.Second)
+	}
+	return nil, lastErr
 }
 
 func connectAndHandshake(ctx context.Context) (*DXFeedClient, error) {
@@ -69,8 +117,6 @@ func connectAndHandshake(ctx context.Context) (*DXFeedClient, error) {
 		_ = client.Close()
 		return nil, err
 	}
-
-	client.StartKeepalive(ctx)
 
 	if err := client.OpenFeedChannel(); err != nil {
 		_ = client.Close()
@@ -96,9 +142,9 @@ func readChunk(
 	symbolToSerial map[string]int64,
 	fromTime int64,
 	insertedBySerial map[int64]int64,
-) (int64, bool, error) {
+) (int64, bool, []string, error) {
 	if err := client.SubscribeCandles(chunk, fromTime); err != nil {
-		return 0, false, fmt.Errorf("failed to subscribe to candles: %w", err)
+		return 0, false, nil, fmt.Errorf("failed to subscribe to candles: %w", err)
 	}
 	logger.Debugf("Batch %d chunk %d subscribed, sample=%s", batchNo, chunkNo, chunk[0])
 
@@ -123,7 +169,7 @@ func readChunk(
 		return nil
 	}
 
-	alive, err := client.ReadLoop(ctx, chunk, func(candle config.Candle) error {
+	alive, pending, err := client.ReadLoop(ctx, chunk, func(candle config.Candle) error {
 		serialNo, ok := symbolToSerial[candle.EventSymbol]
 		if !ok {
 			return nil
@@ -144,12 +190,12 @@ func readChunk(
 		err = flushErr
 	}
 	if err != nil {
-		return inserted, false, err
+		return inserted, false, pending, err
 	}
 
 	if alive {
 		_ = client.UnsubscribeCandles(chunk)
 	}
 
-	return inserted, alive, nil
+	return inserted, alive, pending, nil
 }

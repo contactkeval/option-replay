@@ -51,24 +51,19 @@ func downloadWithPool(
 
 	jobCh := make(chan chunkJob)
 	var mu sync.Mutex
-	var firstErr error
-	fail := func(err error) {
-		if err == nil {
-			return
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		if firstErr == nil {
-			firstErr = err
-			cancel()
-		}
-	}
 
 	var wg sync.WaitGroup
 	for workerID := 1; workerID <= DownloadWorkers; workerID++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
+			// Stagger startup so workers do not all dial DXLink at once.
+			delay := time.Duration(id-1) * 5 * time.Second
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
 			runDownloadWorker(
 				ctx,
 				id,
@@ -77,17 +72,24 @@ func downloadWithPool(
 				fromTime,
 				progress,
 				&mu,
-				fail,
 			)
 		}(workerID)
 	}
 
-	for _, job := range jobs {
+	for i, job := range jobs {
 		select {
 		case <-ctx.Done():
+			logger.Warnf(
+				"download cancelled while queueing jobs; queued=%d remaining=%d: %v",
+				i,
+				len(jobs)-i,
+				ctx.Err(),
+			)
+			goto waitWorkers
 		case jobCh <- job:
 		}
 	}
+waitWorkers:
 	close(jobCh)
 	wg.Wait()
 
@@ -95,13 +97,10 @@ func downloadWithPool(
 	// ran only after a fully clean pool exit, so auth/chunk failures left
 	// startTime set and endTime/candleCount NULL.
 	if err := finalizeBatchProgress(metadataDB, runNo, batchNos, progress); err != nil {
-		if firstErr == nil {
-			return err
-		}
-		logger.Errorf("finalize batch progress after download error: %v", err)
+		return err
 	}
 
-	return firstErr
+	return nil
 }
 
 func finalizeBatchProgress(
@@ -219,7 +218,6 @@ func runDownloadWorker(
 	fromTime int64,
 	progress map[int]*batchProgress,
 	mu *sync.Mutex,
-	fail func(error),
 ) {
 	var client *DXFeedClient
 	closeClient := func() {
@@ -231,65 +229,183 @@ func runDownloadWorker(
 	}
 	defer closeClient()
 
+	ensureClient := func() error {
+		if client != nil {
+			logger.Debugf("worker %d reusing session", workerID)
+			return nil
+		}
+		// Keep trying to connect without failing the pool. One worker's dial
+		// timeouts must not cancel siblings that are already downloading.
+		round := 0
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			round++
+			logger.Infof(
+				"worker %d opening session (SETUP/AUTH/CHANNEL_REQUEST) round=%d",
+				workerID,
+				round,
+			)
+			c, err := openDXFeedWithRetry(ctx, ConnectAttempts)
+			if err == nil {
+				client = c
+				return nil
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			logger.Warnf(
+				"worker %d could not open DXLink session (round %d): %v; retrying without cancelling pool",
+				workerID,
+				round,
+				err,
+			)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(15 * time.Second):
+			}
+		}
+	}
+
 	for job := range jobs {
 		if ctx.Err() != nil {
 			return
 		}
 
-		if client == nil {
-			logger.Infof(
-				"worker %d opening session (SETUP/AUTH/CHANNEL_REQUEST)",
-				workerID,
-			)
-			c, err := openDXFeed(ctx)
-			if err != nil {
-				fail(fmt.Errorf("worker %d: %w", workerID, err))
+		symbols := append([]string(nil), job.symbols...)
+		var skipped []string
+		var lastErr error
+		succeeded := false
+		for attempt := 1; attempt <= ChunkAttempts; attempt++ {
+			if ctx.Err() != nil {
 				return
 			}
-			client = c
-		} else {
-			logger.Debugf("worker %d reusing session", workerID)
+			if len(symbols) == 0 {
+				succeeded = true
+				break
+			}
+			if err := ensureClient(); err != nil {
+				// Only parent cancel stops the worker here.
+				return
+			}
+
+			logger.Infof(
+				"worker %d batch %d chunk %d/%d (%d symbols) attempt=%d/%d",
+				workerID,
+				job.batchNo,
+				job.chunkNo,
+				job.chunkCount,
+				len(symbols),
+				attempt,
+				ChunkAttempts,
+			)
+
+			local := make(map[int64]int64)
+			n, alive, pending, err := readChunk(
+				ctx,
+				client,
+				metadataDB,
+				job.runNo,
+				job.batchNo,
+				job.chunkNo,
+				symbols,
+				job.symbolToSerial,
+				fromTime,
+				local,
+			)
+
+			mu.Lock()
+			p := progress[job.batchNo]
+			p.candles += n
+			for serial, count := range local {
+				p.inserted[serial] += count
+			}
+			mu.Unlock()
+
+			if err == nil && alive {
+				succeeded = true
+				break
+			}
+
+			lastErr = err
+			if err == nil {
+				lastErr = fmt.Errorf("session closed before chunk snapshot completed")
+			}
+			logger.Warnf(
+				"worker %d batch %d chunk %d attempt %d failed: %v",
+				workerID,
+				job.batchNo,
+				job.chunkNo,
+				attempt,
+				lastErr,
+			)
+
+			// Symbols that never sent SNAPSHOT_END are treated as problematic:
+			// drop them and retry the remainder so one sticky symbol cannot
+			// fail the whole chunk (candles for completed symbols are already saved).
+			if len(pending) > 0 {
+				next := excludeSymbols(symbols, pending)
+				logger.Warnf(
+					"worker %d batch %d chunk %d: excluding %d problematic symbol(s) from retry (sample=%v); remaining=%d",
+					workerID,
+					job.batchNo,
+					job.chunkNo,
+					len(pending),
+					sampleSymbols(pending, 5),
+					len(next),
+				)
+				skipped = append(skipped, pending...)
+				symbols = next
+				if len(symbols) == 0 {
+					succeeded = true
+					break
+				}
+			}
+
+			closeClient()
+			if ctx.Err() != nil {
+				return
+			}
+			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 
-		logger.Infof(
-			"worker %d batch %d chunk %d/%d (%d symbols)",
+		if succeeded {
+			if len(skipped) > 0 {
+				logger.Warnf(
+					"worker %d batch %d chunk %d accepted with %d symbol(s) skipped: %v",
+					workerID,
+					job.batchNo,
+					job.chunkNo,
+					len(skipped),
+					sampleSymbols(skipped, 8),
+				)
+			}
+			continue
+		}
+
+		if ctx.Err() != nil {
+			return
+		}
+		// Soft-fail: keep the pool alive so sibling workers can finish.
+		logger.Errorf(
+			"worker %d batch %d chunk %d: giving up after %d attempts: %v",
 			workerID,
 			job.batchNo,
 			job.chunkNo,
-			job.chunkCount,
-			len(job.symbols),
+			ChunkAttempts,
+			lastErr,
 		)
-
-		local := make(map[int64]int64)
-		n, alive, err := readChunk(
-			ctx,
-			client,
-			metadataDB,
-			job.runNo,
-			job.batchNo,
-			job.chunkNo,
-			job.symbols,
-			job.symbolToSerial,
-			fromTime,
-			local,
-		)
-
-		mu.Lock()
-		p := progress[job.batchNo]
-		p.candles += n
-		for serial, count := range local {
-			p.inserted[serial] += count
-		}
-		mu.Unlock()
-
-		if err != nil {
-			fail(fmt.Errorf("worker %d batch %d chunk %d: %w", workerID, job.batchNo, job.chunkNo, err))
-			closeClient()
-			return
-		}
-		if !alive {
-			logger.Warnf("worker %d session closed after chunk; will reconnect", workerID)
-			closeClient()
-		}
 	}
+}
+
+func sampleSymbols(symbols []string, n int) []string {
+	if n <= 0 || len(symbols) == 0 {
+		return nil
+	}
+	if len(symbols) <= n {
+		return append([]string(nil), symbols...)
+	}
+	return append([]string(nil), symbols[:n]...)
 }

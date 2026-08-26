@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -51,7 +52,7 @@ func Connect(ctx context.Context) (*DXFeedClient, error) {
 	headers.Set("Origin", tastyOrigin(auth.wsURL))
 
 	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
+		HandshakeTimeout: 30 * time.Second,
 	}
 
 	conn, _, err := dialer.DialContext(ctx, auth.wsURL, headers)
@@ -406,9 +407,9 @@ func (c *DXFeedClient) ReadLoop(
 	ctx context.Context,
 	symbols []string,
 	handler func(config.Candle) error,
-) (alive bool, err error) {
-	const noDataWait = 45 * time.Second
-	const idleAfterData = 20 * time.Second
+) (alive bool, pendingLeft []string, err error) {
+	const noDataWait = 60 * time.Second
+	const idleAfterData = 60 * time.Second
 
 	pending := make(map[string]struct{}, len(symbols))
 	for _, symbol := range symbols {
@@ -419,26 +420,40 @@ func (c *DXFeedClient) ReadLoop(
 	var feedMessages, candleCount int
 
 	if err := c.conn.SetReadDeadline(time.Now().Add(noDataWait)); err != nil {
-		return false, err
+		return false, nil, err
 	}
 
 	for {
 		if err := ctx.Err(); err != nil {
-			return false, err
+			return false, pendingSymbols(pending), err
 		}
 
 		msgType, raw, err := c.readEnvelope(ctx)
 		if err != nil {
+			left := pendingSymbols(pending)
 			if received && isReadTimeout(err) {
+				if len(pending) > 0 {
+					logger.Warnf(
+						"DXFeed chunk idle with %d symbols pending after %d feed messages, %d candles",
+						len(pending),
+						feedMessages,
+						candleCount,
+					)
+					return false, left, fmt.Errorf(
+						"chunk incomplete: idle with %d symbols pending after %d candles",
+						len(pending),
+						candleCount,
+					)
+				}
 				logger.Warnf(
 					"DXFeed chunk idle after %d feed messages, %d candles",
 					feedMessages,
 					candleCount,
 				)
-				return false, nil
+				return false, nil, nil
 			}
 			if isReadTimeout(err) {
-				return false, fmt.Errorf("no candle data received after %s", noDataWait)
+				return false, left, fmt.Errorf("no candle data received after %s", noDataWait)
 			}
 			if received {
 				logger.Warnf(
@@ -447,9 +462,16 @@ func (c *DXFeedClient) ReadLoop(
 					candleCount,
 					err,
 				)
-				return false, nil
+				if len(pending) > 0 {
+					return false, left, fmt.Errorf(
+						"chunk incomplete: connection ended with %d symbols pending: %w",
+						len(pending),
+						err,
+					)
+				}
+				return false, nil, nil
 			}
-			return false, err
+			return false, left, err
 		}
 
 		switch msgType {
@@ -463,22 +485,22 @@ func (c *DXFeedClient) ReadLoop(
 			logger.Tracef("DXFeed << FEED_CONFIG %s", raw)
 
 		case "ERROR":
-			return false, parseDXFeedError(raw)
+			return false, pendingSymbols(pending), parseDXFeedError(raw)
 
 		case "FEED_DATA":
 			var msg FeedData
 			if err := json.Unmarshal(raw, &msg); err != nil {
-				return false, fmt.Errorf("failed to unmarshal FEED_DATA: %w", err)
+				return false, pendingSymbols(pending), fmt.Errorf("failed to unmarshal FEED_DATA: %w", err)
 			}
 
 			received = true
 			if err := c.conn.SetReadDeadline(time.Now().Add(idleAfterData)); err != nil {
-				return false, err
+				return false, pendingSymbols(pending), err
 			}
 			feedMessages++
 			for _, candle := range msg.Data {
 				if err := handler(candle); err != nil {
-					return false, fmt.Errorf("failed to handle candle: %w", err)
+					return false, pendingSymbols(pending), fmt.Errorf("failed to handle candle: %w", err)
 				}
 				candleCount++
 				if candle.EventFlags&(dxSnapshotEnd|dxSnapshotSnip) != 0 {
@@ -501,7 +523,7 @@ func (c *DXFeedClient) ReadLoop(
 					candleCount,
 				)
 				_ = c.conn.SetReadDeadline(time.Time{})
-				return true, nil
+				return true, nil, nil
 			}
 
 		default:
@@ -510,6 +532,37 @@ func (c *DXFeedClient) ReadLoop(
 			}
 		}
 	}
+}
+
+func pendingSymbols(pending map[string]struct{}) []string {
+	if len(pending) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(pending))
+	for symbol := range pending {
+		out = append(out, symbol)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// excludeSymbols returns symbols with every entry in skip removed.
+func excludeSymbols(symbols, skip []string) []string {
+	if len(symbols) == 0 || len(skip) == 0 {
+		return append([]string(nil), symbols...)
+	}
+	drop := make(map[string]struct{}, len(skip))
+	for _, symbol := range skip {
+		drop[symbol] = struct{}{}
+	}
+	out := make([]string, 0, len(symbols))
+	for _, symbol := range symbols {
+		if _, bad := drop[symbol]; bad {
+			continue
+		}
+		out = append(out, symbol)
+	}
+	return out
 }
 
 func candleEventSymbol(msg FeedData) string {

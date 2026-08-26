@@ -2,6 +2,7 @@ package stage2_dxfeeddatadownloader
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
 	"github.com/contactkeval/option-replay/internal/logger"
@@ -62,10 +63,50 @@ func DownloadRun(
 	runNo int64,
 	batchNos []int,
 ) error {
-	if err := downloadWithPool(metadataDB, runNo, batchNos); err != nil {
-		return err
+	waves := chunkBatchNos(batchNos, BatchesPerWave)
+	for i, wave := range waves {
+		logger.Infof(
+			"Download wave %d/%d: batches=%v (disconnect after wave; cooldown=%s between waves)",
+			i+1,
+			len(waves),
+			wave,
+			WaveCooldown,
+		)
+		if err := downloadWithPool(metadataDB, runNo, wave); err != nil {
+			return err
+		}
+		// Pool exit closes all worker DXLink sessions. Pause before the next
+		// wave so the next connect cycle starts fresh.
+		if i+1 < len(waves) {
+			logger.Infof(
+				"Wave %d/%d complete; pausing %s before reconnecting for next %d batches",
+				i+1,
+				len(waves),
+				WaveCooldown,
+				len(waves[i+1]),
+			)
+			time.Sleep(WaveCooldown)
+		}
 	}
 
 	logger.Infof("dxfeed data download complete")
 	return nil
+}
+
+func chunkBatchNos(batchNos []int, size int) [][]int {
+	if len(batchNos) == 0 {
+		return nil
+	}
+	if size < 1 {
+		size = 1
+	}
+	waves := make([][]int, 0, (len(batchNos)+size-1)/size)
+	for i := 0; i < len(batchNos); i += size {
+		end := i + size
+		if end > len(batchNos) {
+			end = len(batchNos)
+		}
+		waves = append(waves, batchNos[i:end])
+	}
+	return waves
 }

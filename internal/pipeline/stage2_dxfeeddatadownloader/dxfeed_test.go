@@ -1,6 +1,9 @@
 package stage2_dxfeeddatadownloader
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestDxFeedToken_Empty(t *testing.T) {
 	t.Setenv("dxlink_token", "")
@@ -53,6 +56,38 @@ func TestDownloadPoolConstants(t *testing.T) {
 	}
 	if DownloadWorkers != 4 {
 		t.Fatalf("DownloadWorkers=%d", DownloadWorkers)
+	}
+	if BatchesPerWave != 20 {
+		t.Fatalf("BatchesPerWave=%d", BatchesPerWave)
+	}
+	if WaveCooldown != 10*time.Minute {
+		t.Fatalf("WaveCooldown=%s", WaveCooldown)
+	}
+}
+
+func TestChunkBatchNos(t *testing.T) {
+	got := chunkBatchNos([]int{1, 2, 3, 4, 5}, 2)
+	if len(got) != 3 {
+		t.Fatalf("waves=%d want 3", len(got))
+	}
+	if len(got[0]) != 2 || len(got[1]) != 2 || len(got[2]) != 1 {
+		t.Fatalf("wave sizes %v", got)
+	}
+	if got := chunkBatchNos(nil, 20); got != nil {
+		t.Fatalf("empty input: %v", got)
+	}
+}
+
+func TestExcludeSymbols(t *testing.T) {
+	got := excludeSymbols([]string{"a", "b", "c", "d"}, []string{"b", "d", "x"})
+	if len(got) != 2 || got[0] != "a" || got[1] != "c" {
+		t.Fatalf("got %v", got)
+	}
+	if got := excludeSymbols([]string{"a"}, nil); len(got) != 1 || got[0] != "a" {
+		t.Fatalf("nil skip: %v", got)
+	}
+	if got := excludeSymbols([]string{"a", "b"}, []string{"a", "b"}); len(got) != 0 {
+		t.Fatalf("all excluded: %v", got)
 	}
 }
 
