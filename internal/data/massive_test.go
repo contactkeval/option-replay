@@ -18,6 +18,26 @@ var (
 	prov          = NewMassiveDataProvider(os.Getenv("MASSIVE_API_KEY"))
 )
 
+func TestMassiveAggTicker(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"SPY", "SPY"},
+		{"SPX", "I:SPX"},
+		{"spxw", "I:SPX"},
+		{"NDXP", "I:NDX"},
+		{"RUTW", "I:RUT"},
+		{"VIX", "I:VIX"},
+		{"XSP", "I:XSP"},
+		{"BRKB", "BRK.B"},
+	}
+	for _, tc := range cases {
+		if got := massiveAggTicker(tc.in); got != tc.want {
+			t.Fatalf("massiveAggTicker(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestOptionSymbolFromParts(t *testing.T) {
 	symbol := prov.OptionSymbolFromParts("SPY", expiryDate, "put", 500.0)
 	expected := "O:SPY250117P00500000"

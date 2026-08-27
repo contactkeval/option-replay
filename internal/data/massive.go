@@ -85,6 +85,39 @@ const (
 	TimespanMinute = "minute"
 )
 
+func redactAPIKey(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	if q.Get("apiKey") != "" {
+		q.Set("apiKey", "REDACTED")
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
+}
+
+// massiveAggTicker maps OCC/index roots onto Massive aggregate tickers.
+func massiveAggTicker(symbol string) string {
+	switch strings.ToUpper(strings.TrimSpace(symbol)) {
+	case "SPX", "SPXW":
+		return "I:SPX"
+	case "NDX", "NDXP":
+		return "I:NDX"
+	case "RUT", "RUTW":
+		return "I:RUT"
+	case "VIX":
+		return "I:VIX"
+	case "XSP":
+		return "I:XSP"
+	case "BRKB":
+		return "BRK.B"
+	default:
+		return symbol
+	}
+}
+
 // NewMassiveDataProvider constructs a Massive-backed data provider.
 //
 // It initializes an HTTP client with sensible defaults for:
@@ -388,9 +421,11 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 
 	maxLimit := 50000
 
+	aggTicker := massiveAggTicker(underlying)
 	logger.Debugf(
-		"fetching bars: %s from=%s to=%s span=%d%s",
+		"fetching bars: %s (agg=%s) from=%s to=%s span=%d%s",
 		underlying,
+		aggTicker,
 		fromDate.Format("2006-01-02"),
 		toDate.Format("2006-01-02"),
 		multiplier,
@@ -409,7 +444,7 @@ func (massiveDataProv *MassiveDataProvider) GetBars(
 	reqURL := fmt.Sprintf(
 		"%s/v2/aggs/ticker/%s/range/%d/%s/%d/%d?adjusted=true&sort=asc&limit=%d&apiKey=%s",
 		massiveDataProv.BaseURL,
-		underlying,
+		aggTicker,
 		multiplier,
 		timespan,
 		fromDate.UnixMilli(),
@@ -729,7 +764,7 @@ func sameDate(a, b time.Time) bool {
 func (massiveDataProv *MassiveDataProvider) processGetRequest(
 	req *http.Request,
 ) (*http.Response, error) {
-	logger.Infof("request: %s", req.URL.String())
+	logger.Infof("request: %s", redactAPIKey(req.URL.String()))
 
 	for {
 		resp, err := massiveDataProv.Client.Do(req)
