@@ -49,7 +49,7 @@ func (localFileDataProv *LocalFileDataProvider) handleExistingRecord(
 ) (DataRecord, error) {
 	// Options: Only extend the end date to today if needed
 	if isOption {
-		if !record.LastDate.IsZero() && endDate.After(record.LastDate) {
+		if !record.LastDate.IsZero() && hasMinCalendarDayGap(record.LastDate, endDate) {
 			// Fetch until today or expiry, whichever is earlier
 			fetchUntil := localFileDataProv.parseExpiryFromSymbol(symbol)
 			if asOfTime.Before(fetchUntil) {
@@ -68,7 +68,7 @@ func (localFileDataProv *LocalFileDataProvider) handleExistingRecord(
 	}
 
 	// Stocks/Indices: Check both historical and recent gaps
-	if startDate.Before(record.FirstDate) {
+	if startDate.Before(record.FirstDate) && hasMinCalendarDayGap(startDate, record.FirstDate) {
 		logger.Infof("Symbol %s: Fetching historical gap", symbol)
 		if err := localFileDataProv.fetchAndAppend(symbol, startDate, record.FirstDate); err != nil {
 			return record, err
@@ -76,7 +76,7 @@ func (localFileDataProv *LocalFileDataProvider) handleExistingRecord(
 		record.FirstDate = startDate
 	}
 
-	if endDate.After(record.LastDate) {
+	if endDate.After(record.LastDate) && hasMinCalendarDayGap(record.LastDate, endDate) {
 		logger.Infof("Symbol %s: Fetching recent gap", symbol)
 		if err := localFileDataProv.fetchAndAppend(symbol, record.LastDate, asOfTime); err != nil {
 			return record, err
@@ -175,4 +175,13 @@ func (localFileDataProv *LocalFileDataProvider) RunMaintenancePipeline() error {
 	}
 
 	return localFileDataProv.saveManifest(records)
+}
+
+func calendarDateUTC(t time.Time) time.Time {
+	y, m, d := t.UTC().Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+func hasMinCalendarDayGap(from, to time.Time) bool {
+	return calendarDateUTC(to).After(calendarDateUTC(from))
 }

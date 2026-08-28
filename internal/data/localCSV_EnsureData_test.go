@@ -43,3 +43,15 @@ func TestEnsureLocal_ExistingRecord(t *testing.T) {
 	localProv := dataProv.(*LocalFileDataProvider)
 	localProv.RunMaintenancePipeline() // Ensure manifest is loaded and cleaned up
 }
+
+func TestHasMinCalendarDayGap(t *testing.T) {
+	sameDayFrom := time.Date(2026, 8, 23, 0, 0, 0, 0, time.UTC)
+	sameDayTo := time.Date(2026, 8, 23, 14, 53, 0, 0, time.UTC)
+	if hasMinCalendarDayGap(sameDayFrom, sameDayTo) {
+		t.Fatal("same calendar day should not fetch")
+	}
+	nextDay := time.Date(2026, 8, 24, 1, 0, 0, 0, time.UTC)
+	if !hasMinCalendarDayGap(sameDayFrom, nextDay) {
+		t.Fatal("next calendar day should fetch")
+	}
+}

@@ -89,7 +89,7 @@ func DownloadRun(
 		}
 	}
 
-	logger.Infof("dxfeed data download complete")
+	logger.Infof("dxfeed data download complete for run %d, batches=%v", runNo, batchNos)
 	return nil
 }
 

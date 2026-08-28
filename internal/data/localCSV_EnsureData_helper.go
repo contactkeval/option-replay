@@ -29,6 +29,10 @@ func parseFloat(s string) float64 {
 // as a CSV row using RFC3339 for the timestamp, prices formatted to two decimal places, and
 // volume formatted as an integer. Any error encountered while fetching or writing is returned.
 func (localFileDataProv *LocalFileDataProvider) fetchAndAppend(symbol string, startDate, endDate time.Time) error {
+	if !hasMinCalendarDayGap(startDate, endDate) {
+		return nil
+	}
+
 	if err := localFileDataProv.ensureDataDir(); err != nil {
 		return err
 	}
