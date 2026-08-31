@@ -58,7 +58,6 @@ func LoadContractsToSQLite(cfg config.Config) error {
 				c.ExpiryDate,
 				c.Strike,
 				c.Type,
-				0,
 				today,
 			); err != nil {
 				tx.Rollback()

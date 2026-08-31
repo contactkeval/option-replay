@@ -128,9 +128,8 @@ func (db *DB) FailImport(
 func (db *DB) HandleOCCAdd(
 	tx *sql.Tx,
 	record OCCRecord,
-	groupNo int,
 ) (bool, error) {
-	return db.insertOCCContractTx(tx, record, groupNo)
+	return db.insertOCCContractTx(tx, record)
 }
 
 func (db *DB) HandleOCCDelete(
@@ -149,7 +148,6 @@ func (db *DB) HandleOCCDelete(
 func (db *DB) HandleOCCModify(
 	tx *sql.Tx,
 	record OCCRecord,
-	groupNo int,
 ) (bool, error) {
 	deleted, err := db.deleteContractTx(
 		tx,
@@ -162,7 +160,7 @@ func (db *DB) HandleOCCModify(
 		return false, err
 	}
 
-	inserted, err := db.insertOCCContractTx(tx, record, groupNo)
+	inserted, err := db.insertOCCContractTx(tx, record)
 	if err != nil {
 		return false, err
 	}
@@ -173,7 +171,6 @@ func (db *DB) HandleOCCModify(
 func (db *DB) insertOCCContractTx(
 	tx *sql.Tx,
 	record OCCRecord,
-	groupNo int,
 ) (bool, error) {
 	seen := record.ActivityDate.Format("2006-01-02")
 	res, err := tx.Exec(`
@@ -182,17 +179,15 @@ func (db *DB) insertOCCContractTx(
 			expiry,
 			strike,
 			type,
-			groupNo,
 			firstSeenDate,
 			lastDownloadedDate
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`,
 		record.Underlying,
 		record.ExpiryDate.Format("2006-01-02"),
 		record.Strike,
 		record.Type,
-		groupNo,
 		seen,
 		seen,
 	)

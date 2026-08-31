@@ -67,7 +67,7 @@ func (d *Downloader) Download(
 ) (string, error) {
 	downloadType = strings.ToUpper(strings.TrimSpace(downloadType))
 	switch downloadType {
-	case ActionAdd, ActionDelete, ActionModify:
+	case ActionAdd, ActionDelete, ActionModify, ActionBoth:
 	default:
 		return "", fmt.Errorf("invalid download type %q", downloadType)
 	}

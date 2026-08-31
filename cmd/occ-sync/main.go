@@ -20,12 +20,12 @@ func main() {
 	dateFlag := flag.String(
 		"date",
 		"",
-		"OCC file date as mm/dd/yyyy or yyyy-mm-dd (default: previous calendar day)",
+		"OCC file date as mm/dd/yyyy or yyyy-mm-dd (default: two calendar days ago, T-2)",
 	)
 	typesFlag := flag.String(
 		"types",
-		"A,D,M",
-		"comma-separated OCC download types: A (add), D (delete), M (modify)",
+		"A,B,D,M",
+		"comma-separated OCC download types: A (add), D (delete), M (modify), B (both --add and delete)",
 	)
 	underlyingsFlag := flag.String(
 		"underlyings",
@@ -71,14 +71,14 @@ func parseFileDate(raw string) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		now := time.Now()
-		yesterday := time.Date(
+		t2 := time.Date(
 			now.Year(),
 			now.Month(),
-			now.Day()-1,
+			now.Day(),
 			0, 0, 0, 0,
 			now.Location(),
-		)
-		return yesterday, nil
+		).AddDate(0, 0, -2)
+		return t2, nil
 	}
 
 	layouts := []string{
@@ -110,10 +110,10 @@ func parseDownloadTypes(raw string) ([]string, error) {
 		}
 
 		switch t {
-		case stage0_occ.ActionAdd, stage0_occ.ActionDelete, stage0_occ.ActionModify:
+		case stage0_occ.ActionAdd, stage0_occ.ActionDelete, stage0_occ.ActionModify, stage0_occ.ActionBoth:
 			out = append(out, t)
 		default:
-			return nil, fmt.Errorf("unknown type %q (want A, D, or M)", part)
+			return nil, fmt.Errorf("unknown type %q (want A, B, D, or M)", part)
 		}
 	}
 

@@ -57,24 +57,31 @@ func TestDownloadPoolConstants(t *testing.T) {
 	if DownloadWorkers != 4 {
 		t.Fatalf("DownloadWorkers=%d", DownloadWorkers)
 	}
-	if BatchesPerWave != 20 {
-		t.Fatalf("BatchesPerWave=%d", BatchesPerWave)
+	if MaxGroupSize != 100 {
+		t.Fatalf("MaxGroupSize=%d", MaxGroupSize)
+	}
+	if DownloadWaves != 3 {
+		t.Fatalf("DownloadWaves=%d", DownloadWaves)
 	}
 	if WaveCooldown != 10*time.Minute {
 		t.Fatalf("WaveCooldown=%s", WaveCooldown)
 	}
 }
 
-func TestChunkBatchNos(t *testing.T) {
-	got := chunkBatchNos([]int{1, 2, 3, 4, 5}, 2)
+func TestSplitIntoWaves(t *testing.T) {
+	got := splitIntoWaves([]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 3)
 	if len(got) != 3 {
 		t.Fatalf("waves=%d want 3", len(got))
 	}
-	if len(got[0]) != 2 || len(got[1]) != 2 || len(got[2]) != 1 {
-		t.Fatalf("wave sizes %v", got)
+	if len(got[0]) != 4 || len(got[1]) != 3 || len(got[2]) != 3 {
+		t.Fatalf("wave sizes %v", []int{len(got[0]), len(got[1]), len(got[2])})
 	}
-	if got := chunkBatchNos(nil, 20); got != nil {
+	if got := splitIntoWaves(nil, 3); got != nil {
 		t.Fatalf("empty input: %v", got)
+	}
+	got = splitIntoWaves([]int{1, 2}, 3)
+	if len(got) != 2 || len(got[0]) != 1 || len(got[1]) != 1 {
+		t.Fatalf("fewer batches than waves: %v", got)
 	}
 }
 

@@ -153,12 +153,3 @@ func normalizeUnderlying(sym string) string {
 	sym = strings.TrimLeftFunc(sym, unicode.IsDigit)
 	return strings.ToUpper(strings.TrimSpace(sym))
 }
-
-// GroupNoForExpiry spreads contracts across weekend download groups 0–3.
-func GroupNoForExpiry(expiry time.Time) int {
-	week := (expiry.Day() - 1) / 7
-	if week > 3 {
-		week = 3
-	}
-	return week
-}

@@ -36,7 +36,7 @@ import (
 
 // MaxGroupSize is the soft upper bound used to size download groups.
 // Group count is (selected/MaxGroupSize)+1 so each group stays at most this size.
-const MaxGroupSize = 500
+const MaxGroupSize = 100
 
 // MaxCandleSubscribe is the max symbols per DXLink Candle FEED_SUBSCRIPTION.
 const MaxCandleSubscribe = 100
@@ -51,10 +51,9 @@ const ConnectAttempts = 5
 // ChunkAttempts is how many times a worker retries an incomplete/idle chunk.
 const ChunkAttempts = 3
 
-// BatchesPerWave is how many batches to download on one connection cycle
-// before disconnecting and cooling down. DXLink appears to throttle long-lived
-// sessions after sustained volume.
-const BatchesPerWave = 20
+// DownloadWaves is how many connection cycles to split a run's batches into.
+// Batches are divided as evenly as possible across these waves.
+const DownloadWaves = 3
 
 // WaveCooldown is how long to wait after finishing a wave before reconnecting
 // for the next set of batches.

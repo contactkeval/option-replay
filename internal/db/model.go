@@ -8,7 +8,6 @@ type Contract struct {
 	Expiry             time.Time
 	Type               string
 	Strike             float64
-	GroupNo            int
 	BarCount           int
 	LastDownloadedDate time.Time // zero if never downloaded
 	DownloadAttempts   int

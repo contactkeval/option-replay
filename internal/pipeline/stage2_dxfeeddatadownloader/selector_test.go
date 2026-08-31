@@ -220,9 +220,9 @@ func TestSelectFarExpiryContracts_NeverFetchedIsStale(t *testing.T) {
 	// Insert with NULL lastDownloadedDate by raw SQL (bypass insert helper seed).
 	mustExec(t, database, `
 		INSERT INTO contracts (
-			serialNo, underlying, expiry, type, strike, groupNo,
+			serialNo, underlying, expiry, type, strike,
 			firstSeenDate, lastDownloadedDate, barCount, archived
-		) VALUES (1, 'A', '2026-12-01', 'call', 100, 0, '2026-01-01', NULL, 10, 0)
+		) VALUES (1, 'A', '2026-12-01', 'call', 100, '2026-01-01', NULL, 10, 0)
 	`)
 	for i := int64(2); i <= 30; i++ {
 		insertContract(t, database, i, "A", date(2026, 12, 1), int(i), date(2026, 8, 1))
@@ -244,18 +244,18 @@ func TestGroupCountAndCreateBatches(t *testing.T) {
 	if got := GroupCount(0); got != 0 {
 		t.Fatalf("GroupCount(0)=%d", got)
 	}
-	if got := GroupCount(499); got != 1 {
-		t.Fatalf("GroupCount(499)=%d want 1", got)
+	if got := GroupCount(99); got != 1 {
+		t.Fatalf("GroupCount(99)=%d want 1", got)
 	}
-	if got := GroupCount(500); got != 2 {
-		t.Fatalf("GroupCount(500)=%d want 2", got)
+	if got := GroupCount(100); got != 2 {
+		t.Fatalf("GroupCount(100)=%d want 2", got)
 	}
-	if got := GroupCount(1000); got != 3 {
-		t.Fatalf("GroupCount(1000)=%d want 3", got)
+	if got := GroupCount(200); got != 3 {
+		t.Fatalf("GroupCount(200)=%d want 3", got)
 	}
 
-	contracts := make([]db.Contract, 0, 501)
-	for i := int64(1); i <= 501; i++ {
+	contracts := make([]db.Contract, 0, 101)
+	for i := int64(1); i <= 101; i++ {
 		contracts = append(contracts, db.Contract{
 			SerialNo:   i,
 			Underlying: "A",
@@ -317,9 +317,9 @@ func insertContract(
 	t.Helper()
 	mustExec(t, database, `
 		INSERT INTO contracts (
-			serialNo, underlying, expiry, type, strike, groupNo,
+			serialNo, underlying, expiry, type, strike,
 			firstSeenDate, lastDownloadedDate, barCount, archived
-		) VALUES (?, ?, ?, 'call', ?, 0, ?, ?, ?, 0)
+		) VALUES (?, ?, ?, 'call', ?, ?, ?, ?, 0)
 	`,
 		serial,
 		underlying,
@@ -342,9 +342,9 @@ func insertArchived(
 	t.Helper()
 	mustExec(t, database, `
 		INSERT INTO contracts (
-			serialNo, underlying, expiry, type, strike, groupNo,
+			serialNo, underlying, expiry, type, strike,
 			firstSeenDate, lastDownloadedDate, barCount, archived
-		) VALUES (?, ?, ?, 'call', 1, 0, '2026-01-01', '2026-01-01', ?, 1)
+		) VALUES (?, ?, ?, 'call', 1, '2026-01-01', '2026-01-01', ?, 1)
 	`, serial, underlying, expiry.Format("2006-01-02"), barCount)
 }
 

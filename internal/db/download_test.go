@@ -12,9 +12,9 @@ func TestRecordContractFetch_AddsNewBars(t *testing.T) {
 	database := openDBTest(t)
 	mustExecDB(t, database, `
 		INSERT INTO contracts (
-			serialNo, underlying, expiry, type, strike, groupNo,
+			serialNo, underlying, expiry, type, strike,
 			firstSeenDate, lastDownloadedDate, barCount, archived
-		) VALUES (1, 'A', '2026-12-01', 'call', 1, 0, '2026-01-01', '2026-01-01', 10, 0)
+		) VALUES (1, 'A', '2026-12-01', 'call', 1, '2026-01-01', '2026-01-01', 10, 0)
 	`)
 
 	if err := database.RecordContractFetch(1, 3, time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)); err != nil {

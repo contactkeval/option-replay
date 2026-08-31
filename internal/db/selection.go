@@ -11,7 +11,6 @@ const contractSelectCols = `
 	expiry,
 	type,
 	strike,
-	groupNo,
 	barCount,
 	lastDownloadedDate,
 	downloadAttempts,

@@ -53,8 +53,6 @@ func (i *Importer) ImportFile(
 
 			stats.Processed++
 
-			groupNo := GroupNoForExpiry(record.ExpiryDate)
-
 			var (
 				applied   bool
 				actionErr error
@@ -62,7 +60,7 @@ func (i *Importer) ImportFile(
 
 			switch record.Action {
 			case ActionAdd:
-				applied, actionErr = i.database.HandleOCCAdd(tx, record, groupNo)
+				applied, actionErr = i.database.HandleOCCAdd(tx, record)
 				if actionErr == nil {
 					if applied {
 						stats.Inserted++
@@ -76,7 +74,7 @@ func (i *Importer) ImportFile(
 					stats.Deleted++
 				}
 			case ActionModify:
-				applied, actionErr = i.database.HandleOCCModify(tx, record, groupNo)
+				applied, actionErr = i.database.HandleOCCModify(tx, record)
 				if actionErr == nil && applied {
 					stats.Updated++
 				}

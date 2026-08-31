@@ -58,8 +58,6 @@ func ensureContractsTables(db *sql.DB) error {
 			type TEXT NOT NULL,
 			strike REAL NOT NULL,
 
-			groupNo INTEGER NOT NULL,
-
 			firstSeenDate TEXT NOT NULL,
 			lastDownloadedDate TEXT,
 
@@ -84,6 +82,15 @@ func ensureContractsTables(db *sql.DB) error {
 		`ALTER TABLE contracts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.Exec(stmt)
+	}
+
+	// Drop legacy weekend-group column from older databases.
+	if has, err := tableHasColumn(db, "contracts", "groupNo"); err != nil {
+		return err
+	} else if has {
+		if _, err := db.Exec(`ALTER TABLE contracts DROP COLUMN groupNo`); err != nil {
+			return fmt.Errorf("drop contracts.groupNo: %w", err)
+		}
 	}
 
 	// Seed / repair lastDownloadedDate from firstSeenDate when missing or malformed.
@@ -113,6 +120,28 @@ func ensureContractsTables(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func tableHasColumn(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, fmt.Errorf("pragma table_info(%s): %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func ensureDownloadTables(db *sql.DB) error {

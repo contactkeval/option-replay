@@ -122,18 +122,6 @@ func TestNormalizeUnderlying(t *testing.T) {
 	}
 }
 
-func TestGroupNoForExpiry(t *testing.T) {
-	if GroupNoForExpiry(time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)) != 0 {
-		t.Fatal("day 1 should be group 0")
-	}
-	if GroupNoForExpiry(time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)) != 1 {
-		t.Fatal("day 10 should be group 1")
-	}
-	if GroupNoForExpiry(time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)) != 3 {
-		t.Fatal("day 31 should clamp to group 3")
-	}
-}
-
 func TestParseRecord_TooShort(t *testing.T) {
 	_, err := ParseRecord(strings.Repeat("x", 20))
 	if err == nil {

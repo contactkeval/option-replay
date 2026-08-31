@@ -63,7 +63,7 @@ func DownloadRun(
 	runNo int64,
 	batchNos []int,
 ) error {
-	waves := chunkBatchNos(batchNos, BatchesPerWave)
+	waves := splitIntoWaves(batchNos, DownloadWaves)
 	for i, wave := range waves {
 		logger.Infof(
 			"Download wave %d/%d: batches=%v (disconnect after wave; cooldown=%s between waves)",
@@ -93,20 +93,29 @@ func DownloadRun(
 	return nil
 }
 
-func chunkBatchNos(batchNos []int, size int) [][]int {
+// splitIntoWaves divides batchNos into n nearly equal contiguous waves.
+func splitIntoWaves(batchNos []int, n int) [][]int {
 	if len(batchNos) == 0 {
 		return nil
 	}
-	if size < 1 {
-		size = 1
+	if n < 1 {
+		n = 1
 	}
-	waves := make([][]int, 0, (len(batchNos)+size-1)/size)
-	for i := 0; i < len(batchNos); i += size {
-		end := i + size
-		if end > len(batchNos) {
-			end = len(batchNos)
+	if n > len(batchNos) {
+		n = len(batchNos)
+	}
+
+	waves := make([][]int, 0, n)
+	base := len(batchNos) / n
+	rem := len(batchNos) % n
+	idx := 0
+	for i := 0; i < n; i++ {
+		size := base
+		if i < rem {
+			size++
 		}
-		waves = append(waves, batchNos[i:end])
+		waves = append(waves, batchNos[idx:idx+size])
+		idx += size
 	}
 	return waves
 }

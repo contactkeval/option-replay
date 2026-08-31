@@ -41,7 +41,6 @@ func (db *DB) EnsureSpotContracts(underlyings []string) error {
 			SpotContractExpiry,
 			0,
 			ContractTypeSpot,
-			-1,
 			seen,
 		); err != nil {
 			return fmt.Errorf("ensure spot contract %s: %w", symbol, err)
