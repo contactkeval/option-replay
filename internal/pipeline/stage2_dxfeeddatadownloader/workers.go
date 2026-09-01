@@ -21,8 +21,12 @@ type chunkJob struct {
 
 type batchProgress struct {
 	contracts []db.Contract
-	inserted  map[int64]int64
-	candles   int64
+	// inserted is new candle_staging rows per serial (newBarCount).
+	inserted map[int64]int64
+	// received is candles downloaded from dxFeed per serial (barCount).
+	received  map[int64]int64
+	newBars   int64
+	totalBars int64
 }
 
 func downloadWithPool(
@@ -93,9 +97,9 @@ waitWorkers:
 	close(jobCh)
 	wg.Wait()
 
-	// Always persist endTime/candleCount for work already done. Previously this
-	// ran only after a fully clean pool exit, so auth/chunk failures left
-	// startTime set and endTime/candleCount NULL.
+	// Always persist endTime and bar counts for work already done. Previously
+	// this ran only after a fully clean pool exit, so auth/chunk failures left
+	// startTime set and download stats NULL/zero.
 	if err := finalizeBatchProgress(metadataDB, runNo, batchNos, progress); err != nil {
 		return err
 	}
@@ -118,13 +122,29 @@ func finalizeBatchProgress(
 			continue
 		}
 
-		if err := metadataDB.UpdateBatchEndTime(runNo, batchNo, endTime, p.candles); err != nil {
+		if err := metadataDB.UpdateBatchDownloadStats(
+			runNo,
+			batchNo,
+			endTime,
+			p.totalBars,
+			p.newBars,
+		); err != nil {
 			return err
 		}
 		for _, contract := range p.contracts {
+			newBars := p.inserted[contract.SerialNo]
+			if err := metadataDB.UpdateBatchContractDownloadStats(
+				runNo,
+				batchNo,
+				contract.SerialNo,
+				p.received[contract.SerialNo],
+				newBars,
+			); err != nil {
+				return err
+			}
 			if err := metadataDB.RecordContractFetch(
 				contract.SerialNo,
-				int(p.inserted[contract.SerialNo]),
+				int(newBars),
 				fetchDate,
 			); err != nil {
 				return fmt.Errorf(
@@ -135,11 +155,16 @@ func finalizeBatchProgress(
 			}
 		}
 		logger.Infof(
-			"Batch %d, contracts %d, downloaded candles=%d",
+			"Batch %d, contracts %d, downloaded bars=%d new=%d",
 			batchNo,
 			len(p.contracts),
-			p.candles,
+			p.totalBars,
+			p.newBars,
 		)
+	}
+
+	if err := metadataDB.RefreshRunDownloadStats(runNo); err != nil {
+		return err
 	}
 
 	return nil
@@ -162,6 +187,7 @@ func buildDownloadJobs(
 		if len(contracts) == 0 {
 			progress[batchNo] = &batchProgress{
 				inserted: map[int64]int64{},
+				received: map[int64]int64{},
 			}
 			continue
 		}
@@ -193,6 +219,7 @@ func buildDownloadJobs(
 		progress[batchNo] = &batchProgress{
 			contracts: contracts,
 			inserted:  make(map[int64]int64, len(contracts)),
+			received:  make(map[int64]int64, len(contracts)),
 		}
 
 		for i, chunk := range chunks {
@@ -302,8 +329,9 @@ func runDownloadWorker(
 				ChunkAttempts,
 			)
 
-			local := make(map[int64]int64)
-			n, alive, pending, err := readChunk(
+			localInserted := make(map[int64]int64)
+			localReceived := make(map[int64]int64)
+			nNew, nRecv, alive, pending, err := readChunk(
 				ctx,
 				client,
 				metadataDB,
@@ -313,14 +341,19 @@ func runDownloadWorker(
 				symbols,
 				job.symbolToSerial,
 				fromTime,
-				local,
+				localInserted,
+				localReceived,
 			)
 
 			mu.Lock()
 			p := progress[job.batchNo]
-			p.candles += n
-			for serial, count := range local {
+			p.newBars += nNew
+			p.totalBars += nRecv
+			for serial, count := range localInserted {
 				p.inserted[serial] += count
+			}
+			for serial, count := range localReceived {
+				p.received[serial] += count
 			}
 			mu.Unlock()
 

@@ -30,6 +30,95 @@ func TestRecordContractFetch_AddsNewBars(t *testing.T) {
 	}
 }
 
+func TestDownloadBarCountStats(t *testing.T) {
+	database := openDBTest(t)
+	mustExecDB(t, database, `
+		INSERT INTO contracts (
+			serialNo, underlying, expiry, type, strike,
+			firstSeenDate, lastDownloadedDate, barCount, archived
+		) VALUES
+			(1, 'A', '2026-12-01', 'call', 1, '2026-01-01', '2026-01-01', 0, 0),
+			(2, 'A', '2026-12-01', 'put', 1, '2026-01-01', '2026-01-01', 0, 0)
+	`)
+	mustExecDB(t, database, `
+		INSERT INTO runs (runNo, groupNo, runDateTime, contractCount, batchCount)
+		VALUES (1, -1, '2026-08-14T00:00:00Z', 2, 1)
+	`)
+	mustExecDB(t, database, `
+		INSERT INTO batches (runNo, batchNo, contractCount)
+		VALUES (1, 1, 2)
+	`)
+	mustExecDB(t, database, `
+		INSERT INTO batch_contracts (runNo, batchNo, serialNo, listNo)
+		VALUES (1, 1, 1, 1), (1, 1, 2, 2)
+	`)
+
+	if err := database.UpdateBatchDownloadStats(1, 1, "2026-08-14T01:00:00Z", 10, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateBatchContractDownloadStats(1, 1, 1, 6, 4); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateBatchContractDownloadStats(1, 1, 2, 4, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordContractFetch(1, 4, time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordContractFetch(2, 3, time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RefreshRunDownloadStats(1); err != nil {
+		t.Fatal(err)
+	}
+
+	var batchBars, batchNew int64
+	if err := database.QueryRow(`
+		SELECT barCount, newBarCount FROM batches WHERE runNo = 1 AND batchNo = 1
+	`).Scan(&batchBars, &batchNew); err != nil {
+		t.Fatal(err)
+	}
+	if batchBars != 10 || batchNew != 7 {
+		t.Fatalf("batch stats bars=%d new=%d", batchBars, batchNew)
+	}
+
+	var sumNew int64
+	if err := database.QueryRow(`
+		SELECT COALESCE(SUM(newBarCount), 0) FROM batch_contracts WHERE runNo = 1
+	`).Scan(&sumNew); err != nil {
+		t.Fatal(err)
+	}
+	if sumNew != 7 {
+		t.Fatalf("sum batch_contracts.newBarCount=%d", sumNew)
+	}
+
+	var contractBars int64
+	if err := database.QueryRow(`
+		SELECT COALESCE(SUM(barCount), 0) FROM contracts WHERE serialNo IN (1, 2)
+	`).Scan(&contractBars); err != nil {
+		t.Fatal(err)
+	}
+	if contractBars != sumNew {
+		t.Fatalf("contracts.barCount sum=%d want %d", contractBars, sumNew)
+	}
+
+	var runBars, runNew int64
+	if err := database.QueryRow(`
+		SELECT barCount, newBarCount FROM runs WHERE runNo = 1
+	`).Scan(&runBars, &runNew); err != nil {
+		t.Fatal(err)
+	}
+	if runBars != 10 || runNew != 7 {
+		t.Fatalf("run stats bars=%d new=%d", runBars, runNew)
+	}
+
+	if has, err := tableHasColumn(database.DB, "batches", "candleCount"); err != nil {
+		t.Fatal(err)
+	} else if has {
+		t.Fatal("batches.candleCount should be dropped")
+	}
+}
+
 func TestInsertCandleStaging_CountsNewInsertsOnly(t *testing.T) {
 	database := openDBTest(t)
 	candle := config.Candle{Time: 1_700_000_000_000, Open: 1, High: 1, Low: 1, Close: 1}

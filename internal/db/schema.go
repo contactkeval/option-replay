@@ -145,7 +145,7 @@ func tableHasColumn(db *sql.DB, table, column string) (bool, error) {
 }
 
 func ensureDownloadTables(db *sql.DB) error {
-	return execStatements(db, []string{
+	if err := execStatements(db, []string{
 		`
 		CREATE TABLE IF NOT EXISTS runs (
 			runNo INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,7 +156,10 @@ func ensureDownloadTables(db *sql.DB) error {
 
 			contractCount INTEGER NOT NULL,
 
-			batchCount INTEGER NOT NULL
+			batchCount INTEGER NOT NULL,
+
+			barCount INTEGER NOT NULL DEFAULT 0,
+			newBarCount INTEGER NOT NULL DEFAULT 0
 		)
 		`,
 		`
@@ -170,7 +173,8 @@ func ensureDownloadTables(db *sql.DB) error {
 
 			contractCount INTEGER,
 
-			candleCount INTEGER,
+			barCount INTEGER NOT NULL DEFAULT 0,
+			newBarCount INTEGER NOT NULL DEFAULT 0,
 
 			PRIMARY KEY (
 				runNo,
@@ -187,6 +191,9 @@ func ensureDownloadTables(db *sql.DB) error {
 			serialNo INTEGER NOT NULL,
 
 			listNo INTEGER NOT NULL,
+
+			barCount INTEGER NOT NULL DEFAULT 0,
+			newBarCount INTEGER NOT NULL DEFAULT 0,
 
 			PRIMARY KEY (
 				runNo,
@@ -220,7 +227,40 @@ func ensureDownloadTables(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_candle_staging_run_batch
 			ON candle_staging(runNo, batchNo)`,
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Additive columns for databases created before download bar accounting.
+	for _, stmt := range []string{
+		`ALTER TABLE runs ADD COLUMN barCount INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE runs ADD COLUMN newBarCount INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE batches ADD COLUMN barCount INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE batches ADD COLUMN newBarCount INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE batch_contracts ADD COLUMN barCount INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE batch_contracts ADD COLUMN newBarCount INTEGER NOT NULL DEFAULT 0`,
+	} {
+		_, _ = db.Exec(stmt)
+	}
+
+	// Replace legacy batches.candleCount with barCount/newBarCount.
+	if has, err := tableHasColumn(db, "batches", "candleCount"); err != nil {
+		return err
+	} else if has {
+		if _, err := db.Exec(`
+			UPDATE batches
+			SET newBarCount = COALESCE(candleCount, 0)
+			WHERE newBarCount = 0
+				AND candleCount IS NOT NULL
+		`); err != nil {
+			return fmt.Errorf("migrate batches.candleCount: %w", err)
+		}
+		if _, err := db.Exec(`ALTER TABLE batches DROP COLUMN candleCount`); err != nil {
+			return fmt.Errorf("drop batches.candleCount: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func ensureParquetTables(db *sql.DB) error {

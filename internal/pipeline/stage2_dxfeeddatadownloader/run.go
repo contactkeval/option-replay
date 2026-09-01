@@ -142,9 +142,10 @@ func readChunk(
 	symbolToSerial map[string]int64,
 	fromTime int64,
 	insertedBySerial map[int64]int64,
-) (int64, bool, []string, error) {
+	receivedBySerial map[int64]int64,
+) (newCount int64, receivedCount int64, alive bool, pending []string, err error) {
 	if err := client.SubscribeCandles(chunk, fromTime); err != nil {
-		return 0, false, nil, fmt.Errorf("failed to subscribe to candles: %w", err)
+		return 0, 0, false, nil, fmt.Errorf("failed to subscribe to candles: %w", err)
 	}
 	logger.Debugf("Batch %d chunk %d subscribed, sample=%s", batchNo, chunkNo, chunk[0])
 
@@ -152,6 +153,7 @@ func readChunk(
 
 	buf := make([]db.CandleStagingRow, 0, flushSize)
 	var inserted int64
+	var received int64
 
 	flush := func() error {
 		if len(buf) == 0 {
@@ -169,11 +171,14 @@ func readChunk(
 		return nil
 	}
 
-	alive, pending, err := client.ReadLoop(ctx, chunk, func(candle config.Candle) error {
+	alive, pending, err = client.ReadLoop(ctx, chunk, func(candle config.Candle) error {
 		serialNo, ok := symbolToSerial[candle.EventSymbol]
 		if !ok {
 			return nil
 		}
+
+		received++
+		receivedBySerial[serialNo]++
 
 		buf = append(buf, db.CandleStagingRow{
 			SerialNo: serialNo,
@@ -190,12 +195,12 @@ func readChunk(
 		err = flushErr
 	}
 	if err != nil {
-		return inserted, false, pending, err
+		return inserted, received, false, pending, err
 	}
 
 	if alive {
 		_ = client.UnsubscribeCandles(chunk)
 	}
 
-	return inserted, alive, pending, nil
+	return inserted, received, alive, pending, nil
 }

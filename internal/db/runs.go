@@ -139,30 +139,94 @@ func (db *DB) UpdateBatchStartTime(
 	return nil
 }
 
-func (db *DB) UpdateBatchEndTime(
+// UpdateBatchDownloadStats writes endTime plus total/new bar counts for a batch.
+// barCount is candles received from dxFeed; newBarCount is newly inserted rows.
+func (db *DB) UpdateBatchDownloadStats(
 	runNo int64,
 	batchNo int,
 	endTime string,
-	candleCount int64,
+	barCount int64,
+	newBarCount int64,
 ) error {
 	_, err := db.Exec(`
 		UPDATE batches
 		SET
 			endTime = ?,
-			candleCount = ?
+			barCount = ?,
+			newBarCount = ?
 		WHERE
 			runNo = ?
 			AND batchNo = ?
 	`,
 		endTime,
-		candleCount,
+		barCount,
+		newBarCount,
 		runNo,
 		batchNo,
 	)
 
 	if err != nil {
-		return fmt.Errorf("update batch end time: %w", err)
+		return fmt.Errorf("update batch download stats: %w", err)
 	}
 
+	return nil
+}
+
+// UpdateBatchContractDownloadStats sets total/new bars for one batch_contracts row.
+func (db *DB) UpdateBatchContractDownloadStats(
+	runNo int64,
+	batchNo int,
+	serialNo int64,
+	barCount int64,
+	newBarCount int64,
+) error {
+	_, err := db.Exec(`
+		UPDATE batch_contracts
+		SET
+			barCount = ?,
+			newBarCount = ?
+		WHERE
+			runNo = ?
+			AND batchNo = ?
+			AND serialNo = ?
+	`,
+		barCount,
+		newBarCount,
+		runNo,
+		batchNo,
+		serialNo,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"update batch_contracts download stats run=%d batch=%d serial=%d: %w",
+			runNo,
+			batchNo,
+			serialNo,
+			err,
+		)
+	}
+	return nil
+}
+
+// RefreshRunDownloadStats sets runs.barCount/newBarCount from the sum of batches.
+func (db *DB) RefreshRunDownloadStats(runNo int64) error {
+	_, err := db.Exec(`
+		UPDATE runs
+		SET
+			barCount = (
+				SELECT COALESCE(SUM(barCount), 0)
+				FROM batches
+				WHERE runNo = ?
+			),
+			newBarCount = (
+				SELECT COALESCE(SUM(newBarCount), 0)
+				FROM batches
+				WHERE runNo = ?
+			)
+		WHERE runNo = ?
+	`, runNo, runNo, runNo)
+	if err != nil {
+		return fmt.Errorf("refresh run download stats: %w", err)
+	}
 	return nil
 }
