@@ -30,6 +30,53 @@ func TestRecordContractFetch_AddsNewBars(t *testing.T) {
 	}
 }
 
+func TestRecordContractFetch_DownloadAttemptsByExpiry(t *testing.T) {
+	database := openDBTest(t)
+	mustExecDB(t, database, `
+		INSERT INTO contracts (
+			serialNo, underlying, expiry, type, strike,
+			firstSeenDate, lastDownloadedDate, barCount, downloadAttempts, archived
+		) VALUES
+			(1, 'A', '2026-12-01', 'call', 1, '2026-01-01', '2026-01-01', 0, 0, 0),
+			(2, 'A', '2026-08-14', 'call', 1, '2026-01-01', '2026-01-01', 0, 0, 0),
+			(3, 'A', '2026-08-01', 'call', 1, '2026-01-01', '2026-01-01', 0, 2, 0)
+	`)
+
+	fetchDate := time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)
+	for _, serial := range []int64{1, 2, 3} {
+		if err := database.RecordContractFetch(serial, 1, fetchDate); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var futureAttempts, todayAttempts, pastAttempts float64
+	var pastArchived int
+	if err := database.QueryRow(`SELECT downloadAttempts FROM contracts WHERE serialNo = 1`).Scan(&futureAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT downloadAttempts FROM contracts WHERE serialNo = 2`).Scan(&todayAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`
+		SELECT downloadAttempts, archived FROM contracts WHERE serialNo = 3
+	`).Scan(&pastAttempts, &pastArchived); err != nil {
+		t.Fatal(err)
+	}
+
+	if futureAttempts < 0.0009 || futureAttempts > 0.0011 {
+		t.Fatalf("future expiry attempts=%v want ~0.001", futureAttempts)
+	}
+	if todayAttempts != 1 {
+		t.Fatalf("current expiry attempts=%v want 1", todayAttempts)
+	}
+	if pastAttempts != 3 {
+		t.Fatalf("past expiry attempts=%v want 3", pastAttempts)
+	}
+	if pastArchived != 1 {
+		t.Fatal("past expiry with 3 attempts should be archived")
+	}
+}
+
 func TestDownloadBarCountStats(t *testing.T) {
 	database := openDBTest(t)
 	mustExecDB(t, database, `

@@ -10,7 +10,7 @@ type Contract struct {
 	Strike             float64
 	BarCount           int
 	LastDownloadedDate time.Time // zero if never downloaded
-	DownloadAttempts   int
+	DownloadAttempts   float64
 	Archived           bool
 }
 

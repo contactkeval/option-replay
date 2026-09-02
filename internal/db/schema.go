@@ -61,7 +61,7 @@ func ensureContractsTables(db *sql.DB) error {
 			firstSeenDate TEXT NOT NULL,
 			lastDownloadedDate TEXT,
 
-			downloadAttempts INTEGER NOT NULL DEFAULT 0,
+			downloadAttempts REAL NOT NULL DEFAULT 0,
 			barCount INTEGER NOT NULL DEFAULT 0,
 			archived INTEGER NOT NULL DEFAULT 0,
 

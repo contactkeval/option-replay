@@ -21,7 +21,8 @@
 //
 //  4. Merge, sort in Go, assign download groups of size < MaxGroupSize.
 //
-// Expired contracts are archived after DownloadAttempts reaches 3 (see db.RecordContractFetch).
+// Expired contracts are archived after downloadAttempts reaches 3 (see db.RecordContractFetch).
+// Future-dated contracts only add 0.001 per fetch so they are not archived quickly.
 package stage2_dxfeeddatadownloader
 
 import (

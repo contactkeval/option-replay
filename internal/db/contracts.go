@@ -183,19 +183,26 @@ func (db *DB) GetRunBatchCount(runNo int64) (int, error) {
 
 // RecordContractFetch updates bar metadata after a successful download.
 // newBars is added to contracts.barCount (should equal this batch's
-// batch_contracts.newBarCount for the serial). Expired contracts are archived
+// batch_contracts.newBarCount for the serial).
+//
+// downloadAttempts increases by 0.001 when expiry is still in the future, and
+// by 1 when expiry is today or already past. Expired contracts are archived
 // once downloadAttempts reaches 3.
 func (db *DB) RecordContractFetch(
 	serialNo int64,
 	newBars int,
 	fetchDate time.Time,
 ) error {
+	fetch := fetchDate.Format("2006-01-02")
 	_, err := db.Exec(`
 		UPDATE contracts
 		SET
 			barCount = barCount + ?,
 			lastDownloadedDate = ?,
-			downloadAttempts = downloadAttempts + 1,
+			downloadAttempts = downloadAttempts + CASE
+				WHEN expiry > date(?) THEN 0.001
+				ELSE 1
+			END,
 			archived = CASE
 				WHEN type != 'spot'
 					AND expiry < date(?)
@@ -206,8 +213,9 @@ func (db *DB) RecordContractFetch(
 		WHERE serialNo = ?
 	`,
 		newBars,
-		fetchDate.Format("2006-01-02"),
-		fetchDate.Format("2006-01-02"),
+		fetch,
+		fetch,
+		fetch,
 		serialNo,
 	)
 	if err != nil {
