@@ -127,23 +127,19 @@ func TestSelectContractsForFetch_SkipsNearExpiry(t *testing.T) {
 	}
 }
 
-func TestSelectExpiredContracts_GapFromBeforeYesterday(t *testing.T) {
+func TestSelectExpiredContracts_UnderFetchedThenGap(t *testing.T) {
 	database := openTestDB(t)
 	runDate := date(2026, 8, 6)
-	yesterday := date(2026, 8, 5)
 
-	for i := int64(1); i <= 25; i++ {
-		expiry := date(2026, 7, 15)
-		bar := int(i)
-		if i <= 3 {
-			expiry = yesterday
-			bar = int(4 - i)
-		}
-		insertContract(t, database, i, "A", expiry, bar, date(2026, 1, 1))
+	// 25 eligible expired → batchSize 5.
+	// Serials 1-3: already fetched after expiry (attempts >= 1).
+	// Serials 4-25: under-fetched (attempts 0).
+	for i := int64(1); i <= 3; i++ {
+		insertContractWithAttempts(t, database, i, "A", date(2026, 8, 5), int(10-i), date(2026, 1, 1), 1)
 	}
-	insertContract(t, database, 90, "A", date(2026, 6, 1), 5, date(2026, 1, 1))
-	insertContract(t, database, 91, "A", date(2026, 7, 1), 1000, date(2026, 1, 1))
-	insertContract(t, database, 99, "A", runDate, 9999, date(2026, 1, 1)) // today — not in gap
+	for i := int64(4); i <= 25; i++ {
+		insertContract(t, database, i, "A", date(2026, 7, 15), int(i), date(2026, 1, 1))
+	}
 
 	selected, err := selectExpiredContracts(database, runDate)
 	if err != nil {
@@ -153,35 +149,64 @@ func TestSelectExpiredContracts_GapFromBeforeYesterday(t *testing.T) {
 		t.Fatalf("expected batch size 5, got %d", len(selected))
 	}
 
-	wantYesterday := []int64{3, 2, 1}
-	for i, serial := range wantYesterday {
-		if selected[i].SerialNo != serial {
-			t.Fatalf("pos %d: want yesterday serial %d, got %d", i, serial, selected[i].SerialNo)
+	// First fill: under-fetched lowest barCount → serials 4..8.
+	for i, want := range []int64{4, 5, 6, 7, 8} {
+		if selected[i].SerialNo != want {
+			t.Fatalf("pos %d: want under-fetched serial %d, got %d", i, want, selected[i].SerialNo)
 		}
-	}
-	if selected[3].SerialNo != 90 {
-		t.Fatalf("expected oldest-expiry gap serial 90, got %d", selected[3].SerialNo)
-	}
-	if selected[4].SerialNo != 91 {
-		t.Fatalf("expected highest-bar gap serial 91, got %d", selected[4].SerialNo)
 	}
 }
 
-func TestSelectFarExpiryContracts_ThreeCategoriesWithFetchWindow(t *testing.T) {
+func TestSelectExpiredContracts_GapOldestFetchThenHighestAfterMax(t *testing.T) {
 	database := openTestDB(t)
 	runDate := date(2026, 8, 6)
-	staleCutoff := runDate.AddDate(0, 0, -StaleFetchDays)
 
-	insertContract(t, database, 1, "A", date(2026, 12, 1), 50, date(2026, 6, 1))
-	insertContract(t, database, 2, "A", date(2026, 12, 1), 40, date(2026, 6, 1))
-	insertContract(t, database, 3, "A", date(2026, 12, 1), 100, date(2026, 7, 1))
-	insertContract(t, database, 4, "A", date(2026, 12, 1), 10, date(2026, 7, 10))
-	insertContract(t, database, 5, "A", date(2026, 12, 1), 20, date(2026, 7, 10))
-	insertContract(t, database, 6, "A", date(2026, 12, 1), 30, date(2026, 6, 1))
-	insertContract(t, database, 7, "A", date(2026, 12, 1), 500, date(2026, 8, 1)) // recent
-	for i := int64(8); i <= 45; i++ {
-		insertContract(t, database, i, "A", date(2026, 12, 1), 1, date(2026, 8, 1))
+	// 25 eligible expired, only 2 under-fetched → remaining 3 from gap.
+	for i := int64(1); i <= 23; i++ {
+		insertContractWithAttempts(t, database, i, "A", date(2026, 7, 15), int(i), date(2026, 7, 1), 1)
 	}
+	insertContract(t, database, 24, "A", date(2026, 7, 15), 1, date(2026, 1, 1))
+	insertContract(t, database, 25, "A", date(2026, 7, 15), 2, date(2026, 1, 1))
+	// Oldest lastFetch among attempts>=1: serial 90 on 2026-06-01.
+	insertContractWithAttempts(t, database, 90, "A", date(2026, 6, 1), 5, date(2026, 6, 1), 1)
+	// Highest bar with expiry < T-1 and lastFetch > 2026-06-01.
+	insertContractWithAttempts(t, database, 91, "A", date(2026, 7, 1), 1000, date(2026, 7, 10), 1)
+
+	selected, err := selectExpiredContracts(database, runDate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selected) != 5 {
+		t.Fatalf("expected batch size 5, got %d", len(selected))
+	}
+	if selected[0].SerialNo != 24 || selected[1].SerialNo != 25 {
+		t.Fatalf("want under-fetched 24,25 first, got %d,%d", selected[0].SerialNo, selected[1].SerialNo)
+	}
+	if selected[2].SerialNo != 90 {
+		t.Fatalf("expected oldest-lastFetch serial 90, got %d", selected[2].SerialNo)
+	}
+	if selected[3].SerialNo != 91 {
+		t.Fatalf("expected highest-bar after maxFetch serial 91, got %d", selected[3].SerialNo)
+	}
+}
+
+func TestSelectFarExpiryContracts_NeverDownloadedThenOldestAndHighest(t *testing.T) {
+	database := openTestDB(t)
+	runDate := date(2026, 8, 6)
+
+	// 15 stale far → available=15, batchSize 3.
+	// lastFetch must be older than runDate-15d (before 2026-07-22).
+	insertContract(t, database, 1, "A", date(2026, 12, 1), 50, date(2026, 6, 1)) // attempts 0
+	insertContractWithAttempts(t, database, 2, "A", date(2026, 12, 1), 40, date(2026, 6, 1), 0.002)
+	insertContractWithAttempts(t, database, 3, "A", date(2026, 12, 1), 100, date(2026, 7, 1), 0.002)
+	insertContractWithAttempts(t, database, 4, "A", date(2026, 12, 1), 10, date(2026, 7, 10), 0.002)
+	insertContractWithAttempts(t, database, 5, "A", date(2026, 12, 1), 200, date(2026, 7, 10), 0.002)
+	insertContractWithAttempts(t, database, 6, "A", date(2026, 12, 1), 30, date(2026, 6, 2), 0.002)
+	for i := int64(7); i <= 15; i++ {
+		insertContractWithAttempts(t, database, i, "A", date(2026, 12, 1), 1, date(2026, 7, 1), 0.001)
+	}
+	// Fresh fetch within 15 days — must not count toward available pool.
+	insertContractWithAttempts(t, database, 99, "A", date(2026, 12, 1), 999, date(2026, 8, 1), 0.001)
 
 	selected, err := selectFarExpiryContracts(database, runDate)
 	if err != nil {
@@ -191,52 +216,72 @@ func TestSelectFarExpiryContracts_ThreeCategoriesWithFetchWindow(t *testing.T) {
 		t.Fatalf("expected batch size 3, got %d", len(selected))
 	}
 	if selected[0].SerialNo != 1 {
-		t.Fatalf("cat1: want serial 1, got %d", selected[0].SerialNo)
+		t.Fatalf("never-downloaded: want serial 1, got %d", selected[0].SerialNo)
 	}
-	if selected[1].SerialNo != 3 {
-		t.Fatalf("cat2: want serial 3, got %d", selected[1].SerialNo)
+	if selected[1].SerialNo != 2 {
+		t.Fatalf("oldest fetch: want serial 2, got %d", selected[1].SerialNo)
 	}
-	if selected[2].SerialNo != 4 {
-		t.Fatalf("cat3: want serial 4, got %d", selected[2].SerialNo)
+	if selected[2].SerialNo != 5 {
+		t.Fatalf("highest bar after max: want serial 5, got %d", selected[2].SerialNo)
 	}
-
 	for _, c := range selected {
-		if c.SerialNo == 6 {
-			t.Fatal("serial 6 shares cat1 max lastFetch and must not fill cat 2/3")
-		}
-		if c.SerialNo == 7 {
-			t.Fatal("recently fetched must not be selected")
-		}
-		if !c.LastDownloadedDate.IsZero() && !c.LastDownloadedDate.Before(staleCutoff) {
-			t.Fatalf("serial %d lastFetch not before stale cutoff", c.SerialNo)
+		if c.SerialNo == 99 {
+			t.Fatal("fresh lastDownload within 15 days must not be selected")
 		}
 	}
 }
 
-func TestSelectFarExpiryContracts_NeverFetchedIsStale(t *testing.T) {
+func TestSelectFarExpiryContracts_NeverFetchedFirst(t *testing.T) {
 	database := openTestDB(t)
 	runDate := date(2026, 8, 6)
 
-	// Insert with NULL lastDownloadedDate by raw SQL (bypass insert helper seed).
 	mustExec(t, database, `
 		INSERT INTO contracts (
 			serialNo, underlying, expiry, type, strike,
-			firstSeenDate, lastDownloadedDate, barCount, archived
-		) VALUES (1, 'A', '2026-12-01', 'call', 100, '2026-01-01', NULL, 10, 0)
+			firstSeenDate, lastDownloadedDate, barCount, downloadAttempts, archived
+		) VALUES (1, 'A', '2026-12-01', 'call', 100, '2026-01-01', NULL, 10, 0, 0)
 	`)
 	for i := int64(2); i <= 30; i++ {
-		insertContract(t, database, i, "A", date(2026, 12, 1), int(i), date(2026, 8, 1))
+		insertContractWithAttempts(t, database, i, "A", date(2026, 12, 1), int(i), date(2026, 7, 1), 0.001)
 	}
 
 	selected, err := selectFarExpiryContracts(database, runDate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(selected) != 1 {
-		t.Fatalf("expected 1 stale selection, got %d", len(selected))
+	if len(selected) < 1 || selected[0].SerialNo != 1 {
+		t.Fatalf("never-fetched contract should be selected first, got %v", selected)
 	}
-	if selected[0].SerialNo != 1 {
-		t.Fatal("never-fetched contract should be eligible for far bucket")
+}
+
+func TestGetContractsForRun_ArchivesHighAttempts(t *testing.T) {
+	database := openTestDB(t)
+	config.AllowedUnderlyings = map[string]struct{}{"SPY": {}}
+	t.Cleanup(func() { config.AllowedUnderlyings = map[string]struct{}{} })
+
+	insertContractWithAttempts(t, database, 1, "A", date(2026, 7, 1), 10, date(2026, 1, 1), 3)
+	for i := int64(2); i <= 25; i++ {
+		insertContract(t, database, i, "A", date(2026, 7, 1), int(i), date(2026, 1, 1))
+	}
+	for i := int64(100); i < 160; i++ {
+		insertContract(t, database, i, "Y", date(2026, 12, 1), int(i), date(2026, 1, 1))
+	}
+
+	selected, err := GetContractsForRun(database, date(2026, 8, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range selected {
+		if c.SerialNo == 1 {
+			t.Fatal("downloadAttempts >= 3 should be archived and not selected")
+		}
+	}
+	var archived int
+	if err := database.QueryRow(`SELECT archived FROM contracts WHERE serialNo = 1`).Scan(&archived); err != nil {
+		t.Fatal(err)
+	}
+	if archived != 1 {
+		t.Fatal("expected serial 1 archived")
 	}
 }
 
@@ -315,11 +360,25 @@ func insertContract(
 	lastFetch time.Time,
 ) {
 	t.Helper()
+	insertContractWithAttempts(t, database, serial, underlying, expiry, barCount, lastFetch, 0)
+}
+
+func insertContractWithAttempts(
+	t *testing.T,
+	database *db.DB,
+	serial int64,
+	underlying string,
+	expiry time.Time,
+	barCount int,
+	lastFetch time.Time,
+	downloadAttempts float64,
+) {
+	t.Helper()
 	mustExec(t, database, `
 		INSERT INTO contracts (
 			serialNo, underlying, expiry, type, strike,
-			firstSeenDate, lastDownloadedDate, barCount, archived
-		) VALUES (?, ?, ?, 'call', ?, ?, ?, ?, 0)
+			firstSeenDate, lastDownloadedDate, barCount, downloadAttempts, archived
+		) VALUES (?, ?, ?, 'call', ?, ?, ?, ?, ?, 0)
 	`,
 		serial,
 		underlying,
@@ -328,6 +387,7 @@ func insertContract(
 		"2026-01-01",
 		lastFetch.Format("2006-01-02"),
 		barCount,
+		downloadAttempts,
 	)
 }
 

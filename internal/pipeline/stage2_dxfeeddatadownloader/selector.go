@@ -4,24 +4,32 @@
 // Heavy filtering/ranking is done in SQL (see db/selection.go); Go only
 // orchestrates multi-step rules and merges the ranked slices:
 //
-//  1. Pools by expiry relative to run date (SQL counts + WHERE clauses):
-//     - expired:      expiry < today
+//  1. Archive any contract with downloadAttempts >= 3.
+//
+//  2. Pools by expiry relative to run date (eligible = not archived,
+//     downloadAttempts < 3, not spot):
+//     - expired:      expiry < today          (batch size = count/5)
 //     - near expiry:  today <= expiry <= today+1 month  (never fetched)
-//     - far expiry:   expiry > today+1 month
+//     - far expiry:   expiry > today+1 month, last fetch older than 15 days
+//       (batch size = availableCount/5)
 //
-//  2. Expired batch (size = expiredCount/5):
-//     - SQL: yesterday expiries ORDER BY barCount ASC LIMIT n
-//     - Gap from expiry < yesterday:
-//     oldest-expiry slice, then highest-bar slice in the date band
-//     (maxOldestExpiry+1 … yesterday-1)
+//  3. Expired selection:
+//     - downloadAttempts < 1
+//     - remaining slots split equally:
+//     oldest lastDownloadedDate (record max), then highest barCount with
+//     expiry < T-1 and lastDownloadedDate > that max
 //
-//  3. Far batch (size = farCount/15) from stale lastFetch:
-//     - SQL: oldest lastFetch slice; record max lastFetch
-//     - SQL: highest / least bar slices with lastFetch after that max
+//  4. Far selection:
+//     - downloadAttempts = 0
+//     - remaining slots split equally:
+//     oldest lastDownloadedDate (record max), then highest barCount with
+//     lastDownloadedDate > that max
 //
-//  4. Merge, sort in Go, assign download groups of size < MaxGroupSize.
+//  5. Merge, sort in Go, assign download groups of size < MaxGroupSize.
 //
-// Expired contracts are archived after downloadAttempts reaches 3 (see db.RecordContractFetch).
+// Later slices do not need serialNo exclude lists: attempt thresholds and
+// lastDownloadedDate > max naturally partition the pools.
+//
 // Future-dated contracts only add 0.001 per fetch so they are not archived quickly.
 package stage2_dxfeeddatadownloader
 
@@ -60,8 +68,8 @@ const DownloadWaves = 3
 // for the next set of batches.
 const WaveCooldown = 10 * time.Minute
 
-// StaleFetchDays is how old lastFetchDate must be for far-expiry eligibility.
-const StaleFetchDays = 15
+// ArchiveDownloadAttempts archives contracts once downloadAttempts reaches this.
+const ArchiveDownloadAttempts = 3
 
 // SpotFreshnessProbe is the underlying used to decide whether spot minutes
 // need a full refresh for all allowed underlyings.
@@ -92,14 +100,14 @@ func SelectContractsForFetch(
 	return append(expired, far...), nil
 }
 
-// selectExpiredContracts builds the expired fetch batch via SQL ranked slices.
+// selectExpiredContracts builds the expired fetch batch.
 //
-// Batch size is expiredCount/5. Selection order:
-//  1. Contracts that expired yesterday, ordered by barCount ascending.
-//  2. If slots remain, split the remainder in half:
-//     a. oldest expiry (expiry < yesterday), barCount descending
-//     b. highest barCount in the date band after (a)'s max expiry through
-//     yesterday-1 (inclusive) — date-band partitioning, no serial excludes
+// Available pool: expiry < runDate, archived = 0, downloadAttempts < 3.
+// Batch size is poolSize/5. Selection:
+//  1. downloadAttempts < 1
+//  2. remaining slots split equally:
+//     a. oldest lastDownloadedDate among attempts >= 1 (record max date)
+//     b. highest barCount with expiry < T-1 and lastDownloadedDate > that max
 func selectExpiredContracts(
 	database *db.DB,
 	runDate time.Time,
@@ -112,33 +120,26 @@ func selectExpiredContracts(
 	batchSize := expiredTotal / 5
 	if batchSize <= 0 {
 		logger.Infof(
-			"expired selection: total=%d previousDay=0 batchSize=0 (skipped)",
+			"expired selection: total=%d batchSize=0 (skipped)",
 			expiredTotal,
 		)
 		return nil, nil
 	}
 
-	yesterday := runDate.AddDate(0, 0, -1)
+	tMinus1 := runDate.AddDate(0, 0, -1)
 
-	previousDayTotal, err := database.CountExpiredOnDate(yesterday)
-	if err != nil {
-		return nil, fmt.Errorf("count previous day expired: %w", err)
-	}
-
-	previousDay, err := database.SelectExpiredPreviousDay(yesterday, batchSize)
+	underFetched, err := database.SelectExpiredUnderFetched(runDate, batchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	selected := append([]db.Contract(nil), previousDay...)
-
+	selected := append([]db.Contract(nil), underFetched...)
 	remaining := batchSize - len(selected)
 	if remaining <= 0 {
 		logger.Infof(
-			"expired selection: total=%d previousDay=%d selectedPreviousDay=%d batchSize=%d gap=none minBarCount=%d",
+			"expired selection: total=%d selectedUnderFetched=%d batchSize=%d gap=none minBarCount=%d",
 			expiredTotal,
-			previousDayTotal,
-			len(previousDay),
+			len(underFetched),
 			batchSize,
 			minBarCount(selected),
 		)
@@ -148,19 +149,21 @@ func selectExpiredContracts(
 	half := remaining / 2
 	other := remaining - half
 
-	oldest, err := database.SelectExpiredOldestExpiry(yesterday, half)
+	oldestFetch, err := database.SelectExpiredOldestLastFetch(runDate, half)
 	if err != nil {
 		return nil, err
 	}
-	selected = append(selected, oldest...)
-	maxExpiry := maxExpiryDate(oldest)
+	selected = append(selected, oldestFetch...)
+	maxLastFetch := maxLastFetchDate(oldestFetch)
 
 	var highest []db.Contract
-	if !maxExpiry.IsZero() {
-		// Date band: day after oldest-slice max … day before yesterday.
-		bandFrom := maxExpiry.AddDate(0, 0, 1)
-		bandTo := yesterday.AddDate(0, 0, -1)
-		highest, err = database.SelectExpiredHighestBar(bandFrom, bandTo, other)
+	if !maxLastFetch.IsZero() {
+		highest, err = database.SelectExpiredHighestBarAfterFetch(
+			runDate,
+			tMinus1,
+			maxLastFetch,
+			other,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -168,13 +171,12 @@ func selectExpiredContracts(
 	}
 
 	logger.Infof(
-		"expired selection: total=%d previousDay=%d selectedPreviousDay=%d batchSize=%d gapMaxExpiry=%s selectedByOldestExpiry=%d selectedByHighestBar=%d minBarCount=%d",
+		"expired selection: total=%d selectedUnderFetched=%d batchSize=%d maxLastFetch=%s selectedByOldestFetch=%d selectedByHighestBar=%d minBarCount=%d",
 		expiredTotal,
-		previousDayTotal,
-		len(previousDay),
+		len(underFetched),
 		batchSize,
-		formatDateOrDash(maxExpiry),
-		len(oldest),
+		formatDateOrDash(maxLastFetch),
+		len(oldestFetch),
 		len(highest),
 		minBarCount(selected),
 	)
@@ -182,84 +184,82 @@ func selectExpiredContracts(
 	return selected, nil
 }
 
-// selectFarExpiryContracts builds the far-expiry fetch batch via SQL ranked slices.
+// selectFarExpiryContracts builds the far-expiry fetch batch.
 //
-// Batch size is farCount/15. Only stale lastFetch rows are eligible. The batch is
-// split into three parts (remainder distributed to earlier parts):
-//  1. lastFetch ascending, barCount descending; record max lastFetch among picks
-//  2. highest barCount where lastFetch is after that max and still stale
-//  3. least barCount (lastFetch ascending) from the same remaining window
+// Available pool: expiry > runDate+1 month, archived = 0, downloadAttempts < 3,
+// and lastDownloadedDate missing or older than FarStaleFetchDays.
+// Batch size is poolSize/5. Selection:
+//  1. downloadAttempts = 0
+//  2. remaining slots split equally:
+//     a. oldest lastDownloadedDate among attempts > 0 (record max date)
+//     b. highest barCount with lastDownloadedDate > that max
 func selectFarExpiryContracts(
 	database *db.DB,
 	runDate time.Time,
 ) ([]db.Contract, error) {
-	farTotal, err := database.CountFarExpiryContracts(runDate)
+	farTotal, err := database.CountFarExpiryAvailableContracts(runDate)
 	if err != nil {
-		return nil, fmt.Errorf("count far: %w", err)
+		return nil, fmt.Errorf("count far available: %w", err)
 	}
 
-	batchSize := farTotal / 15
+	batchSize := farTotal / 5
 	if batchSize <= 0 {
 		logger.Infof(
-			"far selection: far=%d batchSize=0 (skipped)",
+			"far selection: available=%d batchSize=0 (skipped)",
 			farTotal,
 		)
 		return nil, nil
 	}
 
-	staleBefore := runDate.AddDate(0, 0, -StaleFetchDays)
-
-	part := batchSize / 3
-	rem := batchSize % 3
-	parts := [3]int{part, part, part}
-	for i := 0; i < rem; i++ {
-		parts[i]++
-	}
-
-	cat1, err := database.SelectFarOldestFetch(runDate, staleBefore, parts[0])
+	neverDownloaded, err := database.SelectFarNeverDownloaded(runDate, batchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	maxLastFetch := maxLastFetchDate(cat1)
-	exclude := serialNos(cat1)
-
-	var cat2, cat3 []db.Contract
-	if !maxLastFetch.IsZero() {
-		cat2, err = database.SelectFarHighestBarAfterFetch(
-			runDate,
-			staleBefore,
-			maxLastFetch,
-			exclude,
-			parts[1],
+	selected := append([]db.Contract(nil), neverDownloaded...)
+	remaining := batchSize - len(selected)
+	if remaining <= 0 {
+		logger.Infof(
+			"far selection: available=%d batchSize=%d selectedNeverDownloaded=%d gap=none minBarCount=%d",
+			farTotal,
+			batchSize,
+			len(neverDownloaded),
+			minBarCount(selected),
 		)
-		if err != nil {
-			return nil, err
-		}
-		exclude = append(exclude, serialNos(cat2)...)
-
-		cat3, err = database.SelectFarLeastBarAfterFetch(
-			runDate,
-			staleBefore,
-			maxLastFetch,
-			exclude,
-			parts[2],
-		)
-		if err != nil {
-			return nil, err
-		}
+		return selected, nil
 	}
 
-	selected := append(append(cat1, cat2...), cat3...)
+	half := remaining / 2
+	other := remaining - half
+
+	oldestFetch, err := database.SelectFarOldestLastFetch(runDate, half)
+	if err != nil {
+		return nil, err
+	}
+	selected = append(selected, oldestFetch...)
+	maxLastFetch := maxLastFetchDate(oldestFetch)
+
+	var highest []db.Contract
+	if !maxLastFetch.IsZero() {
+		highest, err = database.SelectFarHighestBarAfterFetch(
+			runDate,
+			maxLastFetch,
+			other,
+		)
+		if err != nil {
+			return nil, err
+		}
+		selected = append(selected, highest...)
+	}
 
 	logger.Infof(
-		"far selection: far=%d batchSize=%d selectedByOldestFetch=%d maxLastFetch=%s selectedByHighestBar=%d selectedByLeastBar=%d minBarCount=%d",
+		"far selection: available=%d batchSize=%d selectedNeverDownloaded=%d maxLastFetch=%s selectedByOldestFetch=%d selectedByHighestBar=%d minBarCount=%d",
 		farTotal,
 		batchSize,
-		len(cat1),
+		len(neverDownloaded),
 		formatDateOrDash(maxLastFetch),
-		len(cat2),
-		len(cat3),
+		len(oldestFetch),
+		len(highest),
 		minBarCount(selected),
 	)
 
@@ -298,10 +298,23 @@ func GroupCount(selectedCount int) int {
 }
 
 // GetContractsForRun selects contracts for the given run date using SQL-backed
-// pool queries and ranked slices. When SPY spot bars in candle_staging are
-// missing or older than SpotFreshnessMaxAge, all allowed underlyings are added
-// as spot contracts so dxFeed downloads them in the same run batches.
+// pool queries and ranked slices. Contracts with downloadAttempts >= 3 are
+// archived first. When SPY spot bars in candle_staging are missing or older
+// than SpotFreshnessMaxAge, all allowed underlyings are added as spot contracts
+// so dxFeed downloads them in the same run batches.
 func GetContractsForRun(database *db.DB, runDate time.Time) ([]db.Contract, error) {
+	archived, err := database.ArchiveContractsByDownloadAttempts(ArchiveDownloadAttempts)
+	if err != nil {
+		return nil, fmt.Errorf("archive by downloadAttempts: %w", err)
+	}
+	if archived > 0 {
+		logger.Infof(
+			"archived %d contracts with downloadAttempts >= %g",
+			archived,
+			float64(ArchiveDownloadAttempts),
+		)
+	}
+
 	selected, err := SelectContractsForFetch(database, runDate)
 	if err != nil {
 		return nil, err
@@ -378,15 +391,6 @@ func truncateDate(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// serialNos returns SerialNo values for exclude NOT IN clauses.
-func serialNos(contracts []db.Contract) []int64 {
-	out := make([]int64, len(contracts))
-	for i, c := range contracts {
-		out[i] = c.SerialNo
-	}
-	return out
-}
-
 // maxLastFetchDate returns the latest lastFetch among contracts.
 // Never-fetched contracts contribute a zero time.
 func maxLastFetchDate(contracts []db.Contract) time.Time {
@@ -398,18 +402,6 @@ func maxLastFetchDate(contracts []db.Contract) time.Time {
 		lf := truncateDate(c.LastDownloadedDate)
 		if lf.After(max) {
 			max = lf
-		}
-	}
-	return max
-}
-
-// maxExpiryDate returns the latest expiry among contracts.
-func maxExpiryDate(contracts []db.Contract) time.Time {
-	var max time.Time
-	for _, c := range contracts {
-		exp := truncateDate(c.Expiry)
-		if exp.After(max) {
-			max = exp
 		}
 	}
 	return max
