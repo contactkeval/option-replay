@@ -32,6 +32,7 @@ type Config struct {
 	Strategy    st.StrategySpec `json:"strategy"`   // The option structure (e.g., Iron Condor)
 	Exit        ExitSpec        `json:"exit"`       // Rules governing when to close trades
 	ReportDir   string          `json:"report_dir"`
+	ReportRunID string          `json:"-"` // YYYYMMDD + 5-digit sequence shared by trades files and data folder
 	FullReport  bool            `json:"full_report,omitempty"`
 	ExtraReport string          `json:"extra_report,omitempty"`
 	MaxTrades   int             `json:"max_trades,omitempty"`
@@ -57,16 +58,16 @@ type ExitSpec struct {
 // Trade represents the full history and state of a single strategy execution.
 type Trade struct {
 	ID                int           // Unique trade identifier
-	OpenDateTime      time.Time     // Entry timestamp
-	CloseDateTime     *time.Time    // Exit timestamp (nil if trade is open)
-	UnderlyingAtOpen  float64       // Stock price at entry
-	UnderlyingAtClose float64       // Stock price at exit
-	Legs              []st.TradeLeg // The individual option contracts involved
-	OpenPremium       float64       // Net premium at entry (negative for debit, positive for credit)
-	ClosePremium      float64       // Net premium at exit
-	HighPremium       float64       // Maximum observed premium during trade life
-	LowPremium        float64       // Minimum observed premium during trade life
-	ClosedBy          string        // Label of the rule that triggered the exit
+	OpenDateTime      time.Time     `json:"open_time"`
+	CloseDateTime     *time.Time    `json:"close_time"`
+	UnderlyingAtOpen  float64       `json:"open_underlying"`
+	UnderlyingAtClose float64       `json:"close_underlying"`
+	Legs              []st.TradeLeg `json:"legs"`
+	OpenPremium       float64       `json:"open_premium"`
+	ClosePremium      float64       `json:"close_premium"`
+	HighPremium       float64       `json:"strategy_high"`
+	LowPremium        float64       `json:"strategy_low"`
+	ClosedBy          string        `json:"closed_by"`
 }
 
 // Result contains the collection of all trades generated during a backtest session.
@@ -90,10 +91,11 @@ const (
 	VerbosityDebug        // 3 - Logic flow (Why a specific exit was triggered)
 	VerbosityTrace        // 4 - Minute-by-minute price data/granular math
 
-	CloseByDTE        = "ExitByDaysToExpiry"
-	CloseByMaxDays    = "ExitByMaxDaysInTrade"
-	CloseByUnderlying = "ExitByUnderlyingMovePx"
-	CloseByPnL        = "ExitByOptionPriceChange"
+	CloseByDTE         = "ExitByDaysToExpiry"
+	CloseByMaxDays     = "ExitByMaxDaysInTrade"
+	CloseByUnderlying  = "ExitByUnderlyingMovePx"
+	CloseByPnL         = "ExitByOptionPriceChange"
+	CloseByEntryFailed = "EntryFailed"
 
 	multiplierOne  = 1
 	timespanDay    = "day"
@@ -165,15 +167,30 @@ func (e *Engine) executeBacktest(
 			continue
 		}
 
+		spot := spotPriceAt(e.dataProv, e.cfg.Underlying, entryDate, bar.Close)
+		if spot != bar.Close {
+			logger.Debugf("[%s] ATM spot at entry=%.2f daily_close=%.2f", entryDateStr, spot, bar.Close)
+		}
+
 		// Plan Strategy Legs
-		legs, err := st.PlanStrategy(&e.cfg.Strategy, entryDate, e.cfg.Underlying, bar.Close, expiryList, e.dataProv)
+		legs, err := st.PlanStrategy(&e.cfg.Strategy, entryDate, e.cfg.Underlying, spot, expiryList, e.dataProv)
 		if err != nil {
 			logger.Warnf("[%s] Entry Failed: Could not plan strategy legs: %v", entryDateStr, err)
+			trade := Trade{
+				ID:               i + 1,
+				OpenDateTime:     entryDate,
+				UnderlyingAtOpen: spot,
+				ClosedBy:         CloseByEntryFailed,
+			}
+			if e.cfg.ExtraReport != "" {
+				writeCandidateMinData(trade, *e.cfg)
+			}
+			trades = append(trades, trade)
 			continue
 		}
 
-		trade := e.openTrade(i+1, entryDate, bar.Close, legs, histVol)
-		logger.Infof("[%s] OPEN Trade #%d | Spot: %.2f | Net Prem: %.2f", entryDateStr, trade.ID, bar.Close, trade.OpenPremium)
+		trade := e.openTrade(i+1, entryDate, spot, legs, histVol)
+		logger.Infof("[%s] OPEN Trade #%d | Spot: %.2f | Net Prem: %.2f", entryDateStr, trade.ID, spot, trade.OpenPremium)
 
 		// Simulate Lifecycle (Exit logic)
 		simulatedCloseTrade(&trade, dailyBars, *e.cfg, e.dataProv)
@@ -282,7 +299,8 @@ func exitByPriceChange(
 	cfg Config,
 	dataProv data.Provider,
 ) {
-	underlyingBars, err := dataProv.GetBars(cfg.Underlying, trade.OpenDateTime, *closeByDateTime, multiplierOne, timespanMinute)
+	openTime := trade.OpenDateTime
+	underlyingBars, err := dataProv.GetBars(cfg.Underlying, openTime, *closeByDateTime, multiplierOne, timespanMinute)
 	if err != nil {
 		logger.Errorf("Trade #%d: Data error fetching minute bars: %v", trade.ID, err)
 	}
@@ -296,9 +314,9 @@ func exitByPriceChange(
 		}
 	}
 
-	// Profit/Stop Target checks
+	var minuteData []MinuteRow
 	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
-		minuteData := fetchAndAlignLegData(trade, underlyingBars, *closeByDateTime, dataProv, cfg)
+		minuteData = fetchAndAlignLegData(trade, underlyingBars, *closeByDateTime, dataProv, cfg)
 		if scanOptionExits(trade, minuteData, closeByDateTime, cfg) {
 			logger.Debugf("Trade #%d: Exit triggered by PnL Target at %s", trade.ID, closeByDateTime.Format("2006-01-02 15:04"))
 			trade.ClosedBy = CloseByPnL
@@ -313,10 +331,20 @@ func exitByPriceChange(
 	if trade.ClosePremium == 0.0 {
 		trade.CloseDateTime = closeByDateTime
 		trade.ClosePremium = calculateFinalClosePremium(trade, *closeByDateTime, cfg, dataProv)
-		if trade.UnderlyingAtClose == 0 {
-			trade.UnderlyingAtClose = underlyingBars[len(underlyingBars)-1].Close // fallback to last known price
+		if trade.UnderlyingAtClose == 0 && len(underlyingBars) > 0 {
+			trade.UnderlyingAtClose = underlyingBars[len(underlyingBars)-1].Close
 		}
 	}
+
+	closeAt := *closeByDateTime
+	if trade.CloseDateTime != nil {
+		closeAt = *trade.CloseDateTime
+	}
+	if minuteData == nil && len(trade.Legs) > 0 {
+		minuteData = fetchAndAlignLegData(trade, underlyingBars, closeAt, dataProv, cfg)
+	}
+	recordStrategyPremiumRange(trade, minuteData, openTime, closeAt)
+	includeClosePremiumInRange(trade)
 }
 
 func ExtraReport(
@@ -326,18 +354,18 @@ func ExtraReport(
 	cfg Config,
 	dataProv data.Provider,
 ) {
-	closeByDateTime = closeByDateTime.Add(time.Minute * 40)         // Add buffer to ensure we capture the bar after exit trigger
-	trade.OpenDateTime = trade.OpenDateTime.Add(time.Minute * -400) // before entry extra report
-	minuteData := fetchAndAlignLegData(trade, underlyingBars, closeByDateTime, dataProv, cfg)
+	reportClose := closeByDateTime.Add(40 * time.Minute)
+	reportTrade := *trade
+	reportTrade.OpenDateTime = trade.OpenDateTime.Add(-400 * time.Minute)
+	minuteData := fetchAndAlignLegData(&reportTrade, underlyingBars, reportClose, dataProv, cfg)
 
-	// Step 1: Create directory ./out/data
-	dataDir := filepath.Join(cfg.ReportDir, "data")
+	dataDir := extraReportDataDir(cfg)
 	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 		logger.Errorf("could not create data dir %s: %v", dataDir, err)
 	}
 
-	// Step 2: Create file ./out/data/minData_trade.ID.csv
-	filePath := filepath.Join(dataDir, fmt.Sprintf("minData_%03d.csv", trade.ID))
+	// Step 2: Create file ./out/data/minData_NNNNN.csv
+	filePath := filepath.Join(dataDir, fmt.Sprintf("minData_%05d.csv", trade.ID))
 	file, err := os.Create(filePath)
 	if err != nil {
 		logger.Errorf("could not create file %s: %v", filePath, err)
@@ -373,9 +401,12 @@ func ExtraReport(
 		logger.Errorf("failed to write CSV header: %v", err)
 	}
 
+	reportLoc := extraReportLocation(cfg)
+
 	// Write data rows
 	for _, row := range minuteData {
-		record := []string{row.Timestamp.Format("2006-01-02 15:04"), fmt.Sprintf("%d", row.Timestamp.UnixMilli())}
+		ts := row.Timestamp.In(reportLoc)
+		record := []string{ts.Format("2006-01-02 15:04"), fmt.Sprintf("%d", ts.UnixMilli())}
 		for _, legBar := range row.LegBars[:len(row.LegBars)] {
 			record = append(record, "",
 				strconv.FormatFloat(legBar.Open, 'f', 2, 64),
@@ -388,6 +419,63 @@ func ExtraReport(
 		if err := writer.Write(record); err != nil {
 			logger.Errorf("failed to write CSV row: %v", err)
 		}
+	}
+}
+
+func extraReportDataDir(cfg Config) string {
+	dataDir := filepath.Join(cfg.ReportDir, "data")
+	if cfg.ReportRunID != "" {
+		dataDir = filepath.Join(cfg.ReportDir, "data_"+cfg.ReportRunID)
+	}
+	return dataDir
+}
+
+func extraReportLocation(cfg Config) *time.Location {
+	tzName := cfg.Entry.Timezone
+	if tzName == "" {
+		tzName = "America/New_York"
+	}
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		logger.Warnf("invalid entry timezone %q: %v; minData timestamps use UTC", tzName, err)
+		return time.UTC
+	}
+	return loc
+}
+
+// writeCandidateMinData records the scheduled entry date when option data is missing
+// so the candidate still appears in the minute-data folder.
+func writeCandidateMinData(trade Trade, cfg Config) {
+	dataDir := extraReportDataDir(cfg)
+	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
+		logger.Errorf("could not create data dir %s: %v", dataDir, err)
+		return
+	}
+
+	filePath := filepath.Join(dataDir, fmt.Sprintf("minData_%05d.csv", trade.ID))
+	file, err := os.Create(filePath)
+	if err != nil {
+		logger.Errorf("could not create file %s: %v", filePath, err)
+		return
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	if err := writer.Write([]string{"Timestamp", ""}); err != nil {
+		logger.Errorf("failed to write CSV header: %v", err)
+		return
+	}
+
+	loc := extraReportLocation(cfg)
+	ts := trade.OpenDateTime.In(loc)
+	if err := writer.Write([]string{ts.Format("2006-01-02 15:04"), fmt.Sprintf("%d", ts.UnixMilli())}); err != nil {
+		logger.Errorf("failed to write CSV row: %v", err)
+		return
+	}
+	if err := writer.Write([]string{ts.Format("2006-01-02")}); err != nil {
+		logger.Errorf("failed to write CSV date row: %v", err)
 	}
 }
 
@@ -425,9 +513,9 @@ func scanOptionExits(
 				lastPrices[i] = row.LegBars[i].Close
 			}
 
-			// Calculate contribution to strategy premium
 			currentTotal += legSigns[i] * lastPrices[i] * float64(trade.Legs[i].Spec.Qty)
 		}
+		updatePremiumRange(trade, currentTotal)
 
 		// Check all exit conditions (Target, Stop Loss, etc.)
 		for _, validator := range validators {
@@ -453,6 +541,57 @@ func scanOptionExits(
 	}
 
 	return false
+}
+
+func recordStrategyPremiumRange(trade *Trade, minuteData []MinuteRow, from, to time.Time) {
+	if len(trade.Legs) == 0 || len(minuteData) == 0 {
+		return
+	}
+
+	legsCount := len(trade.Legs)
+	legSigns := make([]float64, legsCount)
+	lastPrices := make([]float64, legsCount)
+	for i, leg := range trade.Legs {
+		lastPrices[i] = leg.OpenPremium
+		legSigns[i] = 1.0
+		if strings.EqualFold(leg.Spec.Side, "sell") {
+			legSigns[i] = -1.0
+		}
+	}
+
+	for _, row := range minuteData {
+		if !from.IsZero() && row.Timestamp.Before(from) {
+			continue
+		}
+		if !to.IsZero() && row.Timestamp.After(to) {
+			break
+		}
+
+		currentTotal := 0.0
+		for i := 0; i < legsCount; i++ {
+			if i < len(row.LegBars) && !row.LegBars[i].Date.IsZero() {
+				lastPrices[i] = row.LegBars[i].Close
+			}
+			currentTotal += legSigns[i] * lastPrices[i] * float64(trade.Legs[i].Spec.Qty)
+		}
+		updatePremiumRange(trade, currentTotal)
+	}
+}
+
+func updatePremiumRange(trade *Trade, premium float64) {
+	if premium > trade.HighPremium {
+		trade.HighPremium = premium
+	}
+	if premium < trade.LowPremium {
+		trade.LowPremium = premium
+	}
+}
+
+func includeClosePremiumInRange(trade *Trade) {
+	if trade.ClosePremium == 0 && trade.ClosedBy == CloseByEntryFailed {
+		return
+	}
+	updatePremiumRange(trade, trade.ClosePremium)
 }
 
 // calculateFinalClosePremium determines the final value of the trade if no specific exit was triggered.

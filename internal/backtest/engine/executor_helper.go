@@ -58,10 +58,34 @@ func (e *Engine) initConfiguration() {
 // fetchDailyData retrieves daily underlying price bars for the duration of the backtest.
 func (e *Engine) fetchDailyData() ([]data.Bar, error) {
 	bars, err := e.dataProv.GetBars(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate, multiplierOne, timespanDay)
-	if err != nil || len(bars) == 0 {
+	if err != nil {
 		return nil, fmt.Errorf("underlying data unavailable: %w", err)
 	}
+	if len(bars) == 0 {
+		return nil, fmt.Errorf("underlying data unavailable: no bars for %s", e.cfg.Underlying)
+	}
 	return bars, nil
+}
+
+// spotPriceAt returns the underlying price at entry time from minute bars.
+// Daily bar close is only used when no minute bar is available around `at`.
+func spotPriceAt(dataProv data.Provider, symbol string, at time.Time, fallback float64) float64 {
+	if dataProv == nil || at.IsZero() {
+		return fallback
+	}
+
+	bars, err := dataProv.GetBars(symbol, at.Add(-5*time.Minute), at, multiplierOne, timespanMinute)
+	if err == nil && len(bars) > 0 {
+		return bars[len(bars)-1].Close
+	}
+
+	bars, err = dataProv.GetBars(symbol, at, at.Add(5*time.Minute), multiplierOne, timespanMinute)
+	if err == nil && len(bars) > 0 {
+		return bars[0].Open
+	}
+
+	logger.Debugf("no minute spot for %s at %s; using daily close %.2f", symbol, at.Format(time.RFC3339), fallback)
+	return fallback
 }
 
 // getOpeningPrice attempts a market lookup, falling back to Black-Scholes if data is missing.

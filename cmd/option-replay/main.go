@@ -67,24 +67,34 @@ func main() {
 // the results to JSON and CSV files in the configured report directory.
 // Errors during directory creation or file writing are logged as warnings
 // but do not stop execution. The total execution time is logged upon completion.
-func runBacktest(engine *engine.Engine, cfg *engine.Config) {
+func runBacktest(eng *engine.Engine, cfg *engine.Config) {
 	start := time.Now()
 
-	res, err := engine.Run()
+	if cfg.ReportDir == "" {
+		cfg.ReportDir = "./out"
+	}
+	if err := os.MkdirAll(cfg.ReportDir, 0750); err != nil {
+		logger.Errorf("could not create output dir %s: %v", cfg.ReportDir, err)
+	}
+
+	runID, err := report.NextRunID(cfg.ReportDir)
+	if err != nil {
+		logger.Warnf("could not allocate report run id: %v", err)
+		runID = time.Now().Format("20060102") + "00001"
+	}
+	cfg.ReportRunID = runID
+
+	res, err := eng.Run()
 	if err != nil {
 		logger.Errorf("backtest failed: %v", err)
 		return
 	}
 
-	if err := os.MkdirAll(cfg.ReportDir, 0750); err != nil {
-		logger.Errorf("could not create output dir %s: %v", cfg.ReportDir, err)
-	}
+	_ = report.WriteJSON(res, cfg.ReportDir, runID)
+	_ = report.WriteCSV(res.Trades, cfg.ReportDir, runID, cfg.Entry.Timezone)
 
-	_ = report.WriteJSON(res, cfg.ReportDir)
-	_ = report.WriteCSV(res.Trades, cfg.ReportDir)
-
-	logger.Infof("backtest completed in %v, results written to %s",
-		time.Since(start), cfg.ReportDir)
+	logger.Infof("backtest completed in %v, results written to %s (run %s)",
+		time.Since(start), cfg.ReportDir, runID)
 }
 
 // buildProvider creates and returns a data provider based on environment configuration.

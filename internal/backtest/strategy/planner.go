@@ -122,7 +122,13 @@ func PlanStrategy(
 	var err error
 
 	if len(strategy.Hints.StrikeIntervals) == 0 {
-		strategy.Hints.StrikeIntervals = dataProv.GetStrikeIntervals(underlying, expiryList[1]) // Get intervals for the first expiry as a fallback
+		expiryForIntervals := time.Time{}
+		if len(expiryList) > 1 {
+			expiryForIntervals = expiryList[1]
+		} else if len(expiryList) == 1 {
+			expiryForIntervals = expiryList[0]
+		}
+		strategy.Hints.StrikeIntervals = dataProv.GetStrikeIntervals(underlying, expiryForIntervals)
 		logger.Infof("strike intervals: %v", strategy.Hints.StrikeIntervals)
 	}
 

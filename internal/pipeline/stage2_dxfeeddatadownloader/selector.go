@@ -11,7 +11,7 @@
 //     - expired:      expiry < today          (batch size = count/5)
 //     - near expiry:  today <= expiry <= today+1 month  (never fetched)
 //     - far expiry:   expiry > today+1 month, last fetch older than 15 days
-//       (batch size = availableCount/5)
+//     (batch size = availableCount/5)
 //
 //  3. Expired selection:
 //     - downloadAttempts < 1
@@ -66,7 +66,7 @@ const DownloadWaves = 3
 
 // WaveCooldown is how long to wait after finishing a wave before reconnecting
 // for the next set of batches.
-const WaveCooldown = 10 * time.Minute
+const WaveCooldown = 3 * time.Minute
 
 // ArchiveDownloadAttempts archives contracts once downloadAttempts reaches this.
 const ArchiveDownloadAttempts = 3
