@@ -27,6 +27,46 @@ func normalizeUnderlying(symbol string) string {
 	return parts[len(parts)-1]
 }
 
+// parquetTickers returns metadata/directory names for an underlying.
+// Index roots are stored as both the cash ticker (SPX) and the option root (SPXW).
+func parquetTickers(symbol string) []string {
+	root := normalizeUnderlying(symbol)
+	if root == "" {
+		return nil
+	}
+
+	aliases := []string{root}
+	switch root {
+	case "SPX":
+		aliases = append(aliases, "SPXW")
+	case "SPXW":
+		aliases = append(aliases, "SPX")
+	case "NDX":
+		aliases = append(aliases, "NDXP")
+	case "NDXP":
+		aliases = append(aliases, "NDX")
+	case "RUT":
+		aliases = append(aliases, "RUTW")
+	case "RUTW":
+		aliases = append(aliases, "RUT")
+	case "VIX":
+		aliases = append(aliases, "VIXW")
+	case "VIXW":
+		aliases = append(aliases, "VIX")
+	}
+
+	seen := make(map[string]struct{}, len(aliases))
+	out := make([]string, 0, len(aliases))
+	for _, t := range aliases {
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	return out
+}
+
 func parseOptionSymbol(raw string) (config.ParsedTicker, error) {
 	if !strings.HasPrefix(raw, "O:") && !strings.HasPrefix(raw, "o:") {
 		return config.ParsedTicker{}, errors.New("invalid option ticker")

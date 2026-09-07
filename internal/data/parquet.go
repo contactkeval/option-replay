@@ -133,9 +133,9 @@ func (p *ParquetDataProvider) GetContracts(
 	}
 
 	seen := make(map[string]OptionContract)
-	err := p.scanRows(ticker, filter, func(row config.ParquetRow) error {
+	err := p.scanRowsAny(parquetTickers(underlying), filter, func(row config.ParquetRow) error {
 		expiry := util.DecodeExpiryDate(row.ExpiryDate)
-		if expiry.IsZero() {
+		if expiry.IsZero() || isSpotMetadataExpiry(expiry) {
 			return nil
 		}
 		if skipExpired(expiry, expired) {
@@ -190,13 +190,32 @@ func (p *ParquetDataProvider) GetBars(
 	multiplier int,
 	timespan string,
 ) ([]Bar, error) {
-	if !isOptionSymbol(symbol) {
-		if p.secondary != nil {
-			return p.secondary.GetBars(symbol, fromDate, toDate, multiplier, timespan)
-		}
-		return nil, fmt.Errorf("%w: %s", ErrNoDataFound, symbol)
+	var (
+		out []Bar
+		err error
+	)
+	if isOptionSymbol(symbol) {
+		out, err = p.getOptionBars(symbol, fromDate, toDate)
+	} else {
+		out, err = p.getUnderlyingBars(symbol, fromDate, toDate)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return p.fallbackGetBars(symbol, fromDate, toDate, multiplier, timespan)
 	}
 
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Date.Before(out[j].Date)
+	})
+	if strings.EqualFold(timespan, TimespanDay) {
+		out = aggregateDailyBars(out)
+	}
+	return out, nil
+}
+
+func (p *ParquetDataProvider) getOptionBars(symbol string, fromDate, toDate time.Time) ([]Bar, error) {
 	parsed, err := parseOptionSymbol(symbol)
 	if err != nil {
 		return nil, fmt.Errorf("parse option symbol %s: %w", symbol, err)
@@ -212,45 +231,70 @@ func (p *ParquetDataProvider) GetBars(
 	}
 
 	var out []Bar
-	err = p.scanRows(parsed.Underlying, filter, func(row config.ParquetRow) error {
-		ts := time.Unix(int64(row.WindowStart), 0).UTC()
-		if !fromDate.IsZero() && ts.Before(fromDate) {
-			return nil
-		}
-		if !toDate.IsZero() && ts.After(toDate) {
-			return nil
-		}
-		out = append(out, Bar{
-			Date:   ts,
-			Open:   util.PriceFromUint32(row.Open),
-			High:   util.PriceFromUint32(row.High),
-			Low:    util.PriceFromUint32(row.Low),
-			Close:  util.PriceFromUint32(row.Close),
-			Volume: float64(row.Volume),
-			Count:  row.Transactions,
-		})
+	err = p.scanRowsAny(parquetTickers(parsed.Underlying), filter, func(row config.ParquetRow) error {
+		appendParquetBar(&out, row, fromDate, toDate)
 		return nil
 	})
-	if err != nil {
-		return nil, err
+	return out, err
+}
+
+func (p *ParquetDataProvider) getUnderlyingBars(symbol string, fromDate, toDate time.Time) ([]Bar, error) {
+	filter := parquetFilter{
+		fromTime: fromDate,
+		toTime:   toDate,
 	}
 
-	if len(out) == 0 {
-		if p.secondary != nil {
-			return p.secondary.GetBars(symbol, fromDate, toDate, multiplier, timespan)
+	var out []Bar
+	for _, ticker := range parquetTickers(symbol) {
+		sources, err := p.spotSources(ticker)
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("%w: %s", ErrNoDataFound, symbol)
+		for _, src := range sources {
+			if err := p.scanParquetFile(src, filter, func(row config.ParquetRow) error {
+				appendParquetBar(&out, row, fromDate, toDate)
+				return nil
+			}); err != nil {
+				return nil, err
+			}
+		}
+		if len(out) > 0 {
+			logger.Debugf("parquet spot bars ticker=%s count=%d", ticker, len(out))
+			return out, nil
+		}
 	}
-
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Date.Before(out[j].Date)
-	})
-
-	if strings.EqualFold(timespan, TimespanDay) {
-		out = aggregateDailyBars(out)
-	}
-
 	return out, nil
+}
+
+func (p *ParquetDataProvider) fallbackGetBars(
+	symbol string,
+	fromDate, toDate time.Time,
+	multiplier int,
+	timespan string,
+) ([]Bar, error) {
+	if p.secondary != nil {
+		return p.secondary.GetBars(symbol, fromDate, toDate, multiplier, timespan)
+	}
+	return nil, fmt.Errorf("%w: %s", ErrNoDataFound, symbol)
+}
+
+func appendParquetBar(out *[]Bar, row config.ParquetRow, fromDate, toDate time.Time) {
+	ts := time.Unix(int64(row.WindowStart), 0).UTC()
+	if !fromDate.IsZero() && ts.Before(fromDate) {
+		return
+	}
+	if !toDate.IsZero() && ts.After(toDate) {
+		return
+	}
+	*out = append(*out, Bar{
+		Date:   ts,
+		Open:   util.PriceFromUint32(row.Open),
+		High:   util.PriceFromUint32(row.High),
+		Low:    util.PriceFromUint32(row.Low),
+		Close:  util.PriceFromUint32(row.Close),
+		Volume: float64(row.Volume),
+		Count:  row.Transactions,
+	})
 }
 
 func (p *ParquetDataProvider) GetOptionPrice(
@@ -288,18 +332,36 @@ func (p *ParquetDataProvider) GetRelevantExpiries(
 	underlying string,
 	fromDate, toDate time.Time,
 ) ([]time.Time, error) {
-	ticker := normalizeUnderlying(underlying)
-	expiries, err := p.metadata.ListTickerExpiries(ticker, fromDate, toDate)
-	if err != nil {
-		return nil, err
+	seen := make(map[string]time.Time)
+	for _, ticker := range parquetTickers(underlying) {
+		expiries, err := p.metadata.ListTickerExpiries(ticker, fromDate, toDate)
+		if err != nil {
+			return nil, err
+		}
+		for _, expiry := range expiries {
+			if isSpotMetadataExpiry(expiry) {
+				continue
+			}
+			key := expiry.UTC().Format("2006-01-02")
+			seen[key] = expiry
+		}
 	}
-	if len(expiries) == 0 {
+
+	if len(seen) == 0 {
 		if p.secondary != nil {
 			return p.secondary.GetRelevantExpiries(underlying, fromDate, toDate)
 		}
-		return nil, fmt.Errorf("%w: %s", ErrNoDataFound, ticker)
+		return nil, fmt.Errorf("%w: %s", ErrNoDataFound, normalizeUnderlying(underlying))
 	}
-	return expiries, nil
+
+	out := make([]time.Time, 0, len(seen))
+	for _, expiry := range seen {
+		out = append(out, expiry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Before(out[j])
+	})
+	return out, nil
 }
 
 func (p *ParquetDataProvider) RoundToNearestStrike(
@@ -372,6 +434,59 @@ func (p *ParquetDataProvider) GetStrikeIntervals(underlying string, expiryDate t
 	}
 	sort.Float64s(intervalList)
 	return intervalList
+}
+
+func (p *ParquetDataProvider) scanRowsAny(
+	tickers []string,
+	filter parquetFilter,
+	fn func(config.ParquetRow) error,
+) error {
+	for _, ticker := range tickers {
+		if err := p.scanRows(ticker, filter, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *ParquetDataProvider) spotSources(ticker string) ([]db.ParquetSource, error) {
+	sources := make([]db.ParquetSource, 0, 2)
+	seen := make(map[string]struct{})
+
+	add := func(src db.ParquetSource) {
+		if src.ParquetPath == "" {
+			return
+		}
+		if _, ok := seen[src.ParquetPath]; ok {
+			return
+		}
+		seen[src.ParquetPath] = struct{}{}
+		sources = append(sources, src)
+	}
+
+	path := filepath.Join(p.parquetRoot, ticker, ticker+"_spot.parquet")
+	if _, err := os.Stat(path); err == nil {
+		add(db.ParquetSource{
+			Ticker:      ticker,
+			ParquetPath: path,
+		})
+	}
+
+	indexed, err := p.metadata.LookupParquetSources(ticker, db.SpotContractExpiry, db.SpotContractExpiry)
+	if err != nil {
+		return nil, err
+	}
+	for _, src := range indexed {
+		add(src)
+	}
+	return sources, nil
+}
+
+func isSpotMetadataExpiry(expiry time.Time) bool {
+	if expiry.IsZero() {
+		return true
+	}
+	return expiry.UTC().Year() >= db.SpotContractExpiry.Year()
 }
 
 func skipExpired(expiry time.Time, expired bool) bool {

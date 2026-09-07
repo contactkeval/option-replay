@@ -53,6 +53,13 @@ func TestParquetProviderReadsOptionBars(t *testing.T) {
 	}
 }
 
+func TestParquetTickers(t *testing.T) {
+	got := parquetTickers("I:SPX")
+	if len(got) != 2 || got[0] != "SPX" || got[1] != "SPXW" {
+		t.Fatalf("parquetTickers(I:SPX)=%v want [SPX SPXW]", got)
+	}
+}
+
 func TestParquetProviderDelegatesUnderlyingBars(t *testing.T) {
 	prov, _, _, _ := newTestParquetProvider(t)
 	want := []Bar{{
@@ -67,6 +74,118 @@ func TestParquetProviderDelegatesUnderlyingBars(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Close != 520 {
 		t.Fatalf("underlying GetBars=%v", got)
+	}
+}
+
+func TestParquetProviderReadsUnderlyingSpotBars(t *testing.T) {
+	prov, _, _, ts := newTestParquetProvider(t)
+	spotDir := filepath.Join(prov.parquetRoot, "SPX")
+	if err := os.MkdirAll(spotDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := writeSpotParquet(filepath.Join(spotDir, "SPX_spot.parquet"), ts, 5123.25); err != nil {
+		t.Fatalf("write spot parquet: %v", err)
+	}
+
+	secondary := &stubProvider{bars: []Bar{{Close: 1}}}
+	prov.SetSecondary(secondary)
+
+	got, err := prov.GetBars("I:SPX", ts.Add(-time.Minute), ts.Add(time.Minute), 1, TimespanMinute)
+	if err != nil {
+		t.Fatalf("spot GetBars: %v", err)
+	}
+	if len(got) != 1 || got[0].Close != 5123.25 {
+		t.Fatalf("spot GetBars=%v", got)
+	}
+	if secondary.getBarsCalls != 0 {
+		t.Fatalf("secondary GetBars called %d times, want 0", secondary.getBarsCalls)
+	}
+}
+
+func TestParquetProviderExpiriesUseOptionRootAlias(t *testing.T) {
+	prov, _, expiry, _ := newTestParquetProvider(t)
+	metadata, err := db.Open(db.Options{
+		Path:    prov.metadataPath,
+		Schemas: db.SchemaParquet,
+	})
+	if err != nil {
+		t.Fatalf("open metadata: %v", err)
+	}
+	if err := metadata.InsertActiveRow(config.ActiveMetadataRow{
+		Ticker:     "SPXW",
+		ExpiryDate: expiry,
+		RowCount:   1,
+		Status:     "created",
+	}); err != nil {
+		t.Fatalf("insert SPXW: %v", err)
+	}
+	tx, err := metadata.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if err := metadata.UpdateActiveProcessed(tx, "SPXW", expiry, filepath.Join(prov.parquetRoot, "SPXW.parquet"), 1); err != nil {
+		t.Fatalf("update SPXW: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	_ = metadata.Close()
+
+	secondary := &stubProvider{}
+	prov.SetSecondary(secondary)
+
+	expiries, err := prov.GetRelevantExpiries("I:SPX", expiry.AddDate(0, 0, -1), expiry.AddDate(0, 0, 1))
+	if err != nil {
+		t.Fatalf("GetRelevantExpiries: %v", err)
+	}
+	if len(expiries) != 1 || !sameDate(expiries[0], expiry) {
+		t.Fatalf("GetRelevantExpiries=%v", expiries)
+	}
+	if secondary.getExpiriesCalls != 0 {
+		t.Fatalf("secondary GetRelevantExpiries called %d times, want 0", secondary.getExpiriesCalls)
+	}
+}
+
+func TestParquetLiveSPXUsesLocalFiles(t *testing.T) {
+	cfg := config.Load()
+	spot := filepath.Join(cfg.ParquetRoot, "SPX", "SPX_spot.parquet")
+	if _, err := os.Stat(spot); err != nil {
+		t.Skip("live SPX spot parquet not present")
+	}
+
+	secondary := &stubProvider{bars: []Bar{{Close: 1}}}
+	prov, err := NewParquetDataProviderFromConfig(secondary)
+	if err != nil {
+		t.Fatalf("NewParquetDataProviderFromConfig: %v", err)
+	}
+	t.Cleanup(func() { _ = prov.Close() })
+
+	from := time.Date(2025, 1, 2, 14, 30, 0, 0, time.UTC)
+	to := time.Date(2025, 1, 2, 21, 0, 0, 0, time.UTC)
+	bars, err := prov.GetBars("I:SPX", from, to, 1, TimespanDay)
+	if err != nil {
+		t.Fatalf("GetBars: %v", err)
+	}
+	if len(bars) == 0 {
+		t.Fatal("expected SPX daily bars from parquet")
+	}
+	if secondary.getBarsCalls != 0 {
+		t.Fatalf("secondary GetBars called %d times, want 0", secondary.getBarsCalls)
+	}
+
+	expiries, err := prov.GetRelevantExpiries(
+		"I:SPX",
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("GetRelevantExpiries: %v", err)
+	}
+	if len(expiries) == 0 {
+		t.Fatal("expected SPX/SPXW expiries from parquet metadata")
+	}
+	if secondary.getExpiriesCalls != 0 {
+		t.Fatalf("secondary GetRelevantExpiries called %d times, want 0", secondary.getExpiriesCalls)
 	}
 }
 
@@ -176,6 +295,25 @@ func writeTestParquet(path string, expiry, ts time.Time) error {
 	return nil
 }
 
+func writeSpotParquet(path string, ts time.Time, closePx float64) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := parquet.NewGenericWriter[config.ParquetRow](file)
+	defer writer.Close()
+
+	unix := uint32(ts.Unix())
+	if _, err := writer.Write([]config.ParquetRow{
+		testRow(0, 0, false, unix, closePx, closePx, closePx, closePx, 0),
+	}); err != nil {
+		return err
+	}
+	return writer.Flush()
+}
+
 func testRow(
 	expiry, strike uint32,
 	isCall bool,
@@ -198,7 +336,9 @@ func testRow(
 }
 
 type stubProvider struct {
-	bars []Bar
+	bars             []Bar
+	getBarsCalls     int
+	getExpiriesCalls int
 }
 
 func (*stubProvider) GetName() string        { return "stub" }
@@ -221,11 +361,13 @@ func (*stubProvider) GetContracts(string, float64, time.Time, time.Time, bool) (
 	return nil, ErrNoDataFound
 }
 func (s *stubProvider) GetBars(string, time.Time, time.Time, int, string) ([]Bar, error) {
+	s.getBarsCalls++
 	return s.bars, nil
 }
 func (*stubProvider) GetOptionPrice(string, float64, time.Time, string, time.Time) (float64, error) {
 	return 0, ErrNoDataFound
 }
-func (*stubProvider) GetRelevantExpiries(string, time.Time, time.Time) ([]time.Time, error) {
+func (s *stubProvider) GetRelevantExpiries(string, time.Time, time.Time) ([]time.Time, error) {
+	s.getExpiriesCalls++
 	return nil, ErrNoDataFound
 }
