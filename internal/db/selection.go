@@ -24,7 +24,7 @@ const optionContractsFilter = `AND type != 'spot'`
 const eligibleAttemptsFilter = `AND downloadAttempts < 3`
 
 // FarStaleFetchDays excludes far contracts fetched within this many days of runDate.
-const FarStaleFetchDays = 15
+const FarStaleFetchDays = 17
 
 // farStaleLastFetchFilter requires lastDownloadedDate older than the bound
 // (or missing). Caller binds the stale-before date once.

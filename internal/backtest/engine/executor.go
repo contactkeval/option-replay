@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/contactkeval/option-replay/internal/backtest/engine/legsum"
 	sch "github.com/contactkeval/option-replay/internal/backtest/sequence"
 	st "github.com/contactkeval/option-replay/internal/backtest/strategy"
 	"github.com/contactkeval/option-replay/internal/data"
@@ -31,13 +32,35 @@ type Config struct {
 	Entry       sch.EntryRule   `json:"entry"`      // Rules governing when to open trades
 	Strategy    st.StrategySpec `json:"strategy"`   // The option structure (e.g., Iron Condor)
 	Exit        ExitSpec        `json:"exit"`       // Rules governing when to close trades
+	Report      ReportSpec      `json:"report"`     // Report output configuration
 	ReportDir   string          `json:"report_dir"`
 	ReportRunID string          `json:"-"` // YYYYMMDD + 5-digit sequence shared by trades files and data folder
-	FullReport  bool            `json:"full_report,omitempty"`
-	ExtraReport string          `json:"extra_report,omitempty"`
 	MaxTrades   int             `json:"max_trades,omitempty"`
 	ExpiryTime  string          `json:"option_expiry_time,omitempty"` // e.g., "16:00" for 4 PM market close, default: "16:00"
 	Verbosity   int             `json:"verbosity,omitempty"`          // 0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace (default:
+}
+
+// ReportSpec defines how the backtest output report is generated.
+type ReportSpec struct {
+	FullReport     bool            `json:"full_report,omitempty"`
+	ExtraReport    string          `json:"extra_report,omitempty"`
+	Base100        Base100Spec     `json:"base100,omitempty"`
+	Field          string          `json:"field,omitempty"`
+	SummaryColumns []SummaryColumn `json:"summary_columns,omitempty"`
+}
+
+// Base100Spec configures optional base-100 normalization columns.
+type Base100Spec struct {
+	Columns string `json:"columns,omitempty"`
+}
+
+// SummaryColumn defines an additional calculated column for the minute-data
+// (extra report) file. Columns is an arithmetic expression over per-leg signed
+// values, e.g. "leg1+leg2", where each leg's value is sign * field * qty
+// (sign -1 for sell, +1 for buy; field defaults to close).
+type SummaryColumn struct {
+	Title   string `json:"title,omitempty"`
+	Columns string `json:"columns,omitempty"`
 }
 
 // ExitSpec defines the multi-condition exit logic for a trade.
@@ -182,7 +205,7 @@ func (e *Engine) executeBacktest(
 				UnderlyingAtOpen: spot,
 				ClosedBy:         CloseByEntryFailed,
 			}
-			if e.cfg.ExtraReport != "" {
+			if e.cfg.Report.ExtraReport != "" {
 				writeCandidateMinData(trade, *e.cfg)
 			}
 			trades = append(trades, trade)
@@ -323,7 +346,7 @@ func exitByPriceChange(
 		}
 	}
 
-	if cfg.ExtraReport != "" {
+	if cfg.Report.ExtraReport != "" {
 		ExtraReport(underlyingBars, *closeByDateTime, trade, cfg, dataProv)
 	}
 
@@ -389,6 +412,10 @@ func ExtraReport(
 		)
 	}
 	header = append(header, "Underlying", "", "", "", "", "")
+	header = append(header, "Summary")
+	for i := 1; i < len(cfg.Report.SummaryColumns); i++ {
+		header = append(header, "")
+	}
 	if err := writer.Write(header); err != nil {
 		logger.Errorf("failed to write CSV header: %v", err)
 	}
@@ -396,6 +423,10 @@ func ExtraReport(
 	header = []string{"", ""}
 	for i := 0; i <= len(trade.Legs); i++ {
 		header = append(header, "", "Open", "High", "Low", "Close", "Volume")
+	}
+	header = append(header, "")
+	for _, col := range cfg.Report.SummaryColumns {
+		header = append(header, col.Title)
 	}
 	if err := writer.Write(header); err != nil {
 		logger.Errorf("failed to write CSV header: %v", err)
@@ -416,9 +447,70 @@ func ExtraReport(
 				strconv.FormatFloat(legBar.Volume, 'f', -1, 64),
 			)
 		}
+		record = append(record, summaryColumnRowValues(row, trade, cfg.Report)...)
 		if err := writer.Write(record); err != nil {
 			logger.Errorf("failed to write CSV row: %v", err)
 		}
+	}
+}
+
+// summaryColumnRowValues evaluates each configured summary column against the
+// per-leg signed field value at a single minute row.
+//
+// Each leg's value follows the PnL sign convention (+1 buy, -1 sell) applied to
+// the leg's chosen price field (config "field", default close) times the
+// quantity. The expression combines those signed values. The returned slice
+// aligns with the header layout: a single leading blank cell separating the
+// summary block, then one formatted value per summary column.
+func summaryColumnRowValues(row MinuteRow, trade *Trade, reportCfg ReportSpec) []string {
+	values := make([]string, 0, 1+len(reportCfg.SummaryColumns))
+	values = append(values, "")
+	if len(trade.Legs) == 0 {
+		for range reportCfg.SummaryColumns {
+			values = append(values, "")
+		}
+		return values
+	}
+
+	legValues := make([]float64, len(trade.Legs))
+	for i, leg := range trade.Legs {
+		sign := 1.0
+		if strings.EqualFold(leg.Spec.Side, "sell") {
+			sign = -1.0
+		}
+		current := 0.0
+		if i < len(row.LegBars) {
+			current = legFieldValue(row.LegBars[i], reportCfg.Field)
+		}
+		legValues[i] = sign * current * float64(leg.Spec.Qty)
+	}
+
+	for _, col := range reportCfg.SummaryColumns {
+		v, err := legsum.Eval(col.Columns, legValues)
+		if err != nil {
+			logger.Debugf("summary column %q: %v", col.Title, err)
+			values = append(values, "")
+			continue
+		}
+		values = append(values, strconv.FormatFloat(v, 'f', 2, 64))
+	}
+	return values
+}
+
+// legFieldValue returns the configured price field of a minute bar, defaulting
+// to the close when field is empty or unrecognized.
+func legFieldValue(bar data.Bar, field string) float64 {
+	switch strings.ToLower(field) {
+	case "open":
+		return bar.Open
+	case "high":
+		return bar.High
+	case "low":
+		return bar.Low
+	case "volume":
+		return bar.Volume
+	default:
+		return bar.Close
 	}
 }
 

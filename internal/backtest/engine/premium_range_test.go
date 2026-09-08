@@ -27,10 +27,10 @@ type spotStub struct {
 	bars []data.Bar
 }
 
-func (*spotStub) GetName() string                          { return "spot-stub" }
-func (*spotStub) GetSecondary() data.Provider              { return nil }
-func (*spotStub) SetSecondary(data.Provider)               {}
-func (*spotStub) parseExpiryFromSymbol(string) time.Time   { return time.Time{} }
+func (*spotStub) GetName() string                        { return "spot-stub" }
+func (*spotStub) GetSecondary() data.Provider            { return nil }
+func (*spotStub) SetSecondary(data.Provider)             {}
+func (*spotStub) parseExpiryFromSymbol(string) time.Time { return time.Time{} }
 func (*spotStub) OptionSymbolFromParts(string, time.Time, string, float64) string {
 	return ""
 }

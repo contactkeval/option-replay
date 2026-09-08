@@ -10,7 +10,6 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-
 // go run .\cmd\parquet-metadata\main.go G:\data\parquet\SPY\SPY_20240513.parquet
 // go run .\cmd\parquet-metadata\main.go G:\data\parquet\SPY\SPY_20240513.parquet allcols
 // go run .\cmd\parquet-metadata\main.go G:\data\parquet\SPY\SPY_20240513.parquet nodetails

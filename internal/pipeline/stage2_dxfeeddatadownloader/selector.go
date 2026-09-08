@@ -66,7 +66,7 @@ const DownloadWaves = 3
 
 // WaveCooldown is how long to wait after finishing a wave before reconnecting
 // for the next set of batches.
-const WaveCooldown = 3 * time.Minute
+const WaveCooldown = 30 * time.Second
 
 // ArchiveDownloadAttempts archives contracts once downloadAttempts reaches this.
 const ArchiveDownloadAttempts = 3
