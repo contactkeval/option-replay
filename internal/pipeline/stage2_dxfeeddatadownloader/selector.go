@@ -137,10 +137,10 @@ func selectExpiredContracts(
 	remaining := batchSize - len(selected)
 	if remaining <= 0 {
 		logger.Infof(
-			"expired selection: total=%d selectedUnderFetched=%d batchSize=%d gap=none minBarCount=%d",
+			"expired selection: total=%d batchSize=%d selectedUnderFetched=%d gap=none minBarCount=%d",
 			expiredTotal,
-			len(underFetched),
 			batchSize,
+			len(underFetched),
 			minBarCount(selected),
 		)
 		return selected, nil
@@ -171,10 +171,10 @@ func selectExpiredContracts(
 	}
 
 	logger.Infof(
-		"expired selection: total=%d selectedUnderFetched=%d batchSize=%d maxLastFetch=%s selectedByOldestFetch=%d selectedByHighestBar=%d minBarCount=%d",
+		"expired selection: total=%d batchSize=%d selectedUnderFetched=%d maxLastFetch=%s selectedByOldestFetch=%d selectedByHighestBar=%d minBarCount=%d",
 		expiredTotal,
-		len(underFetched),
 		batchSize,
+		len(underFetched),
 		formatDateOrDash(maxLastFetch),
 		len(oldestFetch),
 		len(highest),

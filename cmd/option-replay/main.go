@@ -39,7 +39,9 @@ func main() {
 		"strategy config file name (input/strategies/) or full path")
 
 	rest := flag.Bool("rest", false, "run as REST server")
+	report := flag.Bool("report", false, "serve reusable report HTML from existing out/ data")
 	port := flag.String("port", ":8080", "REST server listen address")
+	reportPort := flag.String("report-port", ":8090", "report server listen address")
 	flag.Parse()
 
 	if *configFlag == "" {
@@ -56,6 +58,11 @@ func main() {
 
 	if *rest {
 		startServer(*port, engine)
+		return
+	}
+
+	if *report {
+		startReportServer(*reportPort, cfg)
 		return
 	}
 
@@ -90,8 +97,15 @@ func runBacktest(eng *engine.Engine, cfg *engine.Config) {
 		return
 	}
 
-	_ = report.WriteJSON(res, cfg.ReportDir, runID)
-	_ = report.WriteCSV(res.Trades, cfg.ReportDir, runID, cfg.Entry.Timezone)
+	dataDir := filepath.Join(cfg.ReportDir, "data_"+runID)
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
+		logger.Errorf("could not create data dir %s: %v", dataDir, err)
+	}
+
+	_ = report.WriteJSON(res, dataDir, runID)
+	_ = report.WriteCSV(res.Trades, dataDir, runID, cfg.Entry.Timezone)
+
+	_ = report.WriteHTMLReport(res.Trades, dataDir, cfg.ReportDir, runID, cfg.Report)
 
 	logger.Infof("backtest completed in %v, results written to %s (run %s)",
 		time.Since(start), cfg.ReportDir, runID)
@@ -177,6 +191,27 @@ func startServer(port string, engine *engine.Engine) {
 	logger.Infof("starting REST server on %s", port)
 	if err := http.ListenAndServe(port, mux); err != nil {
 		logger.Fatalf("server failed: %v", err)
+	}
+}
+
+// startReportServer serves a reusable report HTML page that reads the latest
+// out/data_* CSVs at view time. The page is served at "/" and loads /api/data
+// which parses the CSVs into the chart payload. Use it after a backtest has
+// produced CSVs, e.g.: option-replay -config custom -report
+func startReportServer(addr string, cfg *engine.Config) {
+	outdir := cfg.ReportDir
+	if outdir == "" {
+		outdir = "./out"
+	}
+
+	handler, err := report.ReportHandler(outdir, nil, cfg.Report)
+	if err != nil {
+		logger.Fatalf("report handler error: %v", err)
+	}
+
+	logger.Infof("starting report server on %s (serving %s)", addr, outdir)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		logger.Fatalf("report server failed: %v", err)
 	}
 }
 

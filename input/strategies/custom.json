@@ -1,9 +1,9 @@
 {
   "verbosity": 2,
-  "underlying": "I:SPX",
+  "underlying": "SPY",
   "entry": {
-    "start": "2026-03-08",
-    "end": "2026-03-31",
+    "start": "2025-11-01",
+    "end": "2025-12-01",
     "mode": "daily_time",
     "date_match_type": "higher",
     "time_of_day": "15:40",
@@ -52,9 +52,31 @@
     "date_match_type": "higher"
   },
   "option_expiry_time": "16:00",
-  "full_report": true,
-  "extra_report": "OPEN-400/EXPIRY+40",
-  "data_provider": {
-    "provider": "massive"
+  "report": {
+    "full_report": true,
+    "extra_report": "OPEN-400/EXPIRY+40",
+    "field": "close",
+    "summary_columns": [
+      {
+        "title": "T+0 (0DTE)",
+        "columns": "abs(leg1+leg2)"
+      },
+      {
+        "title": "T+1",
+        "columns": "abs(leg3+leg4)"
+      },
+      {
+        "title": "calls",
+        "columns": "leg1+leg3"
+      },
+      {
+        "title": "puts",
+        "columns": "leg2+leg4"
+      },
+      {
+        "title": "total",
+        "columns": "leg1+leg2+leg3+leg4"
+      }
+    ]
   }
 }

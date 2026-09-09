@@ -44,14 +44,8 @@ type Config struct {
 type ReportSpec struct {
 	FullReport     bool            `json:"full_report,omitempty"`
 	ExtraReport    string          `json:"extra_report,omitempty"`
-	Base100        Base100Spec     `json:"base100,omitempty"`
 	Field          string          `json:"field,omitempty"`
 	SummaryColumns []SummaryColumn `json:"summary_columns,omitempty"`
-}
-
-// Base100Spec configures optional base-100 normalization columns.
-type Base100Spec struct {
-	Columns string `json:"columns,omitempty"`
 }
 
 // SummaryColumn defines an additional calculated column for the minute-data
@@ -204,9 +198,6 @@ func (e *Engine) executeBacktest(
 				OpenDateTime:     entryDate,
 				UnderlyingAtOpen: spot,
 				ClosedBy:         CloseByEntryFailed,
-			}
-			if e.cfg.Report.ExtraReport != "" {
-				writeCandidateMinData(trade, *e.cfg)
 			}
 			trades = append(trades, trade)
 			continue
@@ -382,6 +373,12 @@ func ExtraReport(
 	reportTrade.OpenDateTime = trade.OpenDateTime.Add(-400 * time.Minute)
 	minuteData := fetchAndAlignLegData(&reportTrade, underlyingBars, reportClose, dataProv, cfg)
 
+	// Skip writing a minData CSV when there is no minute data at all (e.g. a
+	// holiday/weekend with no bars), to avoid producing empty noise files.
+	if len(minuteData) == 0 {
+		return
+	}
+
 	dataDir := extraReportDataDir(cfg)
 	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 		logger.Errorf("could not create data dir %s: %v", dataDir, err)
@@ -399,6 +396,10 @@ func ExtraReport(
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
+	// The CSV always carries a "total" column summing all legs, even when the
+	// config's summary_columns do not declare one.
+	summaryCols := effectiveSummaryColumns(cfg.Report, len(trade.Legs))
+
 	// Write header
 	header := []string{"Timestamp", "", ""}
 	for i := 0; i < len(trade.Legs); i++ {
@@ -413,7 +414,7 @@ func ExtraReport(
 	}
 	header = append(header, "Underlying", "", "", "", "", "")
 	header = append(header, "Summary")
-	for i := 1; i < len(cfg.Report.SummaryColumns); i++ {
+	for i := 1; i < len(summaryCols); i++ {
 		header = append(header, "")
 	}
 	if err := writer.Write(header); err != nil {
@@ -425,7 +426,7 @@ func ExtraReport(
 		header = append(header, "", "Open", "High", "Low", "Close", "Volume")
 	}
 	header = append(header, "")
-	for _, col := range cfg.Report.SummaryColumns {
+	for _, col := range summaryCols {
 		header = append(header, col.Title)
 	}
 	if err := writer.Write(header); err != nil {
@@ -447,7 +448,8 @@ func ExtraReport(
 				strconv.FormatFloat(legBar.Volume, 'f', -1, 64),
 			)
 		}
-		record = append(record, summaryColumnRowValues(row, trade, cfg.Report)...)
+		summaryVals := summaryColumnRowValues(row, trade, cfg.Report.Field, summaryCols)
+		record = append(record, summaryVals...)
 		if err := writer.Write(record); err != nil {
 			logger.Errorf("failed to write CSV row: %v", err)
 		}
@@ -462,11 +464,11 @@ func ExtraReport(
 // quantity. The expression combines those signed values. The returned slice
 // aligns with the header layout: a single leading blank cell separating the
 // summary block, then one formatted value per summary column.
-func summaryColumnRowValues(row MinuteRow, trade *Trade, reportCfg ReportSpec) []string {
-	values := make([]string, 0, 1+len(reportCfg.SummaryColumns))
+func summaryColumnRowValues(row MinuteRow, trade *Trade, field string, summaryCols []SummaryColumn) []string {
+	values := make([]string, 0, 1+len(summaryCols))
 	values = append(values, "")
 	if len(trade.Legs) == 0 {
-		for range reportCfg.SummaryColumns {
+		for range summaryCols {
 			values = append(values, "")
 		}
 		return values
@@ -480,12 +482,12 @@ func summaryColumnRowValues(row MinuteRow, trade *Trade, reportCfg ReportSpec) [
 		}
 		current := 0.0
 		if i < len(row.LegBars) {
-			current = legFieldValue(row.LegBars[i], reportCfg.Field)
+			current = legFieldValue(row.LegBars[i], field)
 		}
 		legValues[i] = sign * current * float64(leg.Spec.Qty)
 	}
 
-	for _, col := range reportCfg.SummaryColumns {
+	for _, col := range summaryCols {
 		v, err := legsum.Eval(col.Columns, legValues)
 		if err != nil {
 			logger.Debugf("summary column %q: %v", col.Title, err)
@@ -495,6 +497,23 @@ func summaryColumnRowValues(row MinuteRow, trade *Trade, reportCfg ReportSpec) [
 		values = append(values, strconv.FormatFloat(v, 'f', 2, 64))
 	}
 	return values
+}
+
+// effectiveSummaryColumns returns the configured summary columns with a
+// guaranteed trailing "total" column (sum of all legs) when the config does not
+// already declare one (matched case-insensitively on the title).
+func effectiveSummaryColumns(cfg ReportSpec, legs int) []SummaryColumn {
+	for _, col := range cfg.SummaryColumns {
+		if strings.EqualFold(col.Title, "total") {
+			return cfg.SummaryColumns
+		}
+	}
+	expr := make([]string, 0, legs)
+	for i := 1; i <= legs; i++ {
+		expr = append(expr, fmt.Sprintf("leg%d", i))
+	}
+	return append(append([]SummaryColumn{}, cfg.SummaryColumns...),
+		SummaryColumn{Title: "total", Columns: strings.Join(expr, "+")})
 }
 
 // legFieldValue returns the configured price field of a minute bar, defaulting
@@ -533,42 +552,6 @@ func extraReportLocation(cfg Config) *time.Location {
 		return time.UTC
 	}
 	return loc
-}
-
-// writeCandidateMinData records the scheduled entry date when option data is missing
-// so the candidate still appears in the minute-data folder.
-func writeCandidateMinData(trade Trade, cfg Config) {
-	dataDir := extraReportDataDir(cfg)
-	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
-		logger.Errorf("could not create data dir %s: %v", dataDir, err)
-		return
-	}
-
-	filePath := filepath.Join(dataDir, fmt.Sprintf("minData_%05d.csv", trade.ID))
-	file, err := os.Create(filePath)
-	if err != nil {
-		logger.Errorf("could not create file %s: %v", filePath, err)
-		return
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{"Timestamp", ""}); err != nil {
-		logger.Errorf("failed to write CSV header: %v", err)
-		return
-	}
-
-	loc := extraReportLocation(cfg)
-	ts := trade.OpenDateTime.In(loc)
-	if err := writer.Write([]string{ts.Format("2006-01-02 15:04"), fmt.Sprintf("%d", ts.UnixMilli())}); err != nil {
-		logger.Errorf("failed to write CSV row: %v", err)
-		return
-	}
-	if err := writer.Write([]string{ts.Format("2006-01-02")}); err != nil {
-		logger.Errorf("failed to write CSV date row: %v", err)
-	}
 }
 
 // scanOptionExits simulates the PnL of the entire strategy minute-by-minute.
