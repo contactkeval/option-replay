@@ -6,6 +6,7 @@ import (
 
 	"github.com/contactkeval/option-replay/internal/db"
 	"github.com/contactkeval/option-replay/internal/logger"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 // ResolveDownloadTarget picks the run and batch numbers to download.
@@ -59,6 +60,7 @@ func ResolveDownloadTarget(
 }
 
 func DownloadRun(
+	cfg config.Config,
 	metadataDB *db.DB,
 	runNo int64,
 	batchNos []int,
@@ -72,7 +74,7 @@ func DownloadRun(
 			wave,
 			WaveCooldown,
 		)
-		if err := downloadWithPool(metadataDB, runNo, wave); err != nil {
+		if err := downloadWithPool(cfg, metadataDB, runNo, wave); err != nil {
 			return err
 		}
 		// Pool exit closes all worker DXLink sessions. Pause before the next

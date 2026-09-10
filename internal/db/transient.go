@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -333,4 +334,108 @@ func dropTableIfEmpty(tx *sql.Tx, tableName string) error {
 func ParseExpiryFromTable(table string) (time.Time, error) {
 	expiryString := strings.TrimPrefix(table, "options_")
 	return time.Parse("20060102", expiryString)
+}
+
+// LoadAllContracts returns every contract keyed by serialNo.
+func (db *DB) LoadAllContracts() (map[int64]Contract, error) {
+	rows, err := db.Query(`
+		SELECT` + contractSelectCols + `
+		FROM contracts
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query all contracts: %w", err)
+	}
+	defer rows.Close()
+
+	contracts, err := scanContracts(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	m := make(map[int64]Contract, len(contracts))
+	for _, c := range contracts {
+		m[c.SerialNo] = c
+	}
+	return m, nil
+}
+
+// InsertCandlesToTransient converts candle_staging rows to transient format
+// and inserts them into the appropriate options_YYYYMMDD tables.
+func (db *DB) InsertCandlesToTransient(
+	rows []CandleStagingRow,
+	serialToContract map[int64]Contract,
+) (int64, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	tRows := candleToTransientRows(rows, serialToContract)
+	if len(tRows) == 0 {
+		return 0, nil
+	}
+
+	// Group by expiry table.
+	type expiryBatch struct {
+		expiry string
+		rows   []config.TransientRow
+	}
+	batches := make(map[uint32]*expiryBatch)
+	for _, r := range tRows {
+		b := batches[r.ExpiryDate]
+		if b == nil {
+			t := util.DecodeExpiryDate(r.ExpiryDate)
+			b = &expiryBatch{expiry: t.Format("2006-01-02")}
+			batches[r.ExpiryDate] = b
+		}
+		b.rows = append(b.rows, r)
+	}
+
+	var total int64
+
+	err := db.WithTx(func(tx *sql.Tx) error {
+		for _, b := range batches {
+			if err := db.EnsureExpiryTable(tx, b.expiry); err != nil {
+				return fmt.Errorf("ensure expiry table %s: %w", b.expiry, err)
+			}
+			if err := db.InsertBars(tx, b.expiry, b.rows); err != nil {
+				return fmt.Errorf("insert bars %s: %w", b.expiry, err)
+			}
+			total += int64(len(b.rows))
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("insert candles to transient: %w", err)
+	}
+
+	return total, nil
+}
+
+// candleToTransientRows converts candle_staging rows to TransientRow format.
+func candleToTransientRows(
+	rows []CandleStagingRow,
+	serialToContract map[int64]Contract,
+) []config.TransientRow {
+	out := make([]config.TransientRow, 0, len(rows))
+	for _, r := range rows {
+		c, ok := serialToContract[r.SerialNo]
+		if !ok || IsSpotContract(c) {
+			continue
+		}
+		out = append(out, config.TransientRow{
+			Ticker: c.Underlying,
+			ParquetRow: config.ParquetRow{
+				ExpiryDate:  util.EncodeExpiryDate(c.Expiry),
+				Strike:      util.StrikeToUint32(c.Strike),
+				OptionType:  c.Type == "call",
+				WindowStart: util.NanosecondsToSeconds(uint64(r.Candle.Time)),
+				Open:        util.PriceToUint32(float64(r.Candle.Open)),
+				High:        util.PriceToUint32(float64(r.Candle.High)),
+				Low:         util.PriceToUint32(float64(r.Candle.Low)),
+				Close:       util.PriceToUint32(float64(r.Candle.Close)),
+				Volume:      uint32(math.Round(float64(r.Candle.Volume))),
+			},
+		})
+	}
+	return out
 }

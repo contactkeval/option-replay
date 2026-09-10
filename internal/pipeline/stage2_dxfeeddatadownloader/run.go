@@ -42,7 +42,7 @@ func Run(cfg config.Config, dbPath string, runNo int64, batchNo int) error {
 		from.Format("2006-01-02"),
 	)
 
-	return DownloadRun(metadataDB, runNo, batchNos)
+	return DownloadRun(cfg, metadataDB, runNo, batchNos)
 }
 
 func openDXFeed(ctx context.Context) (*DXFeedClient, error) {
@@ -135,11 +135,13 @@ func readChunk(
 	ctx context.Context,
 	client *DXFeedClient,
 	metadataDB *db.DB,
+	transientDB *db.DB,
 	runNo int64,
 	batchNo int,
 	chunkNo int,
 	chunk []string,
 	symbolToSerial map[string]int64,
+	serialToContract map[int64]db.Contract,
 	fromTime int64,
 	insertedBySerial map[int64]int64,
 	receivedBySerial map[int64]int64,
@@ -167,6 +169,13 @@ func readChunk(
 		for serial, count := range perSerial {
 			insertedBySerial[serial] += count
 		}
+
+		if transientDB != nil && len(serialToContract) > 0 {
+			if _, terr := transientDB.InsertCandlesToTransient(buf, serialToContract); terr != nil {
+				logger.Warnf("Batch %d chunk %d: transient insert failed: %v", batchNo, chunkNo, terr)
+			}
+		}
+
 		buf = buf[:0]
 		return nil
 	}

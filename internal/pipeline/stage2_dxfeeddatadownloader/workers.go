@@ -3,20 +3,24 @@ package stage2_dxfeeddatadownloader
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/db"
 	"github.com/contactkeval/option-replay/internal/logger"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 )
 
 type chunkJob struct {
-	runNo          int64
-	batchNo        int
-	chunkNo        int
-	chunkCount     int
-	symbols        []string
-	symbolToSerial map[string]int64
+	runNo            int64
+	batchNo          int
+	chunkNo          int
+	chunkCount       int
+	symbols          []string
+	symbolToSerial   map[string]int64
+	transientDB      *db.DB
+	serialToContract map[int64]db.Contract
 }
 
 type batchProgress struct {
@@ -30,11 +34,22 @@ type batchProgress struct {
 }
 
 func downloadWithPool(
+	cfg config.Config,
 	metadataDB *db.DB,
 	runNo int64,
 	batchNos []int,
 ) error {
-	jobs, progress, err := buildDownloadJobs(metadataDB, runNo, batchNos)
+	transientPath := filepath.Join(cfg.SQLiteRoot, "transient.db")
+	transientDB, err := db.Open(db.Options{
+		Path:    transientPath,
+		Schemas: db.SchemaTransient,
+	})
+	if err != nil {
+		return fmt.Errorf("open transient DB: %w", err)
+	}
+	defer transientDB.Close()
+
+	jobs, progress, _, err := buildDownloadJobs(metadataDB, transientDB, runNo, batchNos)
 	if err != nil {
 		return err
 	}
@@ -172,17 +187,23 @@ func finalizeBatchProgress(
 
 func buildDownloadJobs(
 	metadataDB *db.DB,
+	transientDB *db.DB,
 	runNo int64,
 	batchNos []int,
-) ([]chunkJob, map[int]*batchProgress, error) {
+) ([]chunkJob, map[int]*batchProgress, map[int64]db.Contract, error) {
 	jobs := make([]chunkJob, 0)
 	progress := make(map[int]*batchProgress, len(batchNos))
 	startTime := time.Now().Format(time.RFC3339)
 
+	serialToContract, err := metadataDB.LoadAllContracts()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("load contracts for transient write: %w", err)
+	}
+
 	for _, batchNo := range batchNos {
 		contracts, err := metadataDB.GetBatchContracts(runNo, batchNo)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get batch contracts: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to get batch contracts: %w", err)
 		}
 		if len(contracts) == 0 {
 			progress[batchNo] = &batchProgress{
@@ -193,7 +214,7 @@ func buildDownloadJobs(
 		}
 
 		if err := metadataDB.UpdateBatchStartTime(runNo, batchNo, startTime); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		symbols := make([]string, 0, len(contracts))
@@ -224,17 +245,19 @@ func buildDownloadJobs(
 
 		for i, chunk := range chunks {
 			jobs = append(jobs, chunkJob{
-				runNo:          runNo,
-				batchNo:        batchNo,
-				chunkNo:        i + 1,
-				chunkCount:     len(chunks),
-				symbols:        chunk,
-				symbolToSerial: symbolToSerial,
+				runNo:            runNo,
+				batchNo:          batchNo,
+				chunkNo:          i + 1,
+				chunkCount:       len(chunks),
+				symbols:          chunk,
+				symbolToSerial:   symbolToSerial,
+				transientDB:      transientDB,
+				serialToContract: serialToContract,
 			})
 		}
 	}
 
-	return jobs, progress, nil
+	return jobs, progress, serialToContract, nil
 }
 
 func runDownloadWorker(
@@ -335,11 +358,13 @@ func runDownloadWorker(
 				ctx,
 				client,
 				metadataDB,
+				job.transientDB,
 				job.runNo,
 				job.batchNo,
 				job.chunkNo,
 				symbols,
 				job.symbolToSerial,
+				job.serialToContract,
 				fromTime,
 				localInserted,
 				localReceived,
