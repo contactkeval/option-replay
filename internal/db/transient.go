@@ -360,7 +360,7 @@ func (db *DB) LoadAllContracts() (map[int64]Contract, error) {
 }
 
 // InsertCandlesToTransient converts candle_staging rows to transient format
-// and inserts them into the appropriate options_YYYYMMDD tables.
+// and inserts them into the appropriate options_YYYYMMDD or spot_data tables.
 func (db *DB) InsertCandlesToTransient(
 	rows []CandleStagingRow,
 	serialToContract map[int64]Contract,
@@ -369,73 +369,187 @@ func (db *DB) InsertCandlesToTransient(
 		return 0, nil
 	}
 
-	tRows := candleToTransientRows(rows, serialToContract)
-	if len(tRows) == 0 {
-		return 0, nil
-	}
+	var optionRows []config.TransientRow
+	var spotRows []config.TransientRow
 
-	// Group by expiry table.
-	type expiryBatch struct {
-		expiry string
-		rows   []config.TransientRow
-	}
-	batches := make(map[uint32]*expiryBatch)
-	for _, r := range tRows {
-		b := batches[r.ExpiryDate]
-		if b == nil {
-			t := util.DecodeExpiryDate(r.ExpiryDate)
-			b = &expiryBatch{expiry: t.Format("2006-01-02")}
-			batches[r.ExpiryDate] = b
+	for _, r := range rows {
+		c, ok := serialToContract[r.SerialNo]
+		if !ok {
+			continue
 		}
-		b.rows = append(b.rows, r)
+		if IsSpotContract(c) {
+			spotRows = append(spotRows, spotCandleToTransientRow(r, c))
+		} else {
+			optionRows = append(optionRows, optionCandleToTransientRow(r, c))
+		}
 	}
 
 	var total int64
 
-	err := db.WithTx(func(tx *sql.Tx) error {
-		for _, b := range batches {
-			if err := db.EnsureExpiryTable(tx, b.expiry); err != nil {
-				return fmt.Errorf("ensure expiry table %s: %w", b.expiry, err)
-			}
-			if err := db.InsertBars(tx, b.expiry, b.rows); err != nil {
-				return fmt.Errorf("insert bars %s: %w", b.expiry, err)
-			}
-			total += int64(len(b.rows))
+	// Insert option rows into options_YYYYMMDD tables.
+	if len(optionRows) > 0 {
+		type expiryBatch struct {
+			expiry string
+			rows   []config.TransientRow
 		}
-		return nil
-	})
-	if err != nil {
-		return 0, fmt.Errorf("insert candles to transient: %w", err)
+		batches := make(map[uint32]*expiryBatch)
+		for _, r := range optionRows {
+			b := batches[r.ExpiryDate]
+			if b == nil {
+				t := util.DecodeExpiryDate(r.ExpiryDate)
+				b = &expiryBatch{expiry: t.Format("2006-01-02")}
+				batches[r.ExpiryDate] = b
+			}
+			b.rows = append(b.rows, r)
+		}
+
+		err := db.WithTx(func(tx *sql.Tx) error {
+			for _, b := range batches {
+				if err := db.EnsureExpiryTable(tx, b.expiry); err != nil {
+					return fmt.Errorf("ensure expiry table %s: %w", b.expiry, err)
+				}
+				if err := db.InsertBars(tx, b.expiry, b.rows); err != nil {
+					return fmt.Errorf("insert bars %s: %w", b.expiry, err)
+				}
+				total += int64(len(b.rows))
+			}
+			return nil
+		})
+		if err != nil {
+			return 0, fmt.Errorf("insert options to transient: %w", err)
+		}
+	}
+
+	// Insert spot rows into spot_data table.
+	if len(spotRows) > 0 {
+		err := db.WithTx(func(tx *sql.Tx) error {
+			if err := db.InsertSpotBars(tx, spotRows); err != nil {
+				return fmt.Errorf("insert spot bars: %w", err)
+			}
+			total += int64(len(spotRows))
+			return nil
+		})
+		if err != nil {
+			return 0, fmt.Errorf("insert spots to transient: %w", err)
+		}
 	}
 
 	return total, nil
 }
 
-// candleToTransientRows converts candle_staging rows to TransientRow format.
-func candleToTransientRows(
-	rows []CandleStagingRow,
-	serialToContract map[int64]Contract,
-) []config.TransientRow {
-	out := make([]config.TransientRow, 0, len(rows))
-	for _, r := range rows {
-		c, ok := serialToContract[r.SerialNo]
-		if !ok || IsSpotContract(c) {
-			continue
-		}
-		out = append(out, config.TransientRow{
-			Ticker: c.Underlying,
-			ParquetRow: config.ParquetRow{
-				ExpiryDate:  util.EncodeExpiryDate(c.Expiry),
-				Strike:      util.StrikeToUint32(c.Strike),
-				OptionType:  c.Type == "call",
-				WindowStart: util.NanosecondsToSeconds(uint64(r.Candle.Time)),
-				Open:        util.PriceToUint32(float64(r.Candle.Open)),
-				High:        util.PriceToUint32(float64(r.Candle.High)),
-				Low:         util.PriceToUint32(float64(r.Candle.Low)),
-				Close:       util.PriceToUint32(float64(r.Candle.Close)),
-				Volume:      uint32(math.Round(float64(r.Candle.Volume))),
-			},
-		})
+// InsertSpotBars inserts rows into the spot_data table.
+func (db *DB) InsertSpotBars(
+	tx *sql.Tx,
+	bars []config.TransientRow,
+) error {
+	const query = `
+		INSERT OR IGNORE INTO spot_data (
+			ticker,
+			window_start,
+			open,
+			high,
+			low,
+			close,
+			volume,
+			transactions
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("prepare spot_data insert: %w", err)
 	}
-	return out
+	defer stmt.Close()
+
+	inserted := 0
+	ignored := 0
+
+	for _, bar := range bars {
+		result, err := stmt.Exec(
+			bar.Ticker,
+			bar.WindowStart,
+			bar.Open,
+			bar.High,
+			bar.Low,
+			bar.Close,
+			bar.Volume,
+			bar.Transactions,
+		)
+		if err != nil {
+			return fmt.Errorf("execute spot_data insert: %w", err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 1 {
+			inserted++
+		} else {
+			ignored++
+		}
+	}
+
+	if ignored > 0 {
+		logger.Warnf("spot_data: Inserted: %d, Ignored: %d", inserted, ignored)
+	}
+	return nil
+}
+
+// LatestSpotBarTime returns the newest window_start timestamp for the given
+// underlying in the spot_data table. A zero time means no bars stored yet.
+func (db *DB) LatestSpotBarTime(underlying string) (time.Time, error) {
+	underlying = strings.ToUpper(strings.TrimSpace(underlying))
+	if underlying == "" {
+		return time.Time{}, fmt.Errorf("empty underlying")
+	}
+
+	var windowStart sql.NullInt64
+	err := db.QueryRow(`
+		SELECT MAX(window_start)
+		FROM spot_data
+		WHERE ticker = ?
+	`, underlying).Scan(&windowStart)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("latest spot bar time for %s: %w", underlying, err)
+	}
+	if !windowStart.Valid || windowStart.Int64 <= 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(windowStart.Int64, 0).UTC(), nil
+}
+
+// optionCandleToTransientRow converts a candle_staging row for an option
+// contract into a TransientRow.
+func optionCandleToTransientRow(r CandleStagingRow, c Contract) config.TransientRow {
+	return config.TransientRow{
+		Ticker: c.Underlying,
+		ParquetRow: config.ParquetRow{
+			ExpiryDate:  util.EncodeExpiryDate(c.Expiry),
+			Strike:      util.StrikeToUint32(c.Strike),
+			OptionType:  c.Type == "call",
+			WindowStart: util.NanosecondsToSeconds(uint64(r.Candle.Time)),
+			Open:        util.PriceToUint32(float64(r.Candle.Open)),
+			High:        util.PriceToUint32(float64(r.Candle.High)),
+			Low:         util.PriceToUint32(float64(r.Candle.Low)),
+			Close:       util.PriceToUint32(float64(r.Candle.Close)),
+			Volume:      uint32(math.Round(float64(r.Candle.Volume))),
+		},
+	}
+}
+
+// spotCandleToTransientRow converts a candle_staging row for a spot
+// contract into a TransientRow for the spot_data table.
+func spotCandleToTransientRow(r CandleStagingRow, c Contract) config.TransientRow {
+	return config.TransientRow{
+		Ticker: c.Underlying,
+		ParquetRow: config.ParquetRow{
+			WindowStart: util.NanosecondsToSeconds(uint64(r.Candle.Time)),
+			Open:        util.PriceToUint32(float64(r.Candle.Open)),
+			High:        util.PriceToUint32(float64(r.Candle.High)),
+			Low:         util.PriceToUint32(float64(r.Candle.Low)),
+			Close:       util.PriceToUint32(float64(r.Candle.Close)),
+			Volume:      uint32(math.Round(float64(r.Candle.Volume))),
+		},
+	}
 }

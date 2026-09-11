@@ -38,7 +38,7 @@ func TestGetContractsForRun_AddsSpotsWhenStale(t *testing.T) {
 		insertContract(t, database, i, "Y", date(2026, 12, 1), int(i), date(2026, 1, 1))
 	}
 
-	selected, err := GetContractsForRun(database, runDate)
+	selected, err := GetContractsForRun(database, database, runDate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,24 +65,30 @@ func TestGetContractsForRun_SkipsSpotsWhenFresh(t *testing.T) {
 	if err := database.EnsureSpotContracts([]string{"SPY", "QQQ"}); err != nil {
 		t.Fatal(err)
 	}
-	spots, err := database.ListSpotContracts()
+
+	fresh := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	tx, err := database.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var spySerial int64
-	for _, c := range spots {
-		if c.Underlying == "SPY" {
-			spySerial = c.SerialNo
-		}
+	if err := database.InsertSpotBars(tx, []config.TransientRow{{
+		Ticker: "SPY",
+		ParquetRow: config.ParquetRow{
+			WindowStart: uint32(fresh.Unix()),
+			Open:        1,
+			High:        1,
+			Low:         1,
+			Close:       1,
+		},
+	}}); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
 	}
-	fresh := time.Now().UTC().Add(-time.Hour)
-	if _, err := database.InsertCandleStaging(spySerial, config.Candle{
-		Time: fresh.UnixMilli(), Open: 1, High: 1, Low: 1, Close: 1,
-	}, 1, 1); err != nil {
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 
-	selected, err := GetContractsForRun(database, date(2026, 8, 6))
+	selected, err := GetContractsForRun(database, database, date(2026, 8, 6))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +273,7 @@ func TestGetContractsForRun_ArchivesHighAttempts(t *testing.T) {
 		insertContract(t, database, i, "Y", date(2026, 12, 1), int(i), date(2026, 1, 1))
 	}
 
-	selected, err := GetContractsForRun(database, date(2026, 8, 6))
+	selected, err := GetContractsForRun(database, database, date(2026, 8, 6))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +347,7 @@ func openTestDB(t *testing.T) *db.DB {
 	path := filepath.Join(t.TempDir(), "test.db")
 	database, err := db.Open(db.Options{
 		Path:    path,
-		Schemas: db.SchemaContracts | db.SchemaDownload,
+		Schemas: db.SchemaContracts | db.SchemaDownload | db.SchemaTransient,
 	})
 	if err != nil {
 		t.Fatalf("open test db: %v", err)

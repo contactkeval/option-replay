@@ -1,7 +1,6 @@
 package db
 
 import (
-	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -65,32 +64,6 @@ func (db *DB) ListSpotContracts() ([]Contract, error) {
 	defer rows.Close()
 
 	return scanContracts(rows)
-}
-
-// LatestSpotBarTime returns the newest candle_staging timestamp for the given
-// underlying's spot contract. A zero time means no bars have been stored yet.
-func (db *DB) LatestSpotBarTime(underlying string) (time.Time, error) {
-	underlying = strings.ToUpper(strings.TrimSpace(underlying))
-	if underlying == "" {
-		return time.Time{}, fmt.Errorf("empty underlying")
-	}
-
-	var candleTime sql.NullInt64
-	err := db.QueryRow(`
-		SELECT MAX(cs.candleTime)
-		FROM candle_staging cs
-		INNER JOIN contracts c ON c.serialNo = cs.serialNo
-		WHERE c.archived = 0
-			AND c.type = ?
-			AND c.underlying = ?
-	`, ContractTypeSpot, underlying).Scan(&candleTime)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("latest spot bar time for %s: %w", underlying, err)
-	}
-	if !candleTime.Valid || candleTime.Int64 <= 0 {
-		return time.Time{}, nil
-	}
-	return time.UnixMilli(candleTime.Int64).UTC(), nil
 }
 
 // SpotBarsStale reports whether the probe underlying's newest stored spot bar

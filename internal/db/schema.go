@@ -322,6 +322,24 @@ func ensureTransientTables(db *sql.DB) error {
 
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
+	`, `
+		CREATE TABLE IF NOT EXISTS spot_data (
+			ticker       TEXT NOT NULL,
+			window_start INTEGER NOT NULL,
+
+			open  INTEGER NOT NULL,
+			high  INTEGER NOT NULL,
+			low   INTEGER NOT NULL,
+			close INTEGER NOT NULL,
+
+			volume       INTEGER NOT NULL,
+			transactions INTEGER NOT NULL,
+
+			PRIMARY KEY (ticker, window_start)
+		)
+	`, `
+		CREATE INDEX IF NOT EXISTS idx_spot_data_ticker
+		ON spot_data(ticker)
 	`})
 }
 
