@@ -62,17 +62,26 @@ func main() {
 	}
 	defer database.Close()
 
+	transientDB, err := db.Open(db.Options{
+		Path:    filepath.Join(cfg.SQLiteRoot, "transient.db"),
+		Schemas: db.SchemaTransient,
+	})
+	if err != nil {
+		logger.Fatalf("open transient DB: %v", err)
+	}
+	defer transientDB.Close()
+
 	logger.Infof("metadata DB: %s", dbPath)
 	logger.Infof("run date:    %s", runDate.Format("2006-01-02"))
 
 	if *dryRun {
-		if err := printSelection(database, runDate); err != nil {
+		if err := printSelection(database, transientDB, runDate); err != nil {
 			logger.Fatalf("selection failed: %v", err)
 		}
 		return
 	}
 
-	runNo, err := stage2.BuildRunPlan(database, runDate)
+	runNo, err := stage2.BuildRunPlan(database, transientDB, runDate)
 	if err != nil {
 		logger.Fatalf("build run plan: %v", err)
 	}
@@ -82,8 +91,8 @@ func main() {
 
 // printSelection runs selection without persisting and prints group sizes plus
 // a short sample of the sorted contract list.
-func printSelection(database *db.DB, runDate time.Time) error {
-	contracts, err := stage2.GetContractsForRun(database, runDate)
+func printSelection(database *db.DB, transientDB *db.DB, runDate time.Time) error {
+	contracts, err := stage2.GetContractsForRun(database, transientDB, runDate)
 	if err != nil {
 		return err
 	}

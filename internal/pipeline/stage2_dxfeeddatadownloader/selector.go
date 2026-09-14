@@ -299,10 +299,10 @@ func GroupCount(selectedCount int) int {
 
 // GetContractsForRun selects contracts for the given run date using SQL-backed
 // pool queries and ranked slices. Contracts with downloadAttempts >= 3 are
-// archived first. When SPY spot bars in candle_staging are missing or older
-// than SpotFreshnessMaxAge, all allowed underlyings are added as spot contracts
-// so dxFeed downloads them in the same run batches.
-func GetContractsForRun(database *db.DB, runDate time.Time) ([]db.Contract, error) {
+// archived first. When SPY spot bars in spot_data (transient DB) are missing or
+// older than SpotFreshnessMaxAge, all allowed underlyings are added as spot
+// contracts so dxFeed downloads them in the same run batches.
+func GetContractsForRun(database *db.DB, transientDB *db.DB, runDate time.Time) ([]db.Contract, error) {
 	archived, err := database.ArchiveContractsByDownloadAttempts(ArchiveDownloadAttempts)
 	if err != nil {
 		return nil, fmt.Errorf("archive by downloadAttempts: %w", err)
@@ -320,7 +320,7 @@ func GetContractsForRun(database *db.DB, runDate time.Time) ([]db.Contract, erro
 		return nil, err
 	}
 
-	selected, err = appendSpotContractsIfStale(database, selected)
+	selected, err = appendSpotContractsIfStale(database, transientDB, selected)
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +331,7 @@ func GetContractsForRun(database *db.DB, runDate time.Time) ([]db.Contract, erro
 
 func appendSpotContractsIfStale(
 	database *db.DB,
+	transientDB *db.DB,
 	selected []db.Contract,
 ) ([]db.Contract, error) {
 	symbols := make([]string, 0, len(config.AllowedUnderlyings))
@@ -346,7 +347,12 @@ func appendSpotContractsIfStale(
 		return nil, fmt.Errorf("ensure spot contracts: %w", err)
 	}
 
-	stale, last, err := database.SpotBarsStale(SpotFreshnessProbe, SpotFreshnessMaxAge)
+	if transientDB == nil {
+		logger.Warnf("transient DB unavailable; skipping spot freshness check")
+		return selected, nil
+	}
+
+	stale, last, err := transientDB.SpotBarsStale(SpotFreshnessProbe, SpotFreshnessMaxAge)
 	if err != nil {
 		return nil, fmt.Errorf("spot freshness check: %w", err)
 	}

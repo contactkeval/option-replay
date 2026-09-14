@@ -136,9 +136,9 @@ func (db *DB) InsertBars(
 		}
 	}
 
-	if ignored > 0 {
-		logger.Warnf("Expiry=%s: Inserted: %d, Ignored: %d", expiry, inserted, ignored)
-	}
+	// if ignored > 0 {
+	// 	logger.Warnf("Expiry=%s: Inserted: %d, Ignored: %d", expiry, inserted, ignored)
+	// }
 
 	return nil
 }
@@ -491,7 +491,7 @@ func (db *DB) InsertSpotBars(
 	}
 
 	if ignored > 0 {
-		logger.Warnf("spot_data: Inserted: %d, Ignored: %d", inserted, ignored)
+		logger.Debugf("spot_data: Inserted: %d, Ignored: %d", inserted, ignored)
 	}
 	return nil
 }
@@ -520,7 +520,8 @@ func (db *DB) LatestSpotBarTime(underlying string) (time.Time, error) {
 }
 
 // optionCandleToTransientRow converts a candle_staging row for an option
-// contract into a TransientRow.
+// contract into a TransientRow. candle_staging.candleTime is dxFeed
+// milliseconds since epoch; window_start is stored as unix seconds.
 func optionCandleToTransientRow(r CandleStagingRow, c Contract) config.TransientRow {
 	return config.TransientRow{
 		Ticker: c.Underlying,
@@ -528,7 +529,7 @@ func optionCandleToTransientRow(r CandleStagingRow, c Contract) config.Transient
 			ExpiryDate:  util.EncodeExpiryDate(c.Expiry),
 			Strike:      util.StrikeToUint32(c.Strike),
 			OptionType:  c.Type == "call",
-			WindowStart: util.NanosecondsToSeconds(uint64(r.Candle.Time)),
+			WindowStart: uint32(uint64(r.Candle.Time) / 1_000),
 			Open:        util.PriceToUint32(float64(r.Candle.Open)),
 			High:        util.PriceToUint32(float64(r.Candle.High)),
 			Low:         util.PriceToUint32(float64(r.Candle.Low)),
@@ -539,12 +540,13 @@ func optionCandleToTransientRow(r CandleStagingRow, c Contract) config.Transient
 }
 
 // spotCandleToTransientRow converts a candle_staging row for a spot
-// contract into a TransientRow for the spot_data table.
+// contract into a TransientRow for the spot_data table. candleTime is
+// dxFeed milliseconds since epoch; window_start is stored as unix seconds.
 func spotCandleToTransientRow(r CandleStagingRow, c Contract) config.TransientRow {
 	return config.TransientRow{
 		Ticker: c.Underlying,
 		ParquetRow: config.ParquetRow{
-			WindowStart: util.NanosecondsToSeconds(uint64(r.Candle.Time)),
+			WindowStart: uint32(uint64(r.Candle.Time) / 1_000),
 			Open:        util.PriceToUint32(float64(r.Candle.Open)),
 			High:        util.PriceToUint32(float64(r.Candle.High)),
 			Low:         util.PriceToUint32(float64(r.Candle.Low)),

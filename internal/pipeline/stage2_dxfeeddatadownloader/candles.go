@@ -1,6 +1,8 @@
 package stage2_dxfeeddatadownloader
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -33,7 +35,22 @@ func ResolveDownloadTarget(
 
 	batchCount, err := database.GetRunBatchCount(runNo)
 	if err != nil {
-		return 0, nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			latest, lerr := database.GetLatestRunNo()
+			if lerr != nil {
+				latest = 0
+			}
+			hint := ""
+			if latest > 0 {
+				hint = fmt.Sprintf(
+					"; latest run is %d (use -run %d, or omit -run to create a new plan)",
+					latest,
+					latest,
+				)
+			}
+			return 0, nil, fmt.Errorf("run %d not found in runs table%s", runNo, hint)
+		}
+		return 0, nil, fmt.Errorf("query run batch count: %w", err)
 	}
 	if batchCount <= 0 {
 		return 0, nil, fmt.Errorf("run %d has no batches", runNo)

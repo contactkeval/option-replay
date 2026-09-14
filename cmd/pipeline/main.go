@@ -117,8 +117,18 @@ func main() {
 			logger.Fatalf("open metadata DB: %v", err)
 		}
 
+		transientDB, err := db.Open(db.Options{
+			Path:    filepath.Join(cfg.SQLiteRoot, "transient.db"),
+			Schemas: db.SchemaTransient,
+		})
+		if err != nil {
+			database.Close()
+			logger.Fatalf("open transient DB: %v", err)
+		}
+
 		logger.Infof("building run plan for %s", runDate.Format("2006-01-02"))
-		runNo, err = stage2b.BuildRunPlan(database, runDate)
+		runNo, err = stage2b.BuildRunPlan(database, transientDB, runDate)
+		transientDB.Close()
 		database.Close()
 		if err != nil {
 			logger.Fatalf("build run plan: %v", err)
