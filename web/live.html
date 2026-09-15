@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>SPX Live Options</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { background:#111; color:#ddd; font-family: Arial, Helvetica, sans-serif; margin: 12px; }
+        h3 { margin: 0 0 8px 0; }
+        #status { font-size: 13px; color: #9aa; margin-bottom: 8px; }
+        .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+        .dot.ok { background: #3d3; }
+        .dot.bad { background: #d44; }
+        .chart { width: 100%; }
+        #chartSPX { height: 360px; position: relative; }
+        #chartLower { height: 300px; position: relative; }
+        .cap { font-size: 12px; color: #9aa; margin: 10px 0 2px 0; }
+        #tt { position: absolute; pointer-events: none; background: rgba(18,18,22,.95); border: 1px solid #444; color: #ddd; font: 11px Consolas, monospace; padding: 6px 8px; z-index: 10; display: none; }
+        #tt .ttl { font-weight: bold; }
+        #tt .ttime { margin-bottom: 4px; color: #aeb; }
+        #tt .tttbl { border-collapse: collapse; }
+        #tt .tttbl th, #tt .tttbl td { border: 1px solid #2a2a30; padding: 1px 6px; text-align: right; }
+        #tt .tttbl th:first-child, #tt .tttbl td:first-child { border-left: none; }
+        #tt .tttbl th:last-child, #tt .tttbl td:last-child { border-right: none; }
+        #tt .tttbl thead th { background: #1c1c22; text-align: center; }
+        #tt .trow { text-align: center !important; color: #9aa; }
+        #tt .vm { color: #eee; }
+        #tt .vm.up { color: #3ccf7a; }
+        #tt .vm.dn { color: #ff7a66; }
+        table { border-collapse: collapse; margin-top: 12px; width: 100%; font-size: 12px; }
+        th, td { border: 1px solid #333; padding: 3px 8px; text-align: right; white-space: nowrap; }
+        th { background: #1c1c1c; }
+        td.l, th.l { text-align: left; }
+        .expiryHead { background: #22262e; font-weight: bold; }
+        .card { color: #7d6; }
+        .putd { color: #e87; }
+        .mono { font-family: Consolas, monospace; }
+    </style>
+</head>
+<body>
+
+<h3>SPX &amp; ATM Options — Live</h3>
+<div id="status"><span id="dot" class="dot bad"></span><span id="statusText">connecting...</span></div>
+
+<div style="margin: 6px 0; font-size: 13px;">
+    Candle interval:
+    <select id="candleInterval">
+        <option value="60" selected>1 min</option>
+        <option value="120">2 min</option>
+        <option value="300">5 min</option>
+        <option value="600">10 min</option>
+    </select>
+</div>
+
+<div class="cap">SPX &amp; Total (T1&minus;T0) &mdash; OHLC candles</div>
+<div id="chartSPX" class="chart"></div>
+<div class="cap">ATM straddle &amp; legs &mdash; current strike lines</div>
+<div id="chartLower" class="chart"></div>
+
+<table id="quotes">
+    <thead>
+        <tr>
+            <th class="l">Expiry</th>
+            <th class="l">Strike</th>
+            <th>Call Bid</th>
+            <th>Call Ask</th>
+            <th>Call Last</th>
+            <th>Call Mid</th>
+            <th>Put Bid</th>
+            <th>Put Ask</th>
+            <th>Put Last</th>
+            <th>Put Mid</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+const SPX = "SPX";
+
+const dot = document.getElementById('dot');
+const statusText = document.getElementById('statusText');
+
+function setStatus(txt, ok) {
+    dot.className = 'dot ' + (ok ? 'ok' : 'bad');
+    statusText.textContent = txt;
+    return txt;
+}
+
+// Surface any script error on the page instead of failing silently.
+window.addEventListener('error', function (e) {
+    setStatus('page error: ' + e.message, false);
+});
+
+// Wire the stream FIRST so the status updates even if chart init fails.
+let tickCount = 0;
+const es = new EventSource('/events');
+es.onopen = function () {
+    setStatus('stream connected, waiting for data...', true);
+};
+es.onmessage = function (e) {
+    tickCount++;
+    try {
+        render(JSON.parse(e.data));
+    } catch (err) {
+        console.error('snapshot parse error', err);
+        setStatus('snapshot error: ' + err.message, false);
+    }
+};
+es.onerror = function () {
+    dot.className = 'dot bad';
+    statusText.textContent = 'stream error (readyState=' + es.readyState + ', 0=connecting 1=open 2=closed) - retrying...';
+};
+
+// If the connection is open but silent, say so instead of "connecting...".
+window.setInterval(function () {
+    if (es.readyState === 1 && tickCount === 0) {
+        setStatus('stream connected but NO data received - check the server console', true);
+    }
+}, 5000);
+
+if (typeof LightweightCharts === 'undefined') {
+    setStatus('error: lightweight-charts failed to load from unpkg (check network)', false);
+}
+
+const optionSeries = {};   // symbol -> {series, lastT}
+const tableRows = {};      // symbol -> [cells...]
+
+let chart0 = null, chart1 = null;
+let spxCandleSeries = null, spreadCandleSeries = null;
+let built = false;
+let chartsEnabled = (typeof LightweightCharts !== 'undefined');
+
+// Candle interval in seconds (configurable via the select).
+let candleIntervalSec = 60;
+document.getElementById('candleInterval').addEventListener('change', function (e) {
+    candleIntervalSec = parseInt(e.target.value, 10) || 60;
+    clearCandleData();
+});
+
+// Works with both v4 (addLineSeries) and v5 (addSeries(LineSeries, ...)).
+function addLineSeries(chart, opts) {
+    if (chart && typeof chart.addLineSeries === 'function') {
+        return chart.addLineSeries(opts);
+    }
+    if (chart && typeof chart.addSeries === 'function') {
+        return chart.addSeries(LightweightCharts.LineSeries, opts);
+    }
+    return null;
+}
+
+function addCandlestickSeries(chart, opts) {
+    if (chart && typeof chart.addCandlestickSeries === 'function') {
+        return chart.addCandlestickSeries(opts);
+    }
+    if (chart && typeof chart.addSeries === 'function') {
+        return chart.addSeries(LightweightCharts.CandlestickSeries, opts);
+    }
+    return null;
+}
+
+const candleOpts = {
+    upColor: '#3ccf7a', downColor: '#ff7a66',
+    borderUpColor: '#3ccf7a', borderDownColor: '#ff7a66',
+    wickUpColor: '#3ccf7a', wickDownColor: '#ff7a66'
+};
+
+// Unified metric model. Each metric accumulates OHLC per interval bucket.
+//   render == 'candle': shown as a candlestick series (upper pane)
+//   render == 'line'  : shown as a line series (lower pane: current strike,
+//                       current minute live value; past = close)
+//   render == null    : table/tooltip only
+const METRICS = {
+    spot:  { label: 'Spot',   color: '#9cf',  render: 'candle', series: null, state: null, hist: {} },
+    total: { label: 'Total',  color: '#fa2',  render: 'candle', series: null, state: null, hist: {} },
+    t0:    { label: 'T0',     color: '#7dedb0', render: 'line', series: null, state: null, hist: {} },
+    t1:    { label: 'T1',     color: '#69c7ff', render: 'line', series: null, state: null, hist: {} },
+    t0c:   { label: 'T0 call', color: '#8f8',  render: 'line',    series: null, state: null, hist: {} },
+    t0p:   { label: 'T0 put',  color: '#f88',  render: 'line',    series: null, state: null, hist: {} },
+    t1c:   { label: 'T1 call', color: '#8f8',  render: 'line',    series: null, state: null, hist: {} },
+    t1p:   { label: 'T1 put',  color: '#f88',  render: 'line',    series: null, state: null, hist: {} }
+};
+const METRIC_ORDER = ['spot', 'total', 't0', 't1', 't0c', 't0p', 't1c', 't1p'];
+
+function resetCandles() {
+    for (const k in METRICS) {
+        METRICS[k].state = null;
+        METRICS[k].hist = {};
+    }
+}
+
+// Interval changed: drop the old buckets so the new interval starts fresh.
+function clearCandleData() {
+    resetCandles();
+    try {
+        for (const k in METRICS) {
+            const s = METRICS[k].series;
+            if (s && typeof s.setData === 'function') s.setData([]);
+        }
+    } catch (err) { /* ignore */ }
+}
+
+// Accumulate OHLC for one metric; grow/shrink the in-progress bar.
+function tickMetric(key, t, price) {
+    const m = METRICS[key];
+    if (!m || !(t > 0) || !(price > 0) || !isFinite(price)) return;
+    if (key === 'spot') spxPts++;
+    else optPts++;
+    const bucket = Math.floor(t / candleIntervalSec) * candleIntervalSec;
+    const updateHist = function (o, h, l, c) { m.hist[bucket] = { o: o, h: h, l: l, c: c }; };
+    let st = m.state;
+    if (st && st.bucket === bucket) {
+        if (price > st.high) st.high = price;
+        if (price < st.low) st.low = price;
+        st.close = price;
+        updateHist(st.open, st.high, st.low, st.close);
+    } else {
+        st = m.state = { bucket: bucket, open: price, high: price, low: price, close: price };
+        updateHist(price, price, price, price);
+    }
+    if (m.render === 'candle') {
+        m.series.update({ time: bucket, open: st.open, high: st.high, low: st.low, close: st.close });
+    } else if (m.render === 'line') {
+        m.series.update({ time: bucket, value: price });
+    }
+}
+
+// ATM-strike metric prices from the latest snapshot.
+//   t0 = day0 straddle, t1 = day1 straddle, total = t1 - t0
+//   t0c/t0p/t1c/t1p = the four option legs (mid), all at the ATM anchor.
+function metricPrices(snap) {
+    if (!snap.anchor || !snap.expiries || snap.expiries.length < 2 || !snap.quotes) return null;
+    const d0 = snap.expiries[0].ymd;
+    const d1 = snap.expiries[1].ymd;
+    const st = snap.anchor;
+    const mid = function (sym) {
+        const x = snap.quotes[sym];
+        return x ? x.mid : 0;
+    };
+    const t0c = mid(".SPXW" + d0 + "C" + st), t0p = mid(".SPXW" + d0 + "P" + st);
+    const t1c = mid(".SPXW" + d1 + "C" + st), t1p = mid(".SPXW" + d1 + "P" + st);
+    let t = 0;
+    [".SPXW" + d0 + "C" + st, ".SPXW" + d0 + "P" + st, ".SPXW" + d1 + "C" + st, ".SPXW" + d1 + "P" + st].forEach(function (sym) {
+        const q = snap.quotes[sym];
+        if (q && q.t > t) t = q.t;
+    });
+    return { t: t, t0c: t0c, t0p: t0p, t1c: t1c, t1p: t1p, t0: t0c + t0p, t1: t1c + t1p };
+}
+
+if (chartsEnabled) {
+    try {
+        chart0 = LightweightCharts.createChart(
+            document.getElementById('chartSPX'),
+            { layout: { background: { color: '#111' }, textColor: '#DDD' },
+              grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+              timeScale: { timeVisible: true, secondsVisible: false },
+              autoSize: true,
+              rightPriceScale: { borderColor: '#333' },
+              leftPriceScale: { borderColor: '#333', visible: true } }
+        );
+    } catch (err) {
+        chartsEnabled = false;
+    }
+    if (chartsEnabled) {
+        spxCandleSeries = addCandlestickSeries(chart0, candleOpts);
+        spreadCandleSeries = addCandlestickSeries(
+            chart0,
+            Object.assign({}, candleOpts, { priceScaleId: 'left', upColor: '#5aa7ff', downColor: '#c69', borderUpColor: '#5aa7ff', borderDownColor: '#c69', wickUpColor: '#5aa7ff', wickDownColor: '#c69' })
+        );
+        METRICS.spot.series = spxCandleSeries;
+        METRICS.total.series = spreadCandleSeries;
+        if (!spxCandleSeries || !spreadCandleSeries) {
+            chartsEnabled = false;
+        }
+    }
+}
+if (!chartsEnabled) {
+    setStatus('charts unavailable (lightweight-charts blocked?) - table mode only', true);
+}
+
+// Crosshair tooltip: time + OHLC for BOTH candle series on the merged pane.
+let tooltip = null, ttEl = null;
+
+function initTooltip() {
+    if (tooltip) return;
+    const host = document.getElementById('chartSPX');
+    ttEl = document.createElement('div');
+    ttEl.id = 'tt';
+    host.appendChild(ttEl);
+    tooltip = chart0.subscribeCrosshairMove(function (param) {
+        if (!ttEl) return;
+        if (!param || param.time === undefined || !param.point) {
+            ttEl.style.display = 'none';
+            return;
+        }
+        const t = param.time;
+        const keyT = typeof t === 'number' ? t : null;
+        if (keyT === null) {  // business-day time won't match our numeric buckets
+            ttEl.style.display = 'none';
+            return;
+        }
+        const dt = new Date(keyT * 1000);
+        const hh = String(dt.getHours()).padStart(2, '0');
+        const mm = String(dt.getMinutes()).padStart(2, '0');
+        const ss = String(dt.getSeconds()).padStart(2, '0');
+
+        // Header columns: Spot, Total, T0, T1, T0 call, T0 put, T1 call, T1 put.
+        const ths = ['<th></th>'].concat(METRIC_ORDER.map(function (k) {
+            return '<th class="ttl" style="color:' + METRICS[k].color + '">' + METRICS[k].label + '</th>';
+        })).join('');
+
+        // Rows: Open, High, Low, Close, Range (high-low).
+        const rowDefs = [
+            ['Open', 'o'], ['High', 'h'], ['Low', 'l'],
+            ['Close', 'c'], ['Range', 'r']
+        ];
+        let any = false;
+        const rowsHtml = rowDefs.map(function (rd) {
+            let cells = '<td class="trow">' + rd[0] + '</td>';
+            METRIC_ORDER.forEach(function (k) {
+                const bar = METRICS[k].hist[keyT];
+                if (!bar) {
+                    cells += '<td class="vm">—</td>';
+                    return;
+                }
+                any = true;
+                let v;
+                if (rd[1] === 'r') {
+                    v = bar.h - bar.l;
+                    cells += '<td>' + v.toFixed(2) + '</td>';
+                } else {
+                    v = bar[rd[1]];
+                    const cls = rd[1] === 'c' ? (v >= bar.o ? ' up' : ' dn') : '';
+                    cells += '<td class="vm' + cls + '">' + v.toFixed(2) + '</td>';
+                }
+            });
+            return '<tr>' + cells + '</tr>';
+        }).join('');
+        if (!any) {
+            ttEl.style.display = 'none';
+            return;
+        }
+
+        ttEl.innerHTML =
+            '<div class="ttime">' + dt.toLocaleDateString() + ' ' + hh + ':' + mm + ':' + ss + '</div>' +
+            '<table class="tttbl"><thead><tr>' + ths + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>';
+
+        const w = host.clientWidth, h = host.clientHeight;
+        const tw = ttEl.offsetWidth, thh = ttEl.offsetHeight;
+        const px = param.point.x;
+        const py = param.point.y;
+        // Keep the tooltip away from the cursor point: default above-left, flip as needed.
+        let left = px - tw - 16;
+        if (left < 6) left = px + 16;
+        if (left + tw > w - 6) left = w - tw - 6;
+        let top = py - thh - 16;
+        if (top < 6) top = py + 16;
+        if (top + thh > h - 6) top = h - thh - 6;
+        ttEl.style.left = left + 'px';
+        ttEl.style.top = top + 'px';
+        ttEl.style.display = 'block';
+    });
+}
+
+// Rolling window: keep the chart showing the latest ~120 bars so it visibly
+// scrolls instead of auto-fitting the whole recording.
+const BAR_WINDOW = 120;
+function keepWindow(chart, endT, windowSec) {
+    if (!chart || !(endT > 0)) return;
+    try {
+        chart.timeScale().setVisibleRange({
+            from: endT - windowSec,
+            to: endT + 15
+        });
+    } catch (err) { /* older API / no data yet - ignore */ }
+}
+
+function candleWindow(endT) {
+    if (!(endT > 0)) return;
+    keepWindow(chart0, endT, candleIntervalSec * BAR_WINDOW);
+}
+
+const strikeColors = [
+    '#ffffff', // ATM
+    '#7dedb0', '#3ccf7a',
+    '#69c7ff', '#3a95e8',
+    '#ffb066', '#ff7a66'
+];
+
+const lastTBySeries = {};
+let spxPts = 0, optPts = 0;
+
+function safeTime(sym, t) {
+    let last = lastTBySeries[sym] || 0;
+    if (t < last) t = last;
+    lastTBySeries[sym] = t;
+    return t;
+}
+
+function up(series, key, t, value) {
+    if (!series) return;
+    if (!(value > 0)) return;
+    if (t > 0) {
+        if (key.indexOf('SPX:') === 0) spxPts++;
+        else optPts++;
+    }
+    series.update({ time: t, value: value });
+}
+
+function buildOptionsPane(snap) {
+    chart1 = LightweightCharts.createChart(
+        document.getElementById('chartOptions'),
+        { layout: { background: { color: '#111' }, textColor: '#DDD' },
+          grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+          timeScale: { timeVisible: true, secondsVisible: false },
+          autoSize: true }
+    );
+
+    const near = snap.expiries[0].ymd;
+    const strikes = snap.strikes;
+
+    // Near-expiry calls + puts on the chart, one line per strike.
+    strikes.forEach((strike, idx) => {
+        const cSym = ".SPXW" + near + "C" + strike;
+        const pSym = ".SPXW" + near + "P" + strike;
+        const color = strikeColors[idx % strikeColors.length];
+        const c = addLineSeries(chart1, { title: cSym, color: color, lineWidth: 1 });
+        const p = addLineSeries(chart1, {
+            title: pSym, color: color, lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed
+        });
+        optionSeries[cSym] = { series: c, lastT: 0 };
+        optionSeries[pSym] = { series: p, lastT: 0 };
+    });
+}
+
+function buildTable(snap) {
+    if (!snap.strikes || !snap.expiries) return;
+    const tbody = document.querySelector('#quotes tbody');
+    tbody.innerHTML = '';
+    snap.strikes.forEach(strike => {
+        snap.expiries.forEach(exp => {
+            const cSym = ".SPXW" + exp.ymd + "C" + strike;
+            const pSym = ".SPXW" + exp.ymd + "P" + strike;
+            const tr = document.createElement('tr');
+            const expTd = document.createElement('td'); expTd.className = 'l'; expTd.textContent = exp.iso;
+            const stTd = document.createElement('td'); stTd.className = 'l mono'; stTd.textContent = strike;
+            tr.appendChild(expTd);
+            tr.appendChild(stTd);
+            for (let i = 0; i < 8; i++) tr.appendChild(document.createElement('td'));
+            tbody.appendChild(tr);
+            tableRows[cSym] = {
+                cells: [tr.children[2], tr.children[3], tr.children[4], tr.children[5]]
+            };
+            tableRows[pSym] = {
+                cells: [tr.children[6], tr.children[7], tr.children[8], tr.children[9]]
+            };
+        });
+    });
+}
+
+function render(snap) {
+    setStatus(
+        'SPX last=' + fmt(spxOf(snap).last) + ' bid=' + fmt(spxOf(snap).bid) +
+        ' ask=' + fmt(spxOf(snap).ask) +
+        (snap.anchor ? '  ATM anchor=' + snap.anchor : '') +
+        (snap.expiries && snap.expiries.length
+            ? '  expiries=' + snap.expiries.map(e => e.iso).join(', ')
+            : '  (waiting for SPX price...)') +
+        '  [ticks:' + tickCount + ' spxPts:' + spxPts + ' optPts:' + optPts + ']',
+        snap.connected
+    );
+
+    if (!built && snap.strikes && snap.expiries && snap.calls) {
+        try {
+            if (chartsEnabled) {
+                buildOptionsPane(snap);
+                initTooltip();
+            }
+            buildTable(snap);
+            built = true;
+        } catch (err) {
+            setStatus('options pane error: ' + err.message, false);
+        }
+    }
+
+    if (chartsEnabled) {
+        const spx = spxOf(snap);
+        const t = safeTime(SPX, spx.tradeTime || spx.quoteTime);
+        const spot = spx.last > 0 ? spx.last : (spx.bid > 0 && spx.ask > 0 ? (spx.bid + spx.ask) / 2 : 0);
+        tickMetric('spot', t, spot);
+        if (t > 0) candleWindow(Math.floor(t / candleIntervalSec) * candleIntervalSec);
+    }
+
+    if (!built) return;
+
+    let optEnd = 0;
+    if (chartsEnabled) {
+        for (const key in optionSeries) {
+            const q = snap.quotes[key];
+            if (!q) continue;
+            const ent = optionSeries[key];
+            const st = safeTime(key, q.t);
+            up(ent.series, key, st, q.mid);
+            if (st > optEnd) optEnd = st;
+        }
+        const mp = metricPrices(snap);
+        if (mp) {
+            tickMetric('total', mp.t, mp.t1 - mp.t0);
+            tickMetric('t0', mp.t, mp.t0);
+            tickMetric('t1', mp.t, mp.t1);
+            tickMetric('t0c', mp.t, mp.t0c);
+            tickMetric('t0p', mp.t, mp.t0p);
+            tickMetric('t1c', mp.t, mp.t1c);
+            tickMetric('t1p', mp.t, mp.t1p);
+        }
+        if (mp && mp.t > 0) candleWindow(Math.floor(mp.t / candleIntervalSec) * candleIntervalSec);
+        keepWindow(chart1, optEnd, 120);
+    }
+
+    for (const key in tableRows) {
+        const q = snap.quotes[key];
+        if (!q) continue;
+        const cells = tableRows[key].cells;
+        cells[0].textContent = fmt(q.bid);
+        cells[1].textContent = fmt(q.ask);
+        cells[2].textContent = fmt(q.last);
+        cells[3].textContent = fmt(q.mid);
+        cells[0].className = q.bid > 0 ? 'card' : '';
+        cells[1].className = q.ask > 0 ? 'card' : '';
+        cells[2].className = q.last > 0 ? 'putd' : '';
+        cells[3].className = q.mid > 0 ? '' : '';
+    }
+}
+
+function spxOf(snap) {
+    return snap.spx || {};
+}
+
+function fmt(v) {
+    if (!v || !(v > 0)) return '—';
+    return v.toFixed(2);
+}
+</script>
+</body>
+</html>
