@@ -7,15 +7,16 @@
     <style>
         body { background:#111; color:#ddd; font-family: Arial, Helvetica, sans-serif; margin: 12px; }
         h3 { margin: 0 0 8px 0; }
-        #status { font-size: 13px; color: #9aa; margin-bottom: 8px; }
+        #status { font-size: 15px; color: #9aa; margin-bottom: 8px; }
         .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
         .dot.ok { background: #3d3; }
         .dot.bad { background: #d44; }
         .chart { width: 100%; }
         #chartSPX { height: 360px; position: relative; }
         #chartLower { height: 300px; position: relative; }
-        .cap { font-size: 12px; color: #9aa; margin: 10px 0 2px 0; }
+        .cap { font-size: 14px; color: #9aa; margin: 10px 0 2px 0; }
         #tt { position: absolute; pointer-events: none; background: rgba(18,18,22,.95); border: 1px solid #444; color: #ddd; font: 11px Consolas, monospace; padding: 6px 8px; z-index: 10; display: none; }
+
         #tt .ttl { font-weight: bold; }
         #tt .ttime { margin-bottom: 4px; color: #aeb; }
         #tt .tttbl { border-collapse: collapse; }
@@ -27,7 +28,7 @@
         #tt .vm { color: #eee; }
         #tt .vm.up { color: #3ccf7a; }
         #tt .vm.dn { color: #ff7a66; }
-        table { border-collapse: collapse; margin-top: 12px; width: 100%; font-size: 12px; }
+        table { border-collapse: collapse; margin-top: 12px; width: 100%; font-size: 14px; }
         th, td { border: 1px solid #333; padding: 3px 8px; text-align: right; white-space: nowrap; }
         th { background: #1c1c1c; }
         td.l, th.l { text-align: left; }
@@ -35,6 +36,40 @@
         .card { color: #7d6; }
         .putd { color: #e87; }
         .mono { font-family: Consolas, monospace; }
+        .main-layout { display: flex; gap: 12px; }
+        .left-col { flex: 1; min-width: 0; }
+        .right-col { width: 300px; flex-shrink: 0; font-size: 14px; }
+        #dataPanel { width: 100%; font-size: 14px; margin-top: 0; }
+        #dataPanel th { text-align: left; padding: 3px 6px; width: 48%; }
+        #dataPanel td { text-align: right; padding: 3px 6px; font-family: Consolas, monospace; }
+        #dataPanel .dp-label { color: #9aa; }
+        #dataPanel .dp-val { color: #eee; }
+        #dataPanel .dp-val.up { color: #3ccf7a; }
+        #dataPanel .dp-val.dn { color: #ff7a66; }
+        .lock-btn { font-size: 13px; padding: 1px 6px; margin-left: 6px; border: 1px solid #555; border-radius: 3px; background: #222; color: #bbb; cursor: pointer; }
+        .lock-btn:hover { background: #333; color: #fff; }
+        .lock-btn.locked { border-color: #e87; color: #e87; }
+
+.rec-row { display: flex; gap: 6px; margin-top: 6px; }
+.rec-btn { font-size: 13px; padding: 3px 8px; border: 1px solid #555; border-radius: 3px; background: #222; color: #bbb; cursor: pointer; }
+.rec-btn:hover:enabled { background: #333; color: #fff; }
+.rec-btn:disabled { opacity: 0.4; cursor: default; }
+#recBtn { border-color: #c55; color: #e88; }
+#recBtn:hover:enabled { background: #3a2323; }
+.rec-status { font-size: 13px; margin-top: 6px; color: #9aa; word-break: break-all; }
+.rec-status.on { color: #e66; }
+        #adjStrikes { margin-top: 10px; font-size: 14px; font-family: Consolas, monospace; }
+        .adj-row { display: flex; justify-content: space-between; padding: 1px 0; }
+        .adj-label { color: #9aa; }
+        .adj-val { color: #eee; }
+        .adj-current { color: #fa2; }
+        .mini-chart-wrap { margin-top: 12px; }
+        .mini-chart-label { font-size: 13px; color: #9aa; margin-bottom: 2px; }
+        .mini-chart { width: 100%; height: 120px; position: relative; }
+        .time-scroll { position: relative; height: 14px; margin-top: 6px; background: #171717; border: 1px solid #333; border-radius: 2px; cursor: default; user-select: none; touch-action: none; }
+        .time-scroll .time-thumb { position: absolute; top: 2px; bottom: 2px; left: 0; width: 20%; background: #4a4a55; border-radius: 2px; cursor: grab; }
+        .time-scroll .time-thumb:hover { background: #6a6a78; }
+        .time-scroll .time-thumb:active { cursor: grabbing; }
     </style>
 </head>
 <body>
@@ -42,7 +77,7 @@
 <h3>SPX &amp; ATM Options — Live</h3>
 <div id="status"><span id="dot" class="dot bad"></span><span id="statusText">connecting...</span></div>
 
-<div style="margin: 6px 0; font-size: 13px;">
+<div style="margin: 6px 0; font-size: 15px;">
     Candle interval:
     <select id="candleInterval">
         <option value="60" selected>1 min</option>
@@ -52,28 +87,67 @@
     </select>
 </div>
 
-<div class="cap">SPX &amp; Total (T1&minus;T0) &mdash; OHLC candles</div>
-<div id="chartSPX" class="chart"></div>
-<div class="cap">ATM straddle &amp; legs &mdash; current strike lines</div>
-<div id="chartLower" class="chart"></div>
+<div class="main-layout">
+    <div class="left-col">
+        <div class="cap">SPX &amp; Total (T1&minus;T0) &mdash; OHLC candles</div>
+        <div id="chartSPX" class="chart"></div>
+        <div class="cap">ATM straddle &amp; legs &mdash; current strike lines</div>
+        <div id="chartLower" class="chart"></div>
+        <div id="timeScrollbar" class="time-scroll"><div id="timeThumb" class="time-thumb"></div></div>
 
-<table id="quotes">
-    <thead>
-        <tr>
-            <th class="l">Expiry</th>
-            <th class="l">Strike</th>
-            <th>Call Bid</th>
-            <th>Call Ask</th>
-            <th>Call Last</th>
-            <th>Call Mid</th>
-            <th>Put Bid</th>
-            <th>Put Ask</th>
-            <th>Put Last</th>
-            <th>Put Mid</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
-</table>
+        <table id="quotes">
+            <thead>
+                <tr>
+                    <th class="l">Expiry</th>
+                    <th class="l">Strike</th>
+                    <th>Call Bid</th>
+                    <th>Call Ask</th>
+                    <th>Call Last</th>
+                    <th>Call Mid</th>
+                    <th>Put Bid</th>
+                    <th>Put Ask</th>
+                    <th>Put Last</th>
+                    <th>Put Mid</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="right-col">
+        <table id="dataPanel">
+            <tbody>
+                <tr><th class="dp-label">Spot</th><td id="dpSpot" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">Strike <button id="lockBtn" class="lock-btn">Lock</button></th><td class="dp-val"><span id="dpStrike">—</span></td></tr>
+                <tr><th class="dp-label">T0 (day0 straddle)</th><td id="dpT0" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">T1 (day1 straddle)</th><td id="dpT1" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">Total (T1&minus;T0)</th><td id="dpTotal" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">T0 Call (LTP)</th><td id="dpCalls" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">T0 Put (LTP)</th><td id="dpPuts" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">T1 Call (LTP)</th><td id="dpT1Call" class="dp-val">—</td></tr>
+                <tr><th class="dp-label">T1 Put (LTP)</th><td id="dpT1Put" class="dp-val">—</td></tr>
+            </tbody>
+        </table>
+
+        <div id="adjStrikes"></div>
+
+        <div class="mini-chart-wrap">
+            <div class="mini-chart-label">Spread (bid&minus;ask)</div>
+            <div id="spreadChartWrap" class="mini-chart"></div>
+        </div>
+        <div class="mini-chart-wrap">
+            <div class="mini-chart-label">Secs since last trade</div>
+            <div id="timeChartWrap" class="mini-chart"></div>
+        </div>
+
+        <div class="cap" style="margin-top:10px">Recording <span id="recStatus" class="rec-status">off</span></div>
+        <div class="rec-row">
+            <button id="recBtn" class="rec-btn">Record</button>
+            <button id="pauseBtn" class="rec-btn" disabled>Pause</button>
+            <button id="stopBtn" class="rec-btn" disabled>Stop</button>
+        </div>
+    </div>
+</div>
 
 <script>
 const SPX = "SPX";
@@ -123,13 +197,55 @@ if (typeof LightweightCharts === 'undefined') {
     setStatus('error: lightweight-charts failed to load from unpkg (check network)', false);
 }
 
-const optionSeries = {};   // symbol -> {series, lastT}
 const tableRows = {};      // symbol -> [cells...]
 
 let chart0 = null, chart1 = null;
 let spxCandleSeries = null, spreadCandleSeries = null;
 let built = false;
 let chartsEnabled = (typeof LightweightCharts !== 'undefined');
+
+// Right-panel strike reference. null = unlocked (follows the server ATM
+// anchor); a number = strike frozen by the user.
+let lockStrike = null;
+let refAnchor = null;
+
+// Lock/Unlock toggle wiring (no-op if the element is missing, e.g. harness).
+const lockBtn = document.getElementById('lockBtn');
+if (lockBtn) {
+    lockBtn.addEventListener('click', function () {
+        if (lockStrike === null && refAnchor) {
+            lockStrike = refAnchor;
+            lockBtn.textContent = 'Unlock';
+            lockBtn.classList.add('locked');
+        } else {
+            lockStrike = null;
+            lockBtn.textContent = 'Lock';
+            lockBtn.classList.remove('locked');
+        }
+    });
+}
+
+// Effective strike for all option-based metrics: locked value when locked,
+// otherwise the live server anchor, re-anchored to the strike nearest the
+// current spot (so the reference follows spot drift until the user locks).
+function effectiveAnchor(snap) {
+    if (lockStrike !== null) return lockStrike;
+    const ref = (snap && snap.anchor) ? snap.anchor : refAnchor;
+    if (!ref) return refAnchor;
+    const spot = snap && snap.spx && snap.spx.last;
+    const st = (snap && snap.strikes) || [];
+    if (!(spot > 0) || st.length < 1) {
+        if (snap && snap.anchor) refAnchor = ref;
+        return refAnchor;
+    }
+    let best = st[0], bd = Math.abs(st[0] - spot);
+    for (let i = 1; i < st.length; i++) {
+        const dd = Math.abs(st[i] - spot);
+        if (dd < bd) { bd = dd; best = st[i]; }
+    }
+    refAnchor = best;
+    return best;
+}
 
 // Candle interval in seconds (configurable via the select).
 let candleIntervalSec = 60;
@@ -173,20 +289,55 @@ const candleOpts = {
 const METRICS = {
     spot:  { label: 'Spot',   color: '#9cf',  render: 'candle', series: null, state: null, hist: {} },
     total: { label: 'Total',  color: '#fa2',  render: 'candle', series: null, state: null, hist: {} },
-    t0:    { label: 'T0',     color: '#7dedb0', render: 'line', series: null, state: null, hist: {} },
-    t1:    { label: 'T1',     color: '#69c7ff', render: 'line', series: null, state: null, hist: {} },
-    t0c:   { label: 'T0 call', color: '#8f8',  render: 'line',    series: null, state: null, hist: {} },
-    t0p:   { label: 'T0 put',  color: '#f88',  render: 'line',    series: null, state: null, hist: {} },
-    t1c:   { label: 'T1 call', color: '#8f8',  render: 'line',    series: null, state: null, hist: {} },
-    t1p:   { label: 'T1 put',  color: '#f88',  render: 'line',    series: null, state: null, hist: {} }
+    t0:    { label: 'T0',     color: '#ffffff', render: 'line', series: null, state: null, hist: {} },
+    t0atm: { label: 'T0 @ATM', color: '#2de0e0', render: 'line', series: null, state: null, hist: {} },
+    t1:    { label: 'T1',     color: '#b588ff', render: null,   series: null, state: null, hist: {} },
+    t0c:   { label: 'T0 call', color: '#7dedb0', render: 'line', series: null, state: null, hist: {} },
+    t0p:   { label: 'T0 put',  color: '#ff6b6b', render: 'line', series: null, state: null, hist: {} },
+    t1c:   { label: 'T1 call', color: '#69c7ff', render: 'line', series: null, state: null, hist: {} },
+    t1p:   { label: 'T1 put',  color: '#ffb066', render: 'line', series: null, state: null, hist: {} }
 };
 const METRIC_ORDER = ['spot', 'total', 't0', 't1', 't0c', 't0p', 't1c', 't1p'];
+
+// Eastern Time axis labels. lightweight-charts formats timestamps in UTC by
+// default; this formatter converts each tick mark to America/New_York.
+const estPartsFmt = new Intl.DateTimeFormat(
+    'en-US',
+    { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
+);
+const locPartsFmt = new Intl.DateTimeFormat(
+    'en-US',
+    { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
+);
+function timeHHMM(fmt, d) {
+    const p = {};
+    fmt.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+    return (p.hour || '') + ':' + (p.minute || '');
+}
+function estTickLabel(time) {
+    let d;
+    if (typeof time === 'number') {
+        d = new Date(time * 1000);
+    } else if (time && typeof time === 'object' && typeof time.year === 'number') {
+        d = new Date(Date.UTC(time.year, time.month - 1, time.day, 12));
+    } else {
+        return String(time);
+    }
+    return timeHHMM(estPartsFmt, d) + '/' + timeHHMM(locPartsFmt, d);
+}
+const estChartOptions = {
+    layout: { background: { color: '#111' }, textColor: '#DDD' },
+    grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+    timeScale: { timeVisible: true, secondsVisible: false, minimumHeight: 34, tickMarkFormatter: estTickLabel, tickMarkMaxCharacterLength: 12 },
+    autoSize: true
+};
 
 function resetCandles() {
     for (const k in METRICS) {
         METRICS[k].state = null;
         METRICS[k].hist = {};
     }
+    chartTime = {};
 }
 
 // Interval changed: drop the old buckets so the new interval starts fresh.
@@ -206,6 +357,13 @@ function tickMetric(key, t, price) {
     if (!m || !(t > 0) || !(price > 0) || !isFinite(price)) return;
     if (key === 'spot') spxPts++;
     else optPts++;
+    // The reference strike can re-anchor (spot drift); its straddle quotes may
+    // carry older timestamps than the previous anchor's, so clamp the chart
+    // time monotonically per metric. A backward time would make the chart
+    // library throw "Cannot update oldest data" and stall the whole render.
+    const lastChart = chartTime[key] || 0;
+    if (t < lastChart) t = lastChart;
+    else chartTime[key] = t;
     const bucket = Math.floor(t / candleIntervalSec) * candleIntervalSec;
     const updateHist = function (o, h, l, c) { m.hist[bucket] = { o: o, h: h, l: l, c: c }; };
     let st = m.state;
@@ -218,21 +376,26 @@ function tickMetric(key, t, price) {
         st = m.state = { bucket: bucket, open: price, high: price, low: price, close: price };
         updateHist(price, price, price, price);
     }
-    if (m.render === 'candle') {
-        m.series.update({ time: bucket, open: st.open, high: st.high, low: st.low, close: st.close });
-    } else if (m.render === 'line') {
-        m.series.update({ time: bucket, value: price });
-    }
+    // A single series must never abort the whole snapshot; guard each update.
+    try {
+        if (m.render === 'candle' && m.series) {
+            m.series.update({ time: bucket, open: st.open, high: st.high, low: st.low, close: st.close });
+        } else if (m.render === 'line' && m.series) {
+            m.series.update({ time: bucket, value: st.close });
+        }
+    } catch (err) { /* keep going; the bucket still updates in hist/panel */ }
 }
 
 // ATM-strike metric prices from the latest snapshot.
 //   t0 = day0 straddle, t1 = day1 straddle, total = t1 - t0
 //   t0c/t0p/t1c/t1p = the four option legs (mid), all at the ATM anchor.
-function metricPrices(snap) {
+//   t0Atm = day0 straddle at the strike NEAREST the current spot (dynamic).
+// anchorOverride lets lock/unlock pin all prices to a frozen strike.
+function metricPrices(snap, anchorOverride) {
     if (!snap.anchor || !snap.expiries || snap.expiries.length < 2 || !snap.quotes) return null;
     const d0 = snap.expiries[0].ymd;
     const d1 = snap.expiries[1].ymd;
-    const st = snap.anchor;
+    const st = anchorOverride || snap.anchor;
     const mid = function (sym) {
         const x = snap.quotes[sym];
         return x ? x.mid : 0;
@@ -244,19 +407,44 @@ function metricPrices(snap) {
         const q = snap.quotes[sym];
         if (q && q.t > t) t = q.t;
     });
-    return { t: t, t0c: t0c, t0p: t0p, t1c: t1c, t1p: t1p, t0: t0c + t0p, t1: t1c + t1p };
+    // dxFeed option quotes often carry no timestamp on live until the strikes
+    // trade; fall back to the SPX trade/quote time so charts keep advancing.
+    const spxT = snap.spx && (snap.spx.tradeTime > 0 ? snap.spx.tradeTime : snap.spx.quoteTime) || 0;
+    if (t <= 0) t = spxT;
+    // Strike nearest the live spot; falls back to the anchor when no spot/strikes.
+    const spot = spotOf(snap);
+    let near = st, nearDist = Infinity;
+    (snap.strikes || []).forEach(function (s) {
+        const d = Math.abs(s - spot);
+        if (d < nearDist) { nearDist = d; near = s; }
+    });
+    const t0AtmC = mid(".SPXW" + d0 + "C" + near), t0AtmP = mid(".SPXW" + d0 + "P" + near);
+    let tAtm = 0;
+    [".SPXW" + d0 + "C" + near, ".SPXW" + d0 + "P" + near].forEach(function (sym) {
+        const q = snap.quotes[sym];
+        if (q && q.t > tAtm) tAtm = q.t;
+    });
+    if (tAtm <= 0) tAtm = spxT;
+    return { t: t, tAtm: tAtm, t0c: t0c, t0p: t0p, t1c: t1c, t1p: t1p, t0: t0c + t0p, t1: t1c + t1p, t0Atm: t0AtmC + t0AtmP, near: near, nearDist: nearDist };
+}
+
+function spotOf(snap) {
+    const spx = snap.spx || {};
+    return spx.last > 0 ? spx.last : (spx.bid > 0 && spx.ask > 0 ? (spx.bid + spx.ask) / 2 : 0);
 }
 
 if (chartsEnabled) {
     try {
         chart0 = LightweightCharts.createChart(
             document.getElementById('chartSPX'),
-            { layout: { background: { color: '#111' }, textColor: '#DDD' },
-              grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
-              timeScale: { timeVisible: true, secondsVisible: false },
-              autoSize: true,
-              rightPriceScale: { borderColor: '#333' },
-              leftPriceScale: { borderColor: '#333', visible: true } }
+            Object.assign({}, estChartOptions, {
+                timeScale: Object.assign({}, estChartOptions.timeScale, { tickMarkFormatter: estTickLabel }),
+                // SPX candles keep their own right axis (shows the current spot
+                // value), Total on its own left scale. Must NOT pass an explicit
+                // leftPriceScale: that pools both series onto one axis and
+                // squashes Total into an invisible strip.
+                rightPriceScale: { borderColor: '#333' }
+            })
         );
     } catch (err) {
         chartsEnabled = false;
@@ -265,7 +453,10 @@ if (chartsEnabled) {
         spxCandleSeries = addCandlestickSeries(chart0, candleOpts);
         spreadCandleSeries = addCandlestickSeries(
             chart0,
-            Object.assign({}, candleOpts, { priceScaleId: 'left', upColor: '#5aa7ff', downColor: '#c69', borderUpColor: '#5aa7ff', borderDownColor: '#c69', wickUpColor: '#5aa7ff', wickDownColor: '#c69' })
+            Object.assign({}, candleOpts, {
+                priceScaleId: 'left', upColor: '#5aa7ff', downColor: '#c69', borderUpColor: '#5aa7ff', borderDownColor: '#c69', wickUpColor: '#5aa7ff', wickDownColor: '#c69',
+                lastValueVisible: false, priceLineVisible: false
+            })
         );
         METRICS.spot.series = spxCandleSeries;
         METRICS.total.series = spreadCandleSeries;
@@ -299,10 +490,6 @@ function initTooltip() {
             ttEl.style.display = 'none';
             return;
         }
-        const dt = new Date(keyT * 1000);
-        const hh = String(dt.getHours()).padStart(2, '0');
-        const mm = String(dt.getMinutes()).padStart(2, '0');
-        const ss = String(dt.getSeconds()).padStart(2, '0');
 
         // Header columns: Spot, Total, T0, T1, T0 call, T0 put, T1 call, T1 put.
         const ths = ['<th></th>'].concat(METRIC_ORDER.map(function (k) {
@@ -342,7 +529,7 @@ function initTooltip() {
         }
 
         ttEl.innerHTML =
-            '<div class="ttime">' + dt.toLocaleDateString() + ' ' + hh + ':' + mm + ':' + ss + '</div>' +
+            '<div class="ttime">' + estTickLabel(keyT) + '</div>' +
             '<table class="tttbl"><thead><tr>' + ths + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>';
 
         const w = host.clientWidth, h = host.clientHeight;
@@ -360,6 +547,54 @@ function initTooltip() {
         ttEl.style.top = top + 'px';
         ttEl.style.display = 'block';
     });
+}
+
+// Keep both panes on the same timeframe: mirror the visible range and share a
+// single vertical crosshair line across the two charts.
+function paneClose(k, t) {
+    const b = METRICS[k] && METRICS[k].hist[t];
+    return b ? b.c : 0;
+}
+
+function syncPanes() {
+    if (!chart0 || !chart1) return;
+    try {
+        chart0.timeScale().subscribeVisibleLogicalRangeChange(function (r) {
+            if (r) chart1.timeScale().setVisibleLogicalRange(r);
+        });
+        chart1.timeScale().subscribeVisibleLogicalRangeChange(function (r) {
+            if (r) chart0.timeScale().setVisibleLogicalRange(r);
+        });
+    } catch (err) { /* older API - ignore */ }
+
+    var t0Series = METRICS.t0c.series || METRICS.t0p.series;
+    var spotSeries = METRICS.spot.series;
+    var c0HasX = typeof chart0.setCrosshairPosition === 'function';
+    var c1HasX = typeof chart1.setCrosshairPosition === 'function';
+    try {
+        chart0.subscribeCrosshairMove(function (param) {
+            if (!chart1 || !c1HasX) return;
+            if (!param || param.time === undefined || !param.point) {
+                if (typeof chart1.clearCrosshairPosition === 'function') chart1.clearCrosshairPosition();
+                return;
+            }
+            var t = param.time;
+            if (typeof t !== 'number' || !t0Series) return;
+            var v = paneClose('t0c', t) || paneClose('t0p', t) || (METRICS.t0.hist[t] && METRICS.t0.hist[t].c) || 0;
+            if (v > 0) chart1.setCrosshairPosition(v, t, t0Series);
+        });
+        chart1.subscribeCrosshairMove(function (param) {
+            if (!chart0 || !spotSeries || !c0HasX) return;
+            if (!param || param.time === undefined || !param.point) {
+                if (typeof chart0.clearCrosshairPosition === 'function') chart0.clearCrosshairPosition();
+                return;
+            }
+            var t = param.time;
+            if (typeof t !== 'number') return;
+            var v = paneClose('spot', t) || paneClose('total', t);
+            if (v > 0) chart0.setCrosshairPosition(v, t, spotSeries);
+        });
+    } catch (err) { /* older API - ignore */ }
 }
 
 // Rolling window: keep the chart showing the latest ~120 bars so it visibly
@@ -380,15 +615,117 @@ function candleWindow(endT) {
     keepWindow(chart0, endT, candleIntervalSec * BAR_WINDOW);
 }
 
-const strikeColors = [
-    '#ffffff', // ATM
-    '#7dedb0', '#3ccf7a',
-    '#69c7ff', '#3a95e8',
-    '#ffb066', '#ff7a66'
-];
+// Shared time scrollbar for the synced upper + lower panes. The visible
+// logical range of chart0 drives the thumb; dragging scrolls both charts.
+let scrollDrag = null;
+
+function chart0DataLen() {
+    let mx = 0;
+    if (spxCandleSeries && typeof spxCandleSeries.data === 'function') mx = Math.max(mx, spxCandleSeries.data().length);
+    if (spreadCandleSeries && typeof spreadCandleSeries.data === 'function') mx = Math.max(mx, spreadCandleSeries.data().length);
+    return mx;
+}
+
+// Auto-follow is a synchronous, self-correcting property: the render loop
+// only re-pins the view to the latest bars while the right edge of the chart
+// is already showing the newest bar. As soon as the user scrolls/pans back
+// (scrollbar, wheel, or drag), this returns false and the view stays put.
+function isAtRightEdge() {
+    const len = chart0DataLen();
+    if (!(len > 1)) return false;
+    let rl;
+    try { rl = chart0.timeScale().getVisibleLogicalRange(); } catch (e) { return false; }
+    return !!rl && isFinite(rl.to) && rl.to >= len - 1 - 0.5;
+}
+
+function updateTimeScrollbar() {
+    const sc = document.getElementById('timeScrollbar');
+    const th = document.getElementById('timeThumb');
+    if (!sc || !th || !chart0) return;
+    const len = chart0DataLen();
+    let rl;
+    try { rl = chart0.timeScale().getVisibleLogicalRange(); } catch (e) { return; }
+    if (len <= 1 || !rl || !isFinite(rl.from) || !isFinite(rl.to) || !(rl.to > rl.from)) {
+        sc.style.display = 'none';
+        return;
+    }
+    const span = rl.to - rl.from;
+    if (len <= span) { sc.style.display = 'none'; return; }
+    sc.style.display = 'block';
+    const w = sc.clientWidth;
+    if (!(w > 0)) return; // layout not ready; next tick will size the thumb
+    const tw = Math.max(18, (span / len) * w);
+    const maxFrom = Math.max(0, len - span);
+    const prog = maxFrom > 0 ? Math.max(0, Math.min(1, rl.from / maxFrom)) : 0;
+    th.style.width = tw + 'px';
+    th.style.left = (prog * (w - tw)) + 'px';
+}
+
+function wireTimeScrollbar() {
+    const sc = document.getElementById('timeScrollbar');
+    const th = document.getElementById('timeThumb');
+    if (!sc || !th || !chart0) return;
+    try {
+        chart0.timeScale().subscribeVisibleLogicalRangeChange(function () {
+            updateTimeScrollbar();
+        });
+    } catch (e) { /* older API - ignore */ }
+
+    function visibleState() {
+        let len = chart0DataLen();
+        let rl;
+        try { rl = chart0.timeScale().getVisibleLogicalRange(); } catch (e) {}
+        const span = rl && isFinite(rl.to) && rl.to > rl.from ? rl.to - rl.from : Math.max(1, len * 0.5);
+        return { len: len, span: span };
+    }
+
+    function setFrom(fromLogical, st) {
+        const maxFrom = Math.max(0, st.len - st.span);
+        const f = Math.max(0, Math.min(maxFrom, fromLogical));
+        try { chart0.timeScale().setVisibleLogicalRange({ from: f, to: f + st.span }); } catch (e) { /* ignore */ }
+    }
+
+    th.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        try { th.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        scrollDrag = Object.assign({ startX: e.clientX, startFrom: 0 }, visibleState());
+        let rl;
+        try { rl = chart0.timeScale().getVisibleLogicalRange(); } catch (err) {}
+        scrollDrag.startFrom = rl && isFinite(rl.from) ? rl.from : 0;
+    });
+    th.addEventListener('pointermove', function (e) {
+        if (!scrollDrag) return;
+        const w = sc.clientWidth, tw = th.offsetWidth;
+        if (!(w - tw > 0)) return;
+        const maxFrom = Math.max(0, scrollDrag.len - scrollDrag.span);
+        const dFrom = (e.clientX - scrollDrag.startX) / (w - tw) * maxFrom;
+        setFrom(scrollDrag.startFrom + dFrom, scrollDrag);
+    });
+    const endDrag = function (e) {
+        if (!scrollDrag) return;
+        try { th.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        scrollDrag = null;
+    };
+    th.addEventListener('pointerup', endDrag);
+    th.addEventListener('pointercancel', endDrag);
+    sc.addEventListener('click', function (e) {
+        if (e.target !== sc) return;
+        const w = sc.clientWidth, tw = th.offsetWidth;
+        if (!(w - tw > 0)) return;
+        const st = visibleState();
+        const maxFrom = Math.max(0, st.len - st.span);
+        const from = (e.offsetX / w) * (maxFrom + st.span) - st.span / 2;
+        setFrom(from, st);
+    });
+    updateTimeScrollbar();
+    setInterval(updateTimeScrollbar, 1000);
+}
+wireTimeScrollbar();
 
 const lastTBySeries = {};
+let chartTime = {}; // per-metric monotonic chart time (never goes backwards)
 let spxPts = 0, optPts = 0;
+let seededBars = false;
 
 function safeTime(sym, t) {
     let last = lastTBySeries[sym] || 0;
@@ -397,41 +734,29 @@ function safeTime(sym, t) {
     return t;
 }
 
-function up(series, key, t, value) {
-    if (!series) return;
-    if (!(value > 0)) return;
-    if (t > 0) {
-        if (key.indexOf('SPX:') === 0) spxPts++;
-        else optPts++;
-    }
-    series.update({ time: t, value: value });
-}
-
-function buildOptionsPane(snap) {
+// Lower pane: T0, T1 and the four ATM option legs, at the current strike only.
+function buildLowerPane(snap) {
+    const anchor = snap.anchor;
+    if (!anchor) return false;
+    const host = document.getElementById('chartLower');
+    if (!host) return false;
     chart1 = LightweightCharts.createChart(
-        document.getElementById('chartOptions'),
-        { layout: { background: { color: '#111' }, textColor: '#DDD' },
-          grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
-          timeScale: { timeVisible: true, secondsVisible: false },
-          autoSize: true }
+        host,
+        Object.assign({}, estChartOptions, {
+            timeScale: Object.assign({}, estChartOptions.timeScale, { visible: false, tickMarkFormatter: estTickLabel }),
+            rightPriceScale: { borderColor: '#333' } }
+        )
     );
-
-    const near = snap.expiries[0].ymd;
-    const strikes = snap.strikes;
-
-    // Near-expiry calls + puts on the chart, one line per strike.
-    strikes.forEach((strike, idx) => {
-        const cSym = ".SPXW" + near + "C" + strike;
-        const pSym = ".SPXW" + near + "P" + strike;
-        const color = strikeColors[idx % strikeColors.length];
-        const c = addLineSeries(chart1, { title: cSym, color: color, lineWidth: 1 });
-        const p = addLineSeries(chart1, {
-            title: pSym, color: color, lineWidth: 1,
-            lineStyle: LightweightCharts.LineStyle.Dashed
+    // Lower pane lines: T0 (bold) at the fixed anchor, T0 @ nearest strike to
+    // spot (dynamic), and the four legs at the anchor.
+    ['t0', 't0atm', 't0c', 't0p', 't1c', 't1p'].forEach(function (k) {
+        METRICS[k].series = addLineSeries(chart1, {
+            title: k === 't0atm' ? METRICS[k].label + ' (near spot)' : METRICS[k].label + ' @' + anchor,
+            color: METRICS[k].color,
+            lineWidth: k === 't0' ? 2 : 1
         });
-        optionSeries[cSym] = { series: c, lastT: 0 };
-        optionSeries[pSym] = { series: p, lastT: 0 };
     });
+    return true;
 }
 
 function buildTable(snap) {
@@ -474,49 +799,58 @@ function render(snap) {
     if (!built && snap.strikes && snap.expiries && snap.calls) {
         try {
             if (chartsEnabled) {
-                buildOptionsPane(snap);
+                buildLowerPane(snap);
                 initTooltip();
+                syncPanes();
             }
             buildTable(snap);
             built = true;
         } catch (err) {
-            setStatus('options pane error: ' + err.message, false);
+            setStatus('panes error: ' + err.message, false);
         }
     }
 
     if (chartsEnabled) {
         const spx = spxOf(snap);
         const t = safeTime(SPX, spx.tradeTime || spx.quoteTime);
-        const spot = spx.last > 0 ? spx.last : (spx.bid > 0 && spx.ask > 0 ? (spx.bid + spx.ask) / 2 : 0);
+        const spot = spotOf(snap);
         tickMetric('spot', t, spot);
-        if (t > 0) candleWindow(Math.floor(t / candleIntervalSec) * candleIntervalSec);
+        if (t > 0 && isAtRightEdge()) candleWindow(Math.floor(t / candleIntervalSec) * candleIntervalSec);
     }
 
     if (!built) return;
 
-    let optEnd = 0;
-    if (chartsEnabled) {
-        for (const key in optionSeries) {
-            const q = snap.quotes[key];
-            if (!q) continue;
-            const ent = optionSeries[key];
-            const st = safeTime(key, q.t);
-            up(ent.series, key, st, q.mid);
-            if (st > optEnd) optEnd = st;
-        }
-        const mp = metricPrices(snap);
-        if (mp) {
-            tickMetric('total', mp.t, mp.t1 - mp.t0);
-            tickMetric('t0', mp.t, mp.t0);
-            tickMetric('t1', mp.t, mp.t1);
-            tickMetric('t0c', mp.t, mp.t0c);
-            tickMetric('t0p', mp.t, mp.t0p);
-            tickMetric('t1c', mp.t, mp.t1c);
-            tickMetric('t1p', mp.t, mp.t1p);
-        }
-        if (mp && mp.t > 0) candleWindow(Math.floor(mp.t / candleIntervalSec) * candleIntervalSec);
-        keepWindow(chart1, optEnd, 120);
+    // Effective strike for the right panel and per-strike pricing.
+    const effAnchor = effectiveAnchor(snap);
+    const mp = metricPrices(snap, effAnchor);
+
+    // Pre-fill charts with today's bars from the server (once, async).
+    if (!seededBars && chartsEnabled && mp) {
+        seededBars = true;
+        seedBarsFromHistory(snap, effAnchor);
     }
+
+    if (chartsEnabled && mp) {
+        tickMetric('total', mp.t, mp.t1 - mp.t0);
+        tickMetric('t0', mp.t, mp.t0);
+        tickMetric('t0atm', mp.tAtm > 0 ? mp.tAtm : mp.t, mp.t0Atm);
+        tickMetric('t1', mp.t, mp.t1);
+        tickMetric('t0c', mp.t, mp.t0c);
+        tickMetric('t0p', mp.t, mp.t0p);
+        tickMetric('t1c', mp.t, mp.t1c);
+        tickMetric('t1p', mp.t, mp.t1p);
+        if (mp.t > 0 && isAtRightEdge()) {
+            const b = Math.floor(mp.t / candleIntervalSec) * candleIntervalSec;
+            candleWindow(b);
+            keepWindow(chart1, b, candleIntervalSec * BAR_WINDOW);
+        }
+    }
+
+    if (mp) feedMiniCharts(snap, effAnchor, mp);
+
+    // Right panel + adjacent strikes (independent of chart library).
+    updateDataPanel(snap, mp, effAnchor);
+    updateAdjStrikes(snap, effAnchor);
 
     for (const key in tableRows) {
         const q = snap.quotes[key];
@@ -541,6 +875,468 @@ function fmt(v) {
     if (!v || !(v > 0)) return '—';
     return v.toFixed(2);
 }
+
+// ── Right-panel data ─────────────────────────────────────────────────────────
+
+// Persisted leg mids (straddles) and LTPs so the panel keeps showing the last
+// known values even if a quote is briefly missing.
+const panelMid = { t0c: 0, t0p: 0, t1c: 0, t1p: 0 };
+const panelLtp = { t0c: 0, t0p: 0, t1c: 0, t1p: 0 };
+
+function updateDataPanel(snap, mp, anchor) {
+    if (!mp || !snap.expiries || snap.expiries.length < 2) return;
+    const d0 = snap.expiries[0].ymd, d1 = snap.expiries[1].ymd;
+    const setTxt = function (id, v) { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const spx = spxOf(snap);
+
+    // Spot LTP
+    setTxt('dpSpot', spx.last > 0 ? spx.last.toFixed(2) : '—');
+    // Strike (with lock/unlock annotation)
+    setTxt('dpStrike', anchor + (lockStrike !== null ? ' (locked)' : ''));
+    // Leg mids -> straddles (persisted for transient gaps)
+    if (mp.t0c > 0) panelMid.t0c = mp.t0c;
+    if (mp.t0p > 0) panelMid.t0p = mp.t0p;
+    if (mp.t1c > 0) panelMid.t1c = mp.t1c;
+    if (mp.t1p > 0) panelMid.t1p = mp.t1p;
+    setTxt('dpT0', panelMid.t0c > 0 && panelMid.t0p > 0 ? (panelMid.t0c + panelMid.t0p).toFixed(2) : '—');
+    setTxt('dpT1', panelMid.t1c > 0 && panelMid.t1p > 0 ? (panelMid.t1c + panelMid.t1p).toFixed(2) : '—');
+    // Total (T1 − T0)
+    const t0v = panelMid.t0c + panelMid.t0p, t1v = panelMid.t1c + panelMid.t1p;
+    const totalV = t1v - t0v;
+    const dpTotal = document.getElementById('dpTotal');
+    if (dpTotal) {
+        dpTotal.textContent = panelMid.t0c > 0 && panelMid.t1c > 0 ? totalV.toFixed(2) : '—';
+        dpTotal.className = 'dp-val' + (totalV > 0 ? ' up' : totalV < 0 ? ' dn' : '');
+    }
+    // Individual leg LTPs (raw) with persisted fallback
+    const ltpOf = function (sym, slot) {
+        const q = snap.quotes[sym];
+        if (q && q.last > 0) { panelLtp[slot] = q.last; return q.last.toFixed(2); }
+        return panelLtp[slot] > 0 ? panelLtp[slot].toFixed(2) : '—';
+    };
+    setTxt('dpCalls', ltpOf('.SPXW' + d0 + 'C' + anchor, 't0c'));
+    setTxt('dpPuts',  ltpOf('.SPXW' + d0 + 'P' + anchor, 't0p'));
+    setTxt('dpT1Call', ltpOf('.SPXW' + d1 + 'C' + anchor, 't1c'));
+    setTxt('dpT1Put',  ltpOf('.SPXW' + d1 + 'P' + anchor, 't1p'));
+}
+
+// ── Adjacent strikes ────────────────────────────────────────────────────────
+
+function updateAdjStrikes(snap) {
+    var host = document.getElementById('adjStrikes');
+    if (!host) return;
+    var anchor = arguments[1] || snap.anchor || effectiveAnchor(snap);
+    if (!anchor || !snap.strikes || snap.strikes.length < 2 || !snap.expiries || snap.expiries.length < 2) { host.textContent = ''; return; }
+    var step = snap.strikes[1] - snap.strikes[0];
+    if (!(step > 0)) return;
+    var d0 = snap.expiries[0].ymd, d1 = snap.expiries[1].ymd;
+    var qmid = function (sym) { var q = snap.quotes[sym]; return q ? q.mid : 0; };
+    var totalAt = function (s) {
+        var c0 = qmid('.SPXW' + d0 + 'C' + s), p0 = qmid('.SPXW' + d0 + 'P' + s);
+        var c1 = qmid('.SPXW' + d1 + 'C' + s), p1 = qmid('.SPXW' + d1 + 'P' + s);
+        if (!(c0 > 0) || !(p0 > 0) || !(c1 > 0) || !(p1 > 0)) return null;
+        return (c1 + p1) - (c0 + p0);
+    };
+    var lo = totalAt(anchor - step);
+    var mid = totalAt(anchor);
+    var hi = totalAt(anchor + step);
+    var row = function (strike, val, cls) {
+        return '<div class="adj-row">' +
+            '<span class="adj-label">' + strike + '</span>' +
+            '<span class="adj-val' + (cls ? ' ' + cls : '') + '">' +
+            (val !== null ? (val >= 0 ? '+' : '') + val.toFixed(2) : '—') +
+            '</span></div>';
+    };
+    host.innerHTML = '<div class="cap" style="margin-top:10px">Total (T1−T0) adjacent strikes</div>' +
+        row(anchor - step, lo, '') +
+        row(anchor, mid, 'adj-current') +
+        row(anchor + step, hi, '');
+}
+
+// ── Mini canvas charts (spread & time-since-last-trade) ─────────────────────
+
+function MiniChart(containerId, labels, colors) {
+    this.labels = labels;
+    this.colors = colors;
+    this.maxPoints = 120;
+    this.data = {};
+    this.ok = false;
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    this.cv = document.createElement('canvas');
+    this.cv.style.width = '100%';
+    this.cv.style.height = '100%';
+    if (typeof el.appendChild === 'function') el.appendChild(this.cv);
+    if (typeof this.cv.getContext === 'function') {
+        this.g = this.cv.getContext('2d');
+        this.ok = true;
+        this.el = el;
+        this.resize();
+    }
+}
+MiniChart.prototype.resize = function () {
+    if (!this.ok) return;
+    var dpr = window.devicePixelRatio || 1;
+    this.cv.width  = (this.el.clientWidth  || 280) * dpr;
+    this.cv.height = (this.el.clientHeight || 120) * dpr;
+    this.dpr = dpr;
+};
+MiniChart.prototype.tick = function (vals) {
+    if (!this.ok) return;
+    for (var i = 0; i < this.labels.length; i++) {
+        var v = vals[i];
+        if (!(v >= 0)) v = 0;
+        var arr = this.data[this.labels[i]];
+        if (!arr) arr = this.data[this.labels[i]] = [];
+        arr.push(v);
+        if (arr.length > this.maxPoints) arr.shift();
+    }
+    this.draw();
+};
+MiniChart.prototype.draw = function () {
+    if (!this.ok) return;
+    var g = this.g;
+    var w = this.cv.width, h = this.cv.height;
+    var d = this.dpr || 1;
+    var padL = 4 * d, padR = 8 * d, padT = 14 * d, padB = 16 * d;
+    var pw = w - padL - padR, ph = h - padT - padB;
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = '#111';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#222'; g.lineWidth = 1;
+    var y0 = padT + ph;
+    for (var gy = 0; gy < 4; gy++) {
+        var y = padT + ph * gy / 3;
+        g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + pw, y); g.stroke();
+    }
+    // Snapshot bar chart: ONE fixed column per instrument (latest value), so
+    // positions never move as time lapses - only the heights update.
+    var n = this.labels.length;
+    var vals = [];
+    var lo = Infinity, hi = -Infinity;
+    for (var i = 0; i < n; i++) {
+        var a = this.data[this.labels[i]];
+        var v = (a && a.length) ? a[a.length - 1] : 0;
+        vals.push(v);
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+    }
+    if (!(lo < Infinity)) { lo = 0; hi = 1; }
+    if (hi - lo < 0.001) hi = lo + 1;
+    var span = hi - lo;
+    var slotW = pw / n;
+    var barW = slotW * 0.62;
+    for (i = 0; i < n; i++) {
+        var cx = padL + slotW * i + slotW / 2;
+        var x = cx - barW / 2;
+        var vv = vals[i];
+        var yv = padT + ph - ((vv - lo) / span) * ph;
+        g.fillStyle = this.colors[i];
+        g.fillRect(x, Math.min(yv, y0), barW, Math.max(1 * d, Math.abs(yv - y0)));
+        // value label above the bar
+        g.fillStyle = this.colors[i];
+        g.font = (12 * d) + 'px Consolas, monospace';
+        g.textAlign = 'center';
+        g.textBaseline = 'alphabetic';
+        g.fillText(vv.toFixed(2), cx, Math.max(11 * d, yv - 3 * d));
+        // category label under the bar
+        g.fillStyle = this.colors[i];
+        g.font = (11 * d) + 'px Consolas, monospace';
+        g.textAlign = 'center';
+        g.textBaseline = 'top';
+        g.fillText(miniLabel(this.labels[i]), cx, y0 + 3 * d);
+    }
+};
+
+function miniLabel(name) {
+    switch (name) {
+        case 'Spot': return 'SPX';
+        case 'T0 Call': return 'T0C';
+        case 'T0 Put': return 'T0P';
+        case 'T1 Call': return 'T1C';
+        case 'T1 Put': return 'T1P';
+    }
+    return name;
+}
+
+var spreadChart = new MiniChart('spreadChartWrap',
+    ['T0 Call', 'T0 Put', 'T1 Call', 'T1 Put'],
+    ['#7dedb0', '#ff6b6b', '#69c7ff', '#ffb066']);
+
+var timeChart = new MiniChart('timeChartWrap',
+    ['Spot', 'T0 Call', 'T0 Put', 'T1 Call', 'T1 Put'],
+    ['#9cf', '#7dedb0', '#ff6b6b', '#69c7ff', '#ffb066']);
+
+// Track when each instrument last had fresh data so we can measure staleness.
+var lastFreshTs = {};  // key -> Date.now() of last update
+var miniInstruments = ['spot', 't0c', 't0p', 't1c', 't1p'];
+
+function feedMiniCharts(snap, anchor, mp) {
+    if (!mp || mp.t <= 0) return;
+    var spx = spxOf(snap);
+    var d0 = snap.expiries[0].ymd, d1 = snap.expiries[1].ymd;
+    var q = function (sym) { return snap.quotes[sym] || {}; };
+    var q0c = q('.SPXW' + d0 + 'C' + anchor);
+    var q0p = q('.SPXW' + d0 + 'P' + anchor);
+    var q1c = q('.SPXW' + d1 + 'C' + anchor);
+    var q1p = q('.SPXW' + d1 + 'P' + anchor);
+    // Spread chart
+    spreadChart.tick([
+        Math.max(0, q0c.ask - q0c.bid),
+        Math.max(0, q0p.ask - q0p.bid),
+        Math.max(0, q1c.ask - q1c.bid),
+        Math.max(0, q1p.ask - q1p.bid)
+    ]);
+    // Freshness: arrival-based, updated whenever the instrument has a quote.
+    var now = Date.now();
+    if (spx.bid > 0 || spx.last > 0) lastFreshTs['spot'] = now;
+    if (q0c.ask > 0) lastFreshTs['t0c'] = now;
+    if (q0p.ask > 0) lastFreshTs['t0p'] = now;
+    if (q1c.ask > 0) lastFreshTs['t1c'] = now;
+    if (q1p.ask > 0) lastFreshTs['t1p'] = now;
+    // Time-since-last-trade chart (seconds since fresh data arrived)
+    timeChart.tick(stalenessValues(now));
+}
+
+function stalenessValues(now) {
+    return [
+        (now - (lastFreshTs['spot'] || now)) / 1000,
+        (now - (lastFreshTs['t0c']  || now)) / 1000,
+        (now - (lastFreshTs['t0p']  || now)) / 1000,
+        (now - (lastFreshTs['t1c']  || now)) / 1000,
+        (now - (lastFreshTs['t1p']  || now)) / 1000
+    ];
+}
+
+// Overwrite the newest point (used by the periodic refresh of the staleness
+// chart, whose values grow between snapshots).
+MiniChart.prototype.updateLast = function (vals) {
+    if (!this.ok) return;
+    for (var i = 0; i < this.labels.length; i++) {
+        var a = this.data[this.labels[i]];
+        if (!a || !a.length) continue;
+        a[a.length - 1] = (vals[i] >= 0) ? vals[i] : 0;
+    }
+    this.draw();
+};
+
+// Periodically refresh the time-lapse chart so values update between snapshots.
+setInterval(function () {
+    if (timeChart && timeChart.ok) timeChart.updateLast(stalenessValues(Date.now()));
+}, 1000);
+
+// ── Chart pre-fill from server-bars during market hours ─────────────────────
+
+function isMarketHours() {
+    var now = new Date();
+    var ny = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    var day = ny.getDay();
+    if (day === 0 || day === 6) return false;
+    var hm = ny.getHours() * 100 + ny.getMinutes();
+    return hm >= 930 && hm < 1630;
+}
+
+function seedBarsFromHistory(snap, effAnchor) {
+    if (!snap || !snap.expiries || snap.expiries.length < 2 || !snap.strikes) return;
+    if (!isMarketHours()) return;
+
+    var anchor = snap.anchor;
+    var d0 = snap.expiries[0].ymd, d1 = snap.expiries[1].ymd;
+    var symbols = [
+        'SPX',
+        '.SPXW' + d0 + 'C' + anchor, '.SPXW' + d0 + 'P' + anchor,
+        '.SPXW' + d1 + 'C' + anchor, '.SPXW' + d1 + 'P' + anchor
+    ];
+    // Fetch near-strike legs for t0atm if different from anchor.
+    var spot = spotOf(snap);
+    var near = anchor;
+    var nearDist = Infinity;
+    snap.strikes.forEach(function (s) {
+        var dd = Math.abs(s - spot);
+        if (dd < nearDist) { nearDist = dd; near = s; }
+    });
+    if (near !== anchor) {
+        symbols.push('.SPXW' + d0 + 'C' + near, '.SPXW' + d0 + 'P' + near);
+    }
+
+    var url = '/bars?symbols=' + encodeURIComponent(symbols.join(','));
+    fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (data) { if (data && data.bars) seedCharts(data.bars, data.open, snap, anchor, near, d0, d1); })
+        .catch(function () { /* live ticks will fill in */ });
+}
+
+function seedCharts(bars, open, snap, anchor, near, d0, d1) {
+    var sKey = 'SPX', c0k = '.SPXW' + d0 + 'C' + anchor, p0k = '.SPXW' + d0 + 'P' + anchor;
+    var c1k = '.SPXW' + d1 + 'C' + anchor, p1k = '.SPXW' + d1 + 'P' + anchor;
+
+    // Collect all unique bucket times across the 4 anchor legs + SPX, sorted.
+    var timeSet = {};
+    [c0k, p0k, c1k, p1k, sKey].forEach(function (k) {
+        (bars[k] || []).forEach(function (b) { if (b.t >= open) timeSet[b.t] = true; });
+    });
+    var times = Object.keys(timeSet).map(Number).sort(function (a, b) { return a - b; });
+    if (times.length === 0) return;
+
+    // Build per-symbol lookup: time -> bar.
+    function byTime(k) {
+        var arr = bars[k] || [], m = {};
+        arr.forEach(function (b) { if (b.t >= open) m[b.t] = b; });
+        return m;
+    }
+    var spx = byTime(sKey), t0c = byTime(c0k), t0p = byTime(p0k), t1c = byTime(c1k), t1p = byTime(p1k);
+    // Near-strike legs for t0atm.
+    var nck = '.SPXW' + d0 + 'C' + near, npk = '.SPXW' + d0 + 'P' + near;
+    var t0ac = byTime(nck), t0ap = byTime(npk);
+    if (near === anchor) { t0ac = t0c; t0ap = t0p; }
+
+    // ── Upper chart: SPX candles ────────────────────────────────────────────
+    var spxData = [];
+    times.forEach(function (t) {
+        var b = spx[t];
+        if (b) spxData.push({ time: t, open: b.open, high: b.high, low: b.low, close: b.close });
+    });
+    if (spxData.length && spxCandleSeries && typeof spxCandleSeries.setData === 'function') {
+        try { spxCandleSeries.setData(spxData); } catch (e) { /* ignore */ }
+    }
+
+    // ── Upper chart: Total candles (T1 − T0) ───────────────────────────────
+    var totalData = [];
+    times.forEach(function (t) {
+        var c0 = t0c[t], p0 = t0p[t], c1 = t1c[t], p1 = t1p[t];
+        if (!c0 || !p0 || !c1 || !p1) return;
+        var oOpen = (c0.open + p0.open), oHigh = (c0.high + p0.high), oLow = (c0.low + p0.low), oClose = (c0.close + p0.close);
+        var nOpen = (c1.open + p1.open), nHigh = (c1.high + p1.high), nLow = (c1.low + p1.low), nClose = (c1.close + p1.close);
+        var o = nOpen - oOpen, h = nHigh - oLow, l = nLow - oHigh, c = nClose - oClose;
+        if (h < Math.max(o, c)) h = Math.max(o, c);
+        if (l > Math.min(o, c)) l = Math.min(o, c);
+        totalData.push({ time: t, open: o, high: h, low: l, close: c });
+    });
+    if (totalData.length && spreadCandleSeries && typeof spreadCandleSeries.setData === 'function') {
+        try { spreadCandleSeries.setData(totalData); } catch (e) { /* ignore */ }
+        var mT = METRICS['total'];
+        if (mT) {
+            totalData.forEach(function (d) {
+                mT.hist[d.time] = { o: d.open, h: d.high, l: d.low, c: d.close };
+            });
+            var lt = totalData[totalData.length - 1];
+            chartTime['total'] = lt.time;
+            mT.state = { bucket: lt.time, open: lt.open, high: lt.high, low: lt.low, close: lt.close };
+        }
+    }
+
+    // ── Lower chart lines ───────────────────────────────────────────────────
+    function lineArr(lookup) {
+        var arr = [];
+        times.forEach(function (t) { var b = lookup[t]; if (b) arr.push({ time: t, value: b.close }); });
+        return arr;
+    }
+    function derivedArr(fn) {
+        var arr = [];
+        times.forEach(function (t) { var v = fn(t); if (v !== null) arr.push({ time: t, value: v }); });
+        return arr;
+    }
+    function setLine(key, arr) {
+        if (!arr.length) return;
+        var m = METRICS[key];
+        if (!m || m.render !== 'line' || !m.series || typeof m.series.setData !== 'function') return;
+        try { m.series.setData(arr); } catch (e) { /* ignore */ }
+        // Populate hist + chartTime + state for tooltip and seamless live handoff.
+        var last = arr[arr.length - 1];
+        arr.forEach(function (d) {
+            m.hist[d.time] = { o: d.value, h: d.value, l: d.value, c: d.value };
+        });
+        chartTime[key] = last.time;
+        m.state = { bucket: last.time, open: last.value, high: last.value, low: last.value, close: last.value };
+    }
+    setLine('t0c', lineArr(t0c));
+    setLine('t0p', lineArr(t0p));
+    setLine('t1c', lineArr(t1c));
+    setLine('t1p', lineArr(t1p));
+    setLine('t0', derivedArr(function (t) {
+        var c = t0c[t], p = t0p[t];
+        return (c && p) ? c.close + p.close : null;
+    }));
+    setLine('t1', derivedArr(function (t) {
+        var c = t1c[t], p = t1p[t];
+        return (c && p) ? c.close + p.close : null;
+    }));
+    setLine('total', derivedArr(function (t) {
+        var c0 = t0c[t], p0 = t0p[t], c1 = t1c[t], p1 = t1p[t];
+        if (!c0 || !p0 || !c1 || !p1) return null;
+        return (c1.close + p1.close) - (c0.close + p0.close);
+    }));
+    setLine('t0atm', derivedArr(function (t) {
+        var c = t0ac[t], p = t0ap[t];
+        return (c && p) ? c.close + p.close : null;
+    }));
+
+    // Seed SPX hist for tooltip.
+    if (spxData.length) {
+        var mSpot = METRICS['spot'];
+        if (mSpot) {
+            spxData.forEach(function (d) {
+                mSpot.hist[d.time] = { o: d.open, h: d.high, l: d.low, c: d.close };
+            });
+            chartTime['spot'] = spxData[spxData.length - 1].time;
+            var ls = spxData[spxData.length - 1];
+            mSpot.state = { bucket: ls.time, open: ls.open, high: ls.high, low: ls.low, close: ls.close };
+        }
+    }
+
+    // Scroll the charts to the latest 120-bar window.
+    var lastT = times[times.length - 1];
+    if (lastT > 0) {
+        try { keepWindow(chart0, lastT, candleIntervalSec * BAR_WINDOW); } catch (e) { /* ignore */ }
+        try { keepWindow(chart1, lastT, candleIntervalSec * BAR_WINDOW); } catch (e) { /* ignore */ }
+    }
+}
+
+// ── Recording controls (server-side JSONL capture) ─────────────────────────
+function recStatusTxt() { return document.getElementById('recStatus'); }
+function setRecStatus(txt, on) {
+    const el = recStatusTxt();
+    if (!el) return;
+    el.textContent = txt;
+    el.className = 'rec-status' + (on ? ' on' : '');
+}
+function refreshRecState() {
+    if (typeof fetch !== 'function') return;
+    fetch('/record/state')
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (j) {
+            if (!j || typeof j.recording === 'undefined') { setRecStatus('record API unavailable', false); return; }
+            const recBtn = document.getElementById('recBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            if (recBtn) recBtn.disabled = !!j.recording;
+            if (pauseBtn) pauseBtn.disabled = !j.recording;
+            if (stopBtn) stopBtn.disabled = !j.recording;
+            if (pauseBtn) pauseBtn.textContent = j.paused ? 'Resume' : 'Pause';
+            let txt = j.recording ? (j.paused ? 'paused' : 'recording') : 'off';
+            if (j.recording) txt += ' \u00b7 ' + j.path + ' \u00b7 ' + j.events + ' ev';
+            setRecStatus(txt, !!(j.recording && !j.paused));
+        })
+        .catch(function () { setRecStatus('record API unavailable', false); });
+}
+function recAction(path) {
+    if (typeof fetch !== 'function') return;
+    fetch(path, { method: 'POST' })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (j) {
+            if (j && j.error) setRecStatus('error: ' + j.error, false);
+            refreshRecState();
+        })
+        .catch(function () { setRecStatus('record API error', false); refreshRecState(); });
+}
+const recBtn = document.getElementById('recBtn');
+if (recBtn) recBtn.addEventListener('click', function () { recAction('/record/start'); });
+const pauseBtn = document.getElementById('pauseBtn');
+if (pauseBtn) pauseBtn.addEventListener('click', function () { recAction('/record/pause'); });
+const stopBtn = document.getElementById('stopBtn');
+if (stopBtn) stopBtn.addEventListener('click', function () { recAction('/record/stop'); });
+refreshRecState();
+setInterval(refreshRecState, 2000);
 </script>
 </body>
 </html>

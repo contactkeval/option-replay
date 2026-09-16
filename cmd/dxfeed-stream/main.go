@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/contactkeval/option-replay/internal/logger"
+	"github.com/contactkeval/option-replay/internal/pipeline/config"
 	stage2 "github.com/contactkeval/option-replay/internal/pipeline/stage2_dxfeeddatadownloader"
 )
 
@@ -63,10 +65,11 @@ type state struct {
 	quotes     map[string]*quoteState
 	connected  bool
 	subscribed bool
+	bars       map[string][]minuteBar // per-symbol 1-min bars
 }
 
 func newState() *state {
-	return &state{quotes: make(map[string]*quoteState)}
+	return &state{quotes: make(map[string]*quoteState), bars: make(map[string][]minuteBar)}
 }
 
 // applySanitize coerces dxFeed NaN/Inf "no value" sentinels to 0 so quotes
@@ -118,6 +121,25 @@ func (s *state) apply(ev stage2.LiveEvent) {
 			}
 		}
 	}
+
+	// Feed 1-minute bar aggregator.
+	barT := ev.Time
+	if barT.IsZero() {
+		barT = s.referenceTime()
+	}
+	var barVal float64
+	if ev.Symbol == "SPX" {
+		if s.spx.Last > 0 {
+			barVal = s.spx.Last
+		} else {
+			barVal = s.spx.mid()
+		}
+	} else if q, ok := s.quotes[ev.Symbol]; ok {
+		barVal = q.mid()
+	}
+	if barVal > 0 {
+		s.updateBar(ev.Symbol, barVal, barT)
+	}
 }
 
 func (s *state) quoteFor(symbol string) *quoteState {
@@ -127,6 +149,96 @@ func (s *state) quoteFor(symbol string) *quoteState {
 		s.quotes[symbol] = q
 	}
 	return q
+}
+
+// referenceTime returns the best available clock: SPX trade/quote time, else wall clock.
+// Used to assign bars when option quotes arrive with zero timestamps on live.
+func (s *state) referenceTime() time.Time {
+	if !s.spx.TradeTime.IsZero() {
+		return s.spx.TradeTime
+	}
+	if !s.spx.QuoteTime.IsZero() {
+		return s.spx.QuoteTime
+	}
+	return time.Now()
+}
+
+// updateBar appends or extends a 1-minute OHLC bar for the given symbol.
+// Must be called under s.mu.Lock().
+func (s *state) updateBar(symbol string, price float64, t time.Time) {
+	if price <= 0 || t.IsZero() {
+		return
+	}
+	bucket := t.Unix() / 60 * 60
+	arr := s.bars[symbol]
+	if n := len(arr); n > 0 && arr[n-1].T == bucket {
+		b := &arr[n-1]
+		if price > b.High {
+			b.High = price
+		}
+		if price < b.Low {
+			b.Low = price
+		}
+		b.Close = price
+		return
+	}
+	s.bars[symbol] = append(arr, minuteBar{
+		T: bucket, Open: price, High: price, Low: price, Close: price,
+	})
+	// Cap at ~12 hours of 1-min bars per symbol to bound memory.
+	if n := len(s.bars[symbol]); n > 750 {
+		s.bars[symbol] = s.bars[symbol][n-750:]
+	}
+}
+
+// mergeBarCandle folds one dxFeed 1-minute candle into the symbol's bar
+// list, inserting it chronologically so backfilled (earlier) bars can coexist
+// with the live bars this process already accumulated. A bucket that already
+// exists keeps its existing bar (the live one is always at least as fresh).
+// Called by the backfill loop, not the live stream.
+func (s *state) mergeBarCandle(c config.Candle) {
+	symbol := c.EventSymbol
+	if i := strings.Index(symbol, "{"); i >= 0 {
+		symbol = symbol[:i]
+	}
+	o := applySanitize(float64(c.Open))
+	h := applySanitize(float64(c.High))
+	l := applySanitize(float64(c.Low))
+	cl := applySanitize(float64(c.Close))
+	if symbol == "" || c.Time <= 0 || o <= 0 || cl <= 0 {
+		return
+	}
+	bucket := c.Time / 1000 / 60 * 60
+	bar := minuteBar{T: bucket, Open: o, High: h, Low: l, Close: cl}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	arr := s.bars[symbol]
+	i := sort.Search(len(arr), func(i int) bool { return arr[i].T >= bucket })
+	if i < len(arr) && arr[i].T == bucket {
+		return // already present (live bar wins)
+	}
+	arr = append(arr, minuteBar{})
+	copy(arr[i+1:], arr[i:])
+	arr[i] = bar
+	// Cap at ~12 hours of 1-min bars per symbol to bound memory (matches updateBar).
+	if n := len(arr); n > 750 {
+		arr = arr[n-750:]
+	}
+	s.bars[symbol] = arr
+}
+
+// barsFor returns a shallow copy of bars for the requested symbols.
+func (s *state) barsFor(symbols []string) map[string][]minuteBar {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string][]minuteBar, len(symbols))
+	for _, sym := range symbols {
+		if arr, ok := s.bars[sym]; ok && len(arr) > 0 {
+			out[sym] = append([]minuteBar(nil), arr...)
+		}
+	}
+	return out
 }
 
 // spxLevel returns a usable SPX price: last trade, else mid, else bid/ask.
@@ -158,6 +270,24 @@ func (s *state) setGrid(anchor float64, strikes []float64, expiries []time.Time,
 	}
 	s.calls = optionSymbols(base, s.expiries, s.strikes, true)
 	s.puts = optionSymbols(base, s.expiries, s.strikes, false)
+}
+
+// gridSnapshot returns a copy of the current subscription grid under one lock,
+// with the expiry list materialised back to time.Time (UTC).
+func (s *state) gridSnapshot() (anchor float64, strikes []float64, expiries []time.Time, calls, puts []string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	anchor = s.anchor
+	strikes = append([]float64(nil), s.strikes...)
+	expiries = make([]time.Time, 0, len(s.expiryISO))
+	for _, iso := range s.expiryISO {
+		if ts, err := time.Parse("2006-01-02", iso); err == nil {
+			expiries = append(expiries, ts.UTC())
+		}
+	}
+	calls = append([]string(nil), s.calls...)
+	puts = append([]string(nil), s.puts...)
+	return
 }
 
 func (s *state) setConnected(v bool) {
@@ -203,6 +333,14 @@ type snapQuote struct {
 type snapExpiry struct {
 	Ymd string `json:"ymd"`
 	ISO string `json:"iso"`
+}
+
+type minuteBar struct {
+	T    int64   `json:"t"`
+	Open float64 `json:"open"`
+	High float64 `json:"high"`
+	Low  float64 `json:"low"`
+	Close float64 `json:"close"`
 }
 
 type snapshot struct {
@@ -256,6 +394,17 @@ func unixSec(t time.Time) int64 {
 		return 0
 	}
 	return t.Unix()
+}
+
+// sessionOpenET returns today's 9:30 AM Eastern Time as a Unix epoch.
+func sessionOpenET(now time.Time) int64 {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		loc = time.FixedZone("EST", -5*3600)
+	}
+	y, m, d := now.In(loc).Date()
+	open := time.Date(y, m, d, 9, 30, 0, 0, loc)
+	return open.Unix()
 }
 
 // hub fans snapshot payloads out to SSE subscribers.
@@ -351,6 +500,7 @@ func main() {
 	mock := flag.Bool("mock", false, "feed synthetic data (no dxLink connection) for UI testing")
 	record := flag.String("record", "", "JSONL file to record live events to (live mode)")
 	recordDuration := flag.Duration("record-duration", 60*time.Minute, "auto-stop after this long when recording (0 = until stopped)")
+	recordDir := flag.String("record-dir", ".", "directory for dashboard-started recordings")
 	mockfile := flag.String("mockfile", "", "replay a recorded JSONL file instead of synthetic data (requires -mock)")
 	speed := flag.Float64("speed", 1, "replay speed multiplier (with -mockfile)")
 	loop := flag.Bool("loop", false, "loop replay until stopped (with -mockfile)")
@@ -369,10 +519,92 @@ func main() {
 	pub := newPublisher(h, s)
 	go pub.run(ctx)
 
+	rc := newRecControl(*symbol, *base)
+	mockMode := *mock || *mockfile != ""
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		handleSSE(ctx, w, r, h)
 	})
+
+	// Dashboard recording control.
+	mux.HandleFunc("/record/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "POST required"})
+			return
+		}
+		if mockMode {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "recording disabled in mock/replay mode"})
+			return
+		}
+		name := "live_" + time.Now().UTC().Format("20060102_150405") + ".json"
+		path := filepath.Join(*recordDir, name)
+		if _, err := rc.start(path, true); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		logger.Infof("dashboard recording started -> %s", path)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": rc.state()})
+	})
+	mux.HandleFunc("/record/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "POST required"})
+			return
+		}
+		var err error
+		if rc.state().Paused {
+			err = rc.resume()
+		} else {
+			err = rc.pause()
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": rc.state()})
+	})
+	mux.HandleFunc("/record/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "POST required"})
+			return
+		}
+		path, events, err := rc.stop()
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		logger.Infof("dashboard recording stopped: %s (%d events)", path, events)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": path, "events": events, "state": rc.state()})
+	})
+	mux.HandleFunc("/record/state", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, rc.state())
+	})
+
+	// Historical 1-minute bars for chart pre-fill during market hours.
+	mux.HandleFunc("/bars", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "GET required"})
+			return
+		}
+		var symbols []string
+		if sv := r.URL.Query().Get("symbols"); sv != "" {
+			for _, p := range strings.Split(sv, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					symbols = append(symbols, p)
+				}
+			}
+		}
+		if len(symbols) == 0 {
+			symbols = s.allOptions()
+			symbols = append(symbols, "SPX")
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"open": sessionOpenET(time.Now()),
+			"bars": s.barsFor(symbols),
+		})
+	})
+
 	// Serve the dashboard at the root, files under /live.html, /replay.html, etc.
 	fileServer := http.FileServer(http.Dir(*webDir))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -415,13 +647,17 @@ func main() {
 
 	var rec *recorder
 	if *record != "" {
+		if mockMode {
+			logger.Errorf("-record cannot be combined with -mock/-mockfile")
+			os.Exit(1)
+		}
 		var err error
-		rec, err = newRecorder(*record, *symbol, *base)
+		rec, err = rc.start(*record, false)
 		if err != nil {
 			logger.Errorf("record open: %v", err)
 			os.Exit(1)
 		}
-		defer rec.close()
+		defer rc.close()
 		until := time.Until(rec.startAt)
 		if until < 0 {
 			until = 0
@@ -430,18 +666,6 @@ func main() {
 			"recording to %s; window starts at %s (in %s)",
 			*record, rec.startAt.Format(time.RFC3339), until.Round(time.Second),
 		)
-		go func() {
-			t := time.NewTicker(2 * time.Second)
-			defer t.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-t.C:
-					rec.flush()
-				}
-			}
-		}()
 		if *recordDuration > 0 {
 			go func() {
 				wait := time.Until(rec.startAt)
@@ -461,11 +685,27 @@ func main() {
 				case <-ctx.Done():
 				case <-time.After(*recordDuration):
 					logger.Infof("recording duration reached (%s); stopping", *recordDuration)
+					_, _, _ = rc.stop()
 					stop()
 				}
 			}()
 		}
 	}
+
+	// Periodic flush keeps any active recording (flag- or dashboard-started)
+	// safe against a crash; a no-op while nothing is recording.
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				rc.flush()
+			}
+		}
+	}()
 
 	cfg := streamConfig{
 		symbol: *symbol,
@@ -486,7 +726,7 @@ func main() {
 
 	var opted atomic.Bool
 	for {
-		err := runStream(ctx, cfg, s, pub, &opted, rec)
+		err := runStream(ctx, cfg, s, pub, &opted, rc)
 		if ctx.Err() != nil {
 			logger.Infof("shutting down")
 			return
@@ -521,7 +761,7 @@ func runStream(
 	s *state,
 	pub *publisher,
 	opted *atomic.Bool,
-	rec *recorder,
+	rc *recControl,
 ) error {
 	client, err := stage2.Connect(ctx)
 	if err != nil {
@@ -553,8 +793,8 @@ func runStream(
 
 	handler := func(ev stage2.LiveEvent) error {
 		statFeedEvents.Add(1)
-		if rec != nil {
-			if err := rec.append(ev); err != nil {
+		if rc != nil {
+			if err := rc.append(ev); err != nil {
 				logger.Errorf("record append: %v", err)
 			}
 		}
@@ -565,11 +805,15 @@ func runStream(
 			if price, ok := s.spxLevel(); ok {
 				// Subscribe the option grid off the read loop so a slow write
 				// can never stall the stream.
-				go subscribeOptions(client, cfg, s, pub, opted, price)
+				go subscribeOptions(ctx, client, cfg, s, pub, opted, price)
 			}
 		}
 		return nil
 	}
+
+	// Start the drift monitor once, before the stream; it self-gates on the
+	// initial subscription via the `opted` flag.
+	go watchSpotDrift(ctx, client, cfg, s, pub, opted)
 
 	return client.ReadStream(ctx, handler)
 }
@@ -586,6 +830,7 @@ func computeGrid(cfg streamConfig, price float64) (float64, []float64, []time.Ti
 // subscribeOptions computes the ATM strike grid from price and subscribes the
 // option Quote+Trade streams (once). Runs off the read loop.
 func subscribeOptions(
+	ctx context.Context,
 	client *stage2.DXFeedClient,
 	cfg streamConfig,
 	s *state,
@@ -618,6 +863,88 @@ func subscribeOptions(
 	}
 	s.markSubscribed(true)
 	pub.mark()
+
+	// Pre-fill today's 1-minute bars (9:30 ET -> now) so a dashboard loaded
+	// mid-session renders the whole day instead of only bars since server start.
+	go backfillSymbols(ctx, s, s.allOptions())
+}
+
+// dialDXFeed opens a short-lived dxLink connection used for the bar backfill.
+func dialDXFeed(ctx context.Context) (*stage2.DXFeedClient, error) {
+	client, err := stage2.Connect(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("connect: %w", err)
+	}
+	if err := client.Handshake(ctx); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("handshake: %w", err)
+	}
+	if err := client.OpenFeedChannel(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("open feed channel: %w", err)
+	}
+	if err := client.WaitForChannel(ctx); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("wait feed channel: %w", err)
+	}
+	client.StartKeepalive(ctx)
+	return client, nil
+}
+
+// backfillSymbols fetches 1-minute candles from today's 9:30 ET session open
+// through now for the given live symbols and merges them into state.bars. It is
+// intentionally non-fatal: failures degrade to "bars from server start only".
+func backfillSymbols(ctx context.Context, s *state, symbols []string) {
+	if len(symbols) == 0 {
+		return
+	}
+	now := time.Now()
+	open := sessionOpenET(now)
+	if now.Unix() < open+60 {
+		return // pre-open or just opened; live bars accrue from the open anyway
+	}
+
+	// Deduplicate and map to dxFeed aggregated 1-min candle symbols.
+	seen := make(map[string]struct{}, len(symbols)+1)
+	syms := make([]string, 0, len(symbols)+1)
+	for _, sym := range symbols {
+		if sym == "" || sym == "SPX" {
+			continue
+		}
+		if _, ok := seen[sym]; ok {
+			continue
+		}
+		seen[sym] = struct{}{}
+		syms = append(syms, sym+"{=m}")
+	}
+	syms = append(syms, "SPX{=m}")
+
+	backfillCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	client, err := dialDXFeed(backfillCtx)
+	if err != nil {
+		logger.Warnf("bar backfill: connect: %v", err)
+		return
+	}
+	defer client.Close()
+
+	if err := client.SubscribeCandles(syms, open*1000); err != nil {
+		logger.Warnf("bar backfill: subscribe: %v", err)
+		return
+	}
+	alive, _, err := client.ReadLoop(backfillCtx, syms, func(c config.Candle) error {
+		s.mergeBarCandle(c)
+		return nil
+	})
+	if err != nil {
+		logger.Warnf("bar backfill: %v", err)
+		return
+	}
+	if alive {
+		_ = client.UnsubscribeCandles(syms)
+	}
+	logger.Infof("bar backfill complete for %d symbols", len(syms))
 }
 
 func formatStrike(v float64) string {
@@ -630,6 +957,149 @@ func formatStrikes(vs []float64) string {
 		out = append(out, formatStrike(v))
 	}
 	return fmt.Sprintf("%v", out)
+}
+
+// optionDelta returns the symbols to add and to remove to turn the current
+// subscribed set into the desired set. Both inputs must be free of duplicates.
+func optionDelta(cur, want []string) (add, remove []string) {
+	in := func(list []string, sym string) bool {
+		for _, x := range list {
+			if x == sym {
+				return true
+			}
+		}
+		return false
+	}
+	for _, w := range want {
+		if !in(cur, w) {
+			add = append(add, w)
+		}
+	}
+	for _, c := range cur {
+		if !in(want, c) {
+			remove = append(remove, c)
+		}
+	}
+	return add, remove
+}
+
+// strikeOf extracts the strike from a dxFeed option symbol like
+// ".SPXW260915C7645" (everything after the C/P leg marker).
+func strikeOf(sym string) (float64, bool) {
+	i := strings.LastIndexAny(sym, "CP")
+	if i < 0 || i+1 >= len(sym) {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(sym[i+1:], 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// watchSpotDrift re-centres the option subscription grid as the SPX level
+// drifts, so the strikes around the live price (and a buffer of a few beyond)
+// stay subscribed even when spot moves several strikes. It only adds missing
+// symbols and prunes ones far outside the new band, keeping the feed set
+// bounded. Runs off the read loop; dies with the connection.
+func watchSpotDrift(
+	ctx context.Context,
+	client *stage2.DXFeedClient,
+	cfg streamConfig,
+	s *state,
+	pub *publisher,
+	opted *atomic.Bool,
+) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if !opted.Load() {
+			continue
+		}
+		price, ok := s.spxLevel()
+		if !ok {
+			continue
+		}
+		anchor, _, expiries, calls, puts := s.gridSnapshot()
+		if len(expiries) == 0 {
+			continue
+		}
+		newAnchor := nearestStep(price, cfg.step)
+		if newAnchor == anchor {
+			continue
+		}
+		newStrikes := strikesAround(newAnchor, cfg.step, cfg.rangeN)
+		expymd := make([]string, 0, len(expiries))
+		for _, e := range expiries {
+			expymd = append(expymd, e.Format("060102"))
+		}
+		ncalls := optionSymbols(cfg.base, expymd, newStrikes, true)
+		nputs := optionSymbols(cfg.base, expymd, newStrikes, false)
+		addC, remC := optionDelta(calls, ncalls)
+		addP, remP := optionDelta(puts, nputs)
+
+		// Subscribe the new strikes first so a prune can never race a gap.
+		for _, syms := range [][]string{addC, addP} {
+			if len(syms) == 0 {
+				continue
+			}
+			if err := client.SubscribeEvents(syms, "Quote"); err != nil {
+				logger.Errorf("drift subscribe quotes: %v", err)
+			}
+			if err := client.SubscribeEvents(syms, "Trade"); err != nil {
+				logger.Errorf("drift subscribe trades: %v", err)
+			}
+		}
+		if len(addC)+len(addP) > 0 {
+			added := make([]string, 0, len(addC)+len(addP))
+			added = append(added, addC...)
+			added = append(added, addP...)
+			go backfillSymbols(ctx, s, added)
+		}
+
+		// Prune only strikes well outside the new grid so the user's ±2 band
+		// and the adjacent-strike card keep their data while stale edges drop.
+		pruneMargin := float64(cfg.rangeN+3) * cfg.step
+		pruneOutside := func(syms []string) []string {
+			var pr []string
+			for _, sym := range syms {
+				st, ok := strikeOf(sym)
+				if !ok || st < newAnchor-pruneMargin || st > newAnchor+pruneMargin {
+					pr = append(pr, sym)
+				}
+			}
+			return pr
+		}
+		pruneC := pruneOutside(remC)
+		pruneP := pruneOutside(remP)
+		for _, syms := range [][]string{pruneC, pruneP} {
+			if len(syms) == 0 {
+				continue
+			}
+			if err := client.UnsubscribeEvents(syms, "Quote"); err != nil {
+				logger.Errorf("drift unsubscribe quotes: %v", err)
+			}
+			if err := client.UnsubscribeEvents(syms, "Trade"); err != nil {
+				logger.Errorf("drift unsubscribe trades: %v", err)
+			}
+		}
+
+		s.setGrid(newAnchor, newStrikes, expiries, cfg.base)
+		logger.Infof(
+			"spot drifted %.2f -> re-centre grid: anchor %s strikes=%v add=%d prune=%d",
+			price,
+			formatStrike(newAnchor),
+			formatStrikes(newStrikes),
+			len(addC)+len(addP),
+			len(pruneC)+len(pruneP),
+		)
+		pub.mark()
+	}
 }
 
 // handleSSE streams an event per connected browser.
@@ -845,7 +1315,13 @@ type recorder struct {
 }
 
 func newRecorder(path, symbol, base string) (*recorder, error) {
-	startAt := nextBoundary(time.Now(), 10*time.Minute).UTC()
+	return newRecorderAt(path, symbol, base, nextBoundary(time.Now(), 10*time.Minute).UTC())
+}
+
+// newRecorderAt is newRecorder with an explicit window start, so recordings
+// started from the dashboard can begin immediately instead of waiting for the
+// next 10-minute boundary.
+func newRecorderAt(path, symbol, base string, startAt time.Time) (*recorder, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
@@ -897,6 +1373,136 @@ func (r *recorder) close() {
 	_ = r.f.Sync()
 	_ = r.f.Close()
 	logger.Infof("recorded %d events to %s", r.n, r.f.Name())
+}
+
+// recControl is the dashboard-facing recorder: always allocated, it keeps the
+// active recorder (if any) behind a mutex so HTTP handlers can start, pause,
+// resume, or stop recording on demand while the feed handler keeps appending.
+type recControl struct {
+	mu     sync.Mutex
+	symbol string
+	base   string
+	active *recorder
+	paused bool
+	path   string
+}
+
+func newRecControl(symbol, base string) *recControl {
+	return &recControl{symbol: symbol, base: base}
+}
+
+// start begins a new recording. now=true starts writing immediately (web
+// control); now=false uses the boundary-aligned window (the -record flag path).
+func (c *recControl) start(path string, now bool) (*recorder, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active != nil {
+		return nil, fmt.Errorf("recording already active on %s", c.path)
+	}
+	startAt := nextBoundary(time.Now(), 10*time.Minute).UTC()
+	if now {
+		startAt = time.Now().UTC()
+	}
+	r, err := newRecorderAt(path, c.symbol, c.base, startAt)
+	if err != nil {
+		return nil, err
+	}
+	c.active = r
+	c.path = path
+	c.paused = false
+	return r, nil
+}
+
+// pause suspends appends; resume re-enables them.
+func (c *recControl) pause() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == nil {
+		return fmt.Errorf("no recording active")
+	}
+	c.paused = true
+	return nil
+}
+
+func (c *recControl) resume() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == nil {
+		return fmt.Errorf("no recording active")
+	}
+	c.paused = false
+	return nil
+}
+
+// stop closes the file and clears the active recorder, returning the path and
+// the number of events that were written.
+func (c *recControl) stop() (string, int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == nil {
+		return "", 0, fmt.Errorf("no recording active")
+	}
+	path := c.path
+	events := c.active.n
+	c.active.close()
+	c.active = nil
+	c.path = ""
+	c.paused = false
+	return path, events, nil
+}
+
+// append writes an event only while a recording is active and not paused.
+func (c *recControl) append(ev stage2.LiveEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == nil || c.paused {
+		return nil
+	}
+	return c.active.append(ev)
+}
+
+func (c *recControl) flush() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active != nil {
+		c.active.flush()
+	}
+}
+
+// close stops any active recording on shutdown.
+func (c *recControl) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active != nil {
+		c.active.close()
+		c.active = nil
+		c.path = ""
+		c.paused = false
+	}
+}
+
+// recState is the dashboard status payload for the record buttons.
+type recState struct {
+	Recording bool   `json:"recording"`
+	Paused    bool   `json:"paused"`
+	Path      string `json:"path"`
+	Events    int64  `json:"events"`
+}
+
+func (c *recControl) state() recState {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	st := recState{Recording: c.active != nil, Paused: c.paused, Path: c.path}
+	if c.active != nil {
+		st.Events = c.active.n
+	}
+	return st
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // loadRecording reads a JSONL recording produced by recorder, skipping the

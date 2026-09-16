@@ -274,7 +274,7 @@ func simulatedCloseTrade(
 	}
 
 	// Check underlying move (Coarse daily filter)
-	if cfg.Exit.UnderlyingMovePx != nil {
+	if cfg.Exit.UnderlyingMovePx != nil && *cfg.Exit.UnderlyingMovePx > 0 {
 		exitByUnderlyingMove(trade, dailyBars, &closeByDateTime, cfg)
 	}
 
@@ -329,7 +329,7 @@ func exitByPriceChange(
 	}
 
 	var minuteData []MinuteRow
-	if cfg.Exit.ProfitTargetPct != nil || cfg.Exit.StopLossPct != nil {
+	if (cfg.Exit.ProfitTargetPct != nil && *cfg.Exit.ProfitTargetPct != 0) || (cfg.Exit.StopLossPct != nil && *cfg.Exit.StopLossPct != 0) {
 		minuteData = fetchAndAlignLegData(trade, underlyingBars, *closeByDateTime, dataProv, cfg)
 		if scanOptionExits(trade, minuteData, closeByDateTime, cfg) {
 			logger.Debugf("Trade #%d: Exit triggered by PnL Target at %s", trade.ID, closeByDateTime.Format("2006-01-02 15:04"))

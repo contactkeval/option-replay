@@ -352,3 +352,16 @@ WMT
 EWZ
 SPCX
 WMB
+
+## Spot data missing for below tickers (indices) on massive.com free tier
+#SPX – S&P 500 index
+#SPXW – S&P 500 Weekly index options (underlying = SPX)
+#XSP – Mini S&P 500 index options (underlying = S&P 500)
+#NDXP – Nasdaq-100 PM-settled index options (underlying = Nasdaq-100 index)
+#RUTW – Russell 2000 Weeklys index options (underlying = Russell 2000 index)
+#VIX – Cboe Volatility Index
+
+#https://firstratedata.com/cb/5/complete-us-stocks-index-etf-futures-options
+#https://firstratedata.com/cb/1/complete-us-stocks-index-etf-futures
+#https://firstratedata.com/b/8/us-index-historic-intraday
+#https://firstratedata.com/i/index/SPX
