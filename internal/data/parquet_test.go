@@ -207,6 +207,55 @@ func TestParquetProviderAggregatesDailyBars(t *testing.T) {
 	}
 }
 
+func TestAggregateDailyBarsBucketsByExchangeDate(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("load tz: %v", err)
+	}
+	mk := func(utc time.Time, close, vol float64) Bar {
+		return Bar{Date: utc, Open: close, High: close, Low: close, Close: close, Volume: vol, Count: 1}
+	}
+
+	// Friday 2025-01-03 session: pre-market through after-hours. In UTC the
+	// after-hours tail (19:00-20:00 ET) falls on Saturday 2025-01-04.
+	friMorning := time.Date(2025, 1, 3, 9, 31, 0, 0, time.UTC)   // 04:31 ET
+	friAfterHours := time.Date(2025, 1, 4, 0, 59, 0, 0, time.UTC) // 19:59 ET Fri
+	// Saturday 2025-01-04 session actually ran (markets usually closed, but
+	// the file should only produce a bar for it if real minutes exist).
+	satMorning := time.Date(2025, 1, 4, 14, 31, 0, 0, time.UTC) // 09:31 ET Sat
+
+	bars := aggregateDailyBars([]Bar{
+		mk(friMorning, 100, 10),
+		mk(friAfterHours, 101, 5),
+		mk(satMorning, 102, 3),
+	}, loc)
+
+	if len(bars) != 2 {
+		t.Fatalf("daily bars=%d want 2 (Fri, Sat)", len(bars))
+	}
+	if got := bars[0].Date.UTC().Format("2006-01-02"); got != "2025-01-03" {
+		t.Fatalf("first bar dated %s want 2025-01-03 (Friday session, incl. after-hours tail)", got)
+	}
+	if bars[0].Close != 101 || bars[0].Volume != 15 {
+		t.Fatalf("Friday bar close=%v vol=%v want 101/15", bars[0].Close, bars[0].Volume)
+	}
+	if got := bars[1].Date.UTC().Format("2006-01-02"); got != "2025-01-04" {
+		t.Fatalf("second bar dated %s want 2025-01-04", got)
+	}
+
+	// With no Saturday minutes at all (normal case), only Friday remains.
+	bars = aggregateDailyBars([]Bar{
+		mk(friMorning, 100, 10),
+		mk(friAfterHours, 101, 5),
+	}, loc)
+	if len(bars) != 1 {
+		t.Fatalf("daily bars=%d want 1 (no synthetic Saturday bar)", len(bars))
+	}
+	if got := bars[0].Date.UTC().Format("2006-01-02"); got != "2025-01-03" {
+		t.Fatalf("bar dated %s want 2025-01-03", got)
+	}
+}
+
 func newTestParquetProvider(t *testing.T) (*ParquetDataProvider, string, time.Time, time.Time) {
 	t.Helper()
 

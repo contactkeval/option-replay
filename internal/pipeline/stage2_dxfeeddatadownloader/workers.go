@@ -281,7 +281,7 @@ func runDownloadWorker(
 
 	ensureClient := func() error {
 		if client != nil {
-			logger.Debugf("worker %d reusing session", workerID)
+			// logger.Debugf("worker %d reusing session", workerID)
 			return nil
 		}
 		// Keep trying to connect without failing the pool. One worker's dial

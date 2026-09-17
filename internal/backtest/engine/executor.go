@@ -128,6 +128,7 @@ func NewEngine(cfg *Config, dataProv data.Provider) *Engine {
 // volatility calculation, trade scheduling, and execution loop.
 func (e *Engine) Run() (*Result, error) {
 	e.initConfiguration()
+	e.applyTimezoneToProvider()
 	logger.Infof("Starting backtest for %s | Range: %s to %s", e.cfg.Underlying,
 		e.cfg.Entry.StartDate.Format("2006-01-02"), e.cfg.Entry.EndDate.Format("2006-01-02"),
 	)
@@ -320,7 +321,7 @@ func exitByPriceChange(
 	}
 
 	// Precise underlying move check
-	if cfg.Exit.UnderlyingMovePx != nil {
+	if cfg.Exit.UnderlyingMovePx != nil && *cfg.Exit.UnderlyingMovePx > 0 {
 		if hitTime, movePrice, hit := checkUnderlyingMove(underlyingBars, trade, *cfg.Exit.UnderlyingMovePx); hit {
 			*closeByDateTime = hitTime
 			trade.UnderlyingAtClose = movePrice

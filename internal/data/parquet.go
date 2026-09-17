@@ -22,6 +22,7 @@ type ParquetDataProvider struct {
 	metadataPath string
 	metadata     *db.DB
 	secondary    Provider
+	location     *time.Location
 }
 
 func NewParquetDataProvider(
@@ -47,6 +48,7 @@ func NewParquetDataProvider(
 		metadataPath: metadataPath,
 		metadata:     metadata,
 		secondary:    secondary,
+		location:     exchangeLocation(),
 	}, nil
 }
 
@@ -69,6 +71,32 @@ func (p *ParquetDataProvider) GetSecondary() Provider {
 
 func (p *ParquetDataProvider) SetSecondary(secondary Provider) {
 	p.secondary = secondary
+}
+
+// exchangeLocation returns the location used to bucket intraday bars into
+// daily bars. Since all parquet data is US equities, the trading-day boundary
+// is the America/New_York exchange calendar. It is overridden via SetLocation
+// when the strategy entry timezone differs.
+func exchangeLocation() *time.Location {
+	if loc, err := time.LoadLocation("America/New_York"); err == nil {
+		return loc
+	}
+	return time.UTC
+}
+
+// SetLocation overrides the timezone used to compute the trading-day date for
+// daily bar aggregation. Typically set from cfg.Entry.Timezone.
+func (p *ParquetDataProvider) SetLocation(loc *time.Location) {
+	if loc != nil {
+		p.location = loc
+	}
+}
+
+func (p *ParquetDataProvider) barLocation() *time.Location {
+	if p.location != nil {
+		return p.location
+	}
+	return exchangeLocation()
 }
 
 func (p *ParquetDataProvider) Close() error {
@@ -210,7 +238,7 @@ func (p *ParquetDataProvider) GetBars(
 		return out[i].Date.Before(out[j].Date)
 	})
 	if strings.EqualFold(timespan, TimespanDay) {
-		out = aggregateDailyBars(out)
+		out = aggregateDailyBars(out, p.barLocation())
 	}
 	return out, nil
 }
@@ -501,9 +529,12 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-func aggregateDailyBars(bars []Bar) []Bar {
+func aggregateDailyBars(bars []Bar, loc *time.Location) []Bar {
 	if len(bars) == 0 {
 		return bars
+	}
+	if loc == nil {
+		loc = time.UTC
 	}
 
 	type dayAgg struct {
@@ -514,10 +545,11 @@ func aggregateDailyBars(bars []Bar) []Bar {
 	order := make([]string, 0)
 
 	for _, b := range bars {
-		key := b.Date.UTC().Format("2006-01-02")
+		local := b.Date.In(loc)
+		key := local.Format("2006-01-02")
 		agg, ok := byDay[key]
 		if !ok {
-			dayStart := time.Date(b.Date.Year(), b.Date.Month(), b.Date.Day(), 0, 0, 0, 0, time.UTC)
+			dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
 			byDay[key] = &dayAgg{
 				bar: Bar{
 					Date:   dayStart,

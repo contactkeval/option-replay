@@ -55,6 +55,24 @@ func (e *Engine) initConfiguration() {
 	e.cfg.Entry.EndDate, _ = sch.CombineDateTime(day, day.Format("15:04"), e.cfg.Entry.Timezone)
 }
 
+// applyTimezoneToProvider propagates the strategy entry timezone to providers
+// that aggregate intraday bars by date, so daily bars (and thus scheduled
+// entry dates) follow the configured local calendar instead of UTC. This
+// prevents positions from being scheduled on weekend dates created by
+// after-hours sessions crossing midnight UTC.
+func (e *Engine) applyTimezoneToProvider() {
+	if e.dataProv == nil || e.cfg.Entry.Timezone == "" {
+		return
+	}
+	provider, ok := e.dataProv.(interface{ SetLocation(*time.Location) })
+	if !ok {
+		return
+	}
+	if loc, err := time.LoadLocation(e.cfg.Entry.Timezone); err == nil {
+		provider.SetLocation(loc)
+	}
+}
+
 // fetchDailyData retrieves daily underlying price bars for the duration of the backtest.
 func (e *Engine) fetchDailyData() ([]data.Bar, error) {
 	bars, err := e.dataProv.GetBars(e.cfg.Underlying, e.cfg.Entry.StartDate, e.cfg.Entry.EndDate, multiplierOne, timespanDay)
